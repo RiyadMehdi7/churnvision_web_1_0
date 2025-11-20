@@ -1,0 +1,48 @@
+services:
+  backend:
+    build: ./backend
+    image: churnvision/backend:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/churnvision
+      - LICENSE_KEY=${LICENSE_KEY:-dev-license-key}
+    volumes:
+      - ./backend/app:/app/app
+      - ./ml/models:/app/models:ro
+    depends_on:
+      - db
+      - ollama
+
+  frontend:
+    image: oven/bun:1
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "3000:3000"
+    command: ["bun", "run", "dev", "--host"]
+    depends_on:
+      - backend
+
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=churnvision
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  pg_data:
+  ollama_data:

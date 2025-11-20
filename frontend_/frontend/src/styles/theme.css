@@ -1,0 +1,160 @@
+@tailwind base;
+@tailwind components;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --surface: 0 0% 100%;
+    --surface-muted: 210 40% 96%;
+    --surface-elevated: 210 38% 97%;
+    --surface-subtle: 210 40% 98%;
+
+    --primary: 158 45% 62%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --neutral-foreground: 215 17% 35%;
+    --neutral-foreground-muted: 215 16% 55%;
+    --neutral-foreground-subtle: 215 20% 65%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --border-strong: 215 20% 65%;
+    --ring-offset: 210 40% 98%;
+
+    --radius: 0.5rem;
+
+    --shadow-sm: 0px 1px 2px rgba(15, 23, 42, 0.06);
+    --shadow-md: 0px 20px 45px rgba(15, 23, 42, 0.10);
+    --shadow-border: rgba(15, 23, 42, 0.08);
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --surface: 222 45% 9%;
+    --surface-muted: 217 33% 14%;
+    --surface-elevated: 217 25% 17%;
+    --surface-subtle: 217 22% 22%;
+
+    --primary: 158 45% 62%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --neutral-foreground: 210 40% 93%;
+    --neutral-foreground-muted: 215 19% 81%;
+    --neutral-foreground-subtle: 215 16% 70%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --border-strong: 217 19% 36%;
+    --ring-offset: 222.2 84% 4.9%;
+
+    --shadow-sm: 0px 1px 2px rgba(0, 0, 0, 0.45);
+    --shadow-md: 0px 16px 35px rgba(0, 0, 0, 0.55);
+    --shadow-border: rgba(15, 23, 42, 0.55);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+
+  hr {
+    border-color: hsl(var(--border));
+  }
+
+  ::selection {
+    background-color: hsl(var(--primary) / 0.25);
+  }
+}
+
+@layer components {
+  .cv-surface {
+    background-color: hsl(var(--surface));
+    color: hsl(var(--foreground));
+    border: 1px solid hsl(var(--border) / 0.6);
+    box-shadow: var(--shadow-sm);
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .cv-surface-muted {
+    background-color: hsl(var(--surface-muted));
+    color: hsl(var(--neutral-foreground));
+    border: 1px solid hsl(var(--border) / 0.4);
+  }
+
+  .cv-surface-elevated {
+    background-color: hsl(var(--surface-elevated));
+    color: hsl(var(--foreground));
+    border: 1px solid hsl(var(--border) / 0.5);
+    box-shadow: var(--shadow-md);
+  }
+
+  .cv-surface-subtle {
+    background-color: hsl(var(--surface-subtle));
+    color: hsl(var(--neutral-foreground));
+  }
+
+  .cv-border-strong {
+    border-color: hsl(var(--border-strong)) !important;
+  }
+
+  .cv-text-muted {
+    color: hsl(var(--neutral-foreground-muted));
+  }
+
+  .cv-text-subtle {
+    color: hsl(var(--neutral-foreground-subtle));
+  }
+
+  .cv-ring {
+    box-shadow: 0 0 0 2px hsl(var(--ring-offset) / 0.4), 0 0 0 4px hsl(var(--ring) / 0.35);
+  }
+}

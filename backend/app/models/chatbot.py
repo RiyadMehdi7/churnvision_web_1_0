@@ -44,7 +44,7 @@ class ChatMessage(Base):
     role = Column(String, nullable=False)  # 'user' or 'assistant'
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    metadata = Column(JSON, nullable=True)
+    message_metadata = Column(JSON, nullable=True)  # Renamed from 'metadata' to avoid SQLAlchemy conflict
 
 
 Index('idx_chat_messages_session_id', ChatMessage.session_id)

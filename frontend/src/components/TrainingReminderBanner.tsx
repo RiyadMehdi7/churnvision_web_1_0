@@ -1,42 +1,42 @@
 import React from 'react';
-import { AlertTriangle, X } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AlertTriangle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useGlobalDataCache } from '../hooks/useGlobalDataCache';
+import { useProject } from '../contexts/ProjectContext';
 
-interface TrainingReminderBannerProps {
-    onDismiss?: () => void;
+export function TrainingReminderBanner(): React.ReactElement | null {
+  const { activeProject } = useProject();
+  const trainingStatus = useGlobalDataCache(state => state.trainingStatus);
+  const navigate = useNavigate();
+
+  const shouldShowReminder = Boolean(
+    activeProject &&
+      (!trainingStatus || trainingStatus.status === 'idle' || trainingStatus.status === 'error')
+  );
+
+  if (!shouldShowReminder) return null;
+
+  const isError = trainingStatus?.status === 'error';
+  const helperMessage = isError
+    ? trainingStatus.error || trainingStatus.message || 'There was an issue with the previous training run.'
+    : 'No churn model has been trained for this project yet.';
+
+  return (
+    <div className="w-full px-4 py-3 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-900 flex flex-col md:flex-row gap-3 items-start md:items-center shadow-sm">
+      <div className="flex items-center gap-2 flex-1">
+        <AlertTriangle className="w-5 h-5 text-amber-600" />
+        <div>
+          <p className="text-sm font-semibold">Training required</p>
+          <p className="text-sm text-yellow-800">{helperMessage} Visit Data Management to train the model.</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => navigate('/data-management')}
+        className="text-sm font-semibold text-yellow-800 hover:text-yellow-900 underline underline-offset-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-500"
+      >
+        {isError ? 'Retry training' : 'Train model'}
+      </button>
+    </div>
+  );
 }
-
-export const TrainingReminderBanner: React.FC<TrainingReminderBannerProps> = ({ onDismiss }) => {
-    return (
-        <AnimatePresence>
-            <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800"
-            >
-                <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3 text-amber-800 dark:text-amber-200">
-                        <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-                        <p className="text-sm font-medium">
-                            Model training is recommended. New data has been uploaded since the last training session.
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <button className="text-sm font-semibold text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 underline">
-                            Train Now
-                        </button>
-                        {onDismiss && (
-                            <button
-                                onClick={onDismiss}
-                                className="text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200"
-                            >
-                                <X className="w-4 h-4" />
-                            </button>
-                        )}
-                    </div>
-                </div>
-            </motion.div>
-        </AnimatePresence>
-    );
-};

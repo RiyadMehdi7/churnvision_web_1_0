@@ -1,46 +1,41 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LogOut, AlertTriangle } from 'lucide-react';
+import type { LegacyExitPatternData } from '@/types/analysisData';
+import { LineChart } from 'lucide-react';
 
-interface Props {
-    data: any;
-}
-
-const LegacyExitPatternRenderer: React.FC<Props> = ({ data }) => {
-    return (
-        <div className="space-y-6">
-            <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                    <LogOut className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    Exit Pattern Analysis (Legacy)
-                </h3>
-            </div>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-base">Identified Patterns</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <ul className="space-y-3">
-                        {data.patterns && data.patterns.map((pattern: any, idx: number) => (
-                            <li key={idx} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
-                                <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
-                                <div>
-                                    <div className="font-medium text-gray-900 dark:text-gray-100">{pattern.name || pattern.pattern}</div>
-                                    <div className="text-sm text-gray-500 mt-1">{pattern.description}</div>
-                                    {pattern.frequency && (
-                                        <div className="text-xs text-gray-400 mt-2">Frequency: {pattern.frequency}</div>
-                                    )}
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                </CardContent>
-            </Card>
+const LegacyExitPatternRenderer: React.FC<{ data: LegacyExitPatternData }> = ({ data }) => {
+  return (
+    <div className="border rounded-2xl bg-white dark:bg-gray-800 shadow-2xl my-6 overflow-hidden">
+      <div className="border-b p-6 bg-gray-50 dark:bg-gray-700/30 flex items-center gap-3">
+        <div className="w-12 h-12 rounded-full bg-orange-500 text-white flex items-center justify-center">
+          <LineChart size={20} />
         </div>
-    );
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Exit Pattern Mining</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-300">AI-identified organizational exit patterns</p>
+        </div>
+      </div>
+      <div className="p-6 space-y-3">
+        {data.patterns?.length ? data.patterns.map((p, idx) => (
+          <div key={idx} className="p-4 rounded-lg border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+            <div className="font-semibold text-gray-900 dark:text-gray-100">{p.pattern}</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              {typeof p.percentage === 'number' ? `Frequency: ${(p.percentage * 100).toFixed(1)}%` : ''}
+              {typeof p.count === 'number' ? ` • Count: ${p.count}` : ''}
+              {p.context ? ` • ${p.context}` : ''}
+            </div>
+          </div>
+        )) : (
+          <div className="text-sm text-gray-600 dark:text-gray-300">No patterns found.</div>
+        )}
+      </div>
+      {data.summary && (
+        <div className="p-6 border-t bg-gray-50 dark:bg-gray-700/30 border-gray-200 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-200">
+          {data.summary}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default LegacyExitPatternRenderer;
+

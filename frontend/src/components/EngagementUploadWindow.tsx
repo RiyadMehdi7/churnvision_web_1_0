@@ -1,171 +1,372 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Upload, BarChart, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { Download, Upload, X, AlertCircle, FileText, BarChart3, Brain } from 'lucide-react';
+import { cn } from '../lib/utils';
+import { engagementDataService } from '../services/engagementDataService';
+import { 
+  parseFile
+} from '../services/fileParsingService';
 
 interface EngagementUploadWindowProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onUploadComplete: (data: any) => void;
+  show: boolean;
+  onClose: () => void;
+  onUploadSuccess?: () => void;
 }
 
-export const EngagementUploadWindow: React.FC<EngagementUploadWindowProps> = ({
-    isOpen,
-    onClose,
-    onUploadComplete
-}) => {
-    const [isDragging, setIsDragging] = React.useState(false);
-    const [uploadState, setUploadState] = React.useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
-    const [fileName, setFileName] = React.useState<string | null>(null);
+export function EngagementUploadWindow({ 
+  show, 
+  onClose, 
+  onUploadSuccess 
+}: EngagementUploadWindowProps): React.ReactElement | null {
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
+  const [parseProgress, setParseProgress] = useState(0);
 
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(true);
-    };
+  // Data preview state
+  const [parsedData, setParsedData] = useState<any[]>([]);
+  const [showPreview, setShowPreview] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string[]>>({});
 
-    const handleDragLeave = () => {
-        setIsDragging(false);
-    };
+  useEffect(() => {
+    if (!show) {
+      // Reset state when closing the window
+      setFile(null);
+      setError(null);
+      setParsedData([]);
+      setShowPreview(false);
+      setValidationErrors({});
+      setIsParsing(false);
+    }
+  }, [show]);
 
-    const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(false);
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            handleFile(files[0]);
-        }
-    };
+  // Download template function
+  const downloadTemplate = () => {
+    const csvContent = `employee_id,survey_date,overall_satisfaction,work_life_balance,career_development,management_rating,team_collaboration,compensation_satisfaction
+EMP001,2024-01-15,8,7,6,8,9,7
+EMP002,2024-01-15,6,5,7,6,8,5
+EMP003,2024-01-16,9,8,9,9,8,8`;
 
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files.length > 0) {
-            handleFile(e.target.files[0]);
-        }
-    };
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'engagement_survey_template.csv';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
 
-    const handleFile = async (file: File) => {
-        setFileName(file.name);
-        setUploadState('uploading');
+  // Handle file drop
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length > 0) {
+      handleFileSelect(droppedFiles[0]);
+    }
+  };
 
-        // Simulate upload delay
-        setTimeout(() => {
-            setUploadState('success');
-            setTimeout(() => {
-                onUploadComplete({ fileName: file.name, timestamp: new Date() });
-                onClose();
-            }, 1000);
-        }, 2000);
-    };
+  // Handle file selection
+  const handleFileSelect = async (selectedFile: File) => {
+    setError(null);
+    setFile(selectedFile);
+    
+    // Validate file type
+    const validTypes = ['.csv', '.xlsx', '.xls'];
+    const fileExtension = selectedFile.name.toLowerCase().substring(selectedFile.name.lastIndexOf('.'));
+    
+    if (!validTypes.includes(fileExtension)) {
+      setError('Please upload a CSV or Excel file');
+      return;
+    }
 
-    if (!isOpen) return null;
+    // Parse and preview the file
+    await parseAndPreviewFile(selectedFile);
+  };
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md border border-gray-200 dark:border-gray-700 overflow-hidden"
+  // Parse and preview file
+  const parseAndPreviewFile = async (file: File) => {
+    setIsParsing(true);
+    setParseProgress(0);
+    
+    try {
+      // Simulate progress
+      const progressInterval = setInterval(() => {
+        setParseProgress(prev => Math.min(prev + 10, 90));
+      }, 100);
+
+      const result = await parseFile(file);
+      
+      clearInterval(progressInterval);
+      setParseProgress(100);
+      
+      if (result.data && result.data.length > 0) {
+        setParsedData(result.data);
+        
+        // Auto-map columns for engagement surveys
+        // const autoMapped = autoMapColumns(result.columns, 'employee'); // Unused
+        
+        // setMappedColumns(autoMapped); // Unused variable
+        
+        // Validate the data
+        const validation = engagementDataService.validateEngagementFormat(result.data);
+        setValidationErrors(validation.errors);
+        
+        setShowPreview(true);
+      } else {
+        setError('No data found in the file');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to parse file');
+    } finally {
+      setIsParsing(false);
+      setTimeout(() => setParseProgress(0), 1000);
+    }
+  };
+
+  // Handle upload
+  const handleUpload = async () => {
+    if (!file) return;
+
+    setUploading(true);
+    setError(null);
+
+    try {
+      const result = await engagementDataService.uploadEngagementData(file);
+      
+      if (result.success) {
+        onUploadSuccess?.();
+        onClose();
+      } else {
+        setError(result.errors?.[0]?.message || 'Upload failed');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  if (!show) return null;
+
+  return (
+    <AnimatePresence>
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          transition={{ duration: 0.2 }}
+          className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
+                <BarChart3 className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                  Upload Engagement Survey Data
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Upload employee engagement and satisfaction survey data
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >
-                <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700">
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">Upload Engagement Survey Data</h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300">
-                        <X className="w-5 h-5" />
-                    </button>
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-6 max-h-[calc(90vh-120px)] overflow-y-auto">
+            {/* Template Download */}
+            <div className="flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="flex items-center gap-3">
+                <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <div>
+                  <h3 className="font-medium text-blue-900 dark:text-blue-100">Need a template?</h3>
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    Download our sample CSV template with the correct format
+                  </p>
                 </div>
+              </div>
+              <button
+                onClick={downloadTemplate}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Download Template
+              </button>
+            </div>
 
-                <div className="p-6">
-                    <div
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop}
-                        className={cn(
-                            "border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer",
-                            isDragging
-                                ? "border-purple-500 bg-purple-50 dark:bg-purple-900/20"
-                                : "border-gray-200 dark:border-gray-700 hover:border-purple-400 dark:hover:border-purple-500",
-                            uploadState === 'success' && "border-green-500 bg-green-50 dark:bg-green-900/20"
-                        )}
-                    >
-                        <input
-                            type="file"
-                            id="engagement-upload"
-                            className="hidden"
-                            accept=".csv,.xlsx,.xls"
-                            onChange={handleFileSelect}
-                            disabled={uploadState !== 'idle'}
-                        />
-
-                        <AnimatePresence mode="wait">
-                            {uploadState === 'idle' && (
-                                <motion.div
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    className="space-y-3"
-                                >
-                                    <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center mx-auto">
-                                        <Upload className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                            Click to upload or drag and drop
-                                        </p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                            CSV or Excel (max 20MB)
-                                        </p>
-                                    </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => document.getElementById('engagement-upload')?.click()}
-                                    >
-                                        Select File
-                                    </Button>
-                                </motion.div>
-                            )}
-
-                            {uploadState === 'uploading' && (
-                                <motion.div
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    className="space-y-3"
-                                >
-                                    <Loader2 className="w-10 h-10 text-purple-600 dark:text-purple-400 animate-spin mx-auto" />
-                                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                        Processing {fileName}...
-                                    </p>
-                                </motion.div>
-                            )}
-
-                            {uploadState === 'success' && (
-                                <motion.div
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    className="space-y-3"
-                                >
-                                    <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto">
-                                        <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
-                                    </div>
-                                    <p className="text-sm font-medium text-green-600 dark:text-green-400">
-                                        Upload Complete!
-                                    </p>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
-
-                    <div className="mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg flex gap-3">
-                        <BarChart className="w-5 h-5 text-purple-600 dark:text-purple-400 flex-shrink-0" />
-                        <div className="text-xs text-purple-800 dark:text-purple-200">
-                            <p className="font-medium mb-0.5">Data Format</p>
-                            <p>Ensure your file contains 'Employee ID' and 'Engagement Score' columns for automatic mapping.</p>
-                        </div>
-                    </div>
+            {/* File Upload Area */}
+            <div
+              className={cn(
+                "border-2 border-dashed rounded-lg p-8 text-center transition-colors",
+                dragActive
+                  ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                  : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
+              )}
+              onDrop={handleDrop}
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={() => setDragActive(false)}
+            >
+              <div className="space-y-4">
+                <div className="mx-auto w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center">
+                  <Upload className="w-8 h-8 text-gray-500 dark:text-gray-400" />
                 </div>
-            </motion.div>
-        </div>
-    );
-};
+                <div>
+                  <p className="text-lg font-medium text-gray-900 dark:text-gray-100">
+                    {file ? file.name : 'Drop your engagement survey file here'}
+                  </p>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    or{' '}
+                    <label className="text-blue-600 hover:text-blue-700 cursor-pointer">
+                      browse to upload
+                      <input
+                        type="file"
+                        accept=".csv,.xlsx,.xls"
+                        onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+                        className="hidden"
+                      />
+                    </label>
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
+                    Supports CSV and Excel files (max 10MB)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Parsing Progress */}
+            {isParsing && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <Brain className="w-5 h-5 text-blue-600 animate-pulse" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Parsing engagement survey data...
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${parseProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Data Preview */}
+            {showPreview && parsedData.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+                  Data Preview ({parsedData.length} records)
+                </h3>
+                
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-700">
+                        {Object.keys(parsedData[0] || {}).slice(0, 6).map((header) => (
+                          <th key={header} className="text-left p-2 font-medium text-gray-700 dark:text-gray-300">
+                            {header}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parsedData.slice(0, 5).map((row, index) => (
+                        <tr key={index} className="border-b border-gray-100 dark:border-gray-700">
+                          {Object.values(row).slice(0, 6).map((value: any, i) => (
+                            <td key={i} className="p-2 text-gray-600 dark:text-gray-400">
+                              {String(value).length > 30 ? String(value).substring(0, 30) + '...' : String(value)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Validation Errors */}
+            {Object.keys(validationErrors).length > 0 && (
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                  <h4 className="font-medium text-red-900 dark:text-red-100">Validation Issues</h4>
+                </div>
+                <div className="space-y-1">
+                  {Object.entries(validationErrors).map(([key, errors]) => (
+                    <div key={key}>
+                      {errors.map((error, index) => (
+                        <p key={index} className="text-sm text-red-700 dark:text-red-300">• {error}</p>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* General Error */}
+            {error && (
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                  <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Required Fields Info */}
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+              <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">Required Fields</h4>
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                <strong>Required:</strong> employee_id, survey_date, overall_satisfaction
+              </p>
+              <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                <strong>Optional:</strong> work_life_balance, career_development, management_rating, team_collaboration, compensation_satisfaction
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpload}
+                disabled={!file || uploading || Object.keys(validationErrors).length > 0}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg transition-colors flex items-center gap-2"
+              >
+                {uploading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    Upload Engagement Data
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </AnimatePresence>
+  );
+}

@@ -1,60 +1,129 @@
-import { Link, useLocation } from "@tanstack/react-router";
-import { Home, Bot, Play, Database, Settings, User } from "lucide-react";
-import { cn } from "@/lib/utils";
+import React, { useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { cn } from '../../utils/cn'
+import { Bot, Lock, User, LogOut } from 'lucide-react'
+import { ThemeToggle } from '../ui/ThemeToggle'
+import { Home, Beaker, Settings as SettingsIcon, Database } from 'lucide-react'
+import { useLicense, getLicenseTierDisplayName, getLicenseTierColor } from '../../providers/LicenseProvider'
+import { useAuth } from '../../contexts/AuthContext'
+import { Button } from '../ui/button'
 
-export function Header() {
-    const location = useLocation();
+const allNavigation = [
+  { name: 'Home', href: '/', icon: Home, feature: 'home' },
+  { name: 'AI Assistant', href: '/ai-assistant', icon: Bot, feature: 'ai-assistant' },
+  { name: 'Playground', href: '/playground', icon: Beaker, feature: 'playground' },
+  { name: 'Data Management', href: '/data-management', icon: Database, feature: 'data-management' },
+  { name: 'Settings', href: '/settings', icon: SettingsIcon, feature: 'settings' },
+]
 
-    const navItems = [
-        { name: "Home", href: "/", icon: Home },
-        { name: "AI Assistant", href: "/ai-assistant", icon: Bot },
-        { name: "Playground", href: "/playground", icon: Play, badge: "Beta" },
-        { name: "Data Management", href: "/data-management", icon: Database },
-        { name: "Settings", href: "/settings", icon: Settings },
-    ];
+export function Header(): React.ReactElement {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { hasAccess, licenseTier } = useLicense()
+  const { user, logout } = useAuth()
+  const [showUserMenu, setShowUserMenu] = useState(false)
 
-    return (
-        <header className="border-b bg-background sticky top-0 z-50">
-            <div className="flex h-16 items-center px-6">
-                <div className="mr-8">
-                    <Link to="/" className="flex items-center gap-2 font-bold text-xl">
-                        <span>ChurnVision</span>
-                    </Link>
-                </div>
+  // Filter navigation based on license access
+  const navigation = allNavigation.filter(item => hasAccess(item.feature))
 
-                <nav className="flex items-center space-x-6 flex-1">
-                    {navItems.map((item) => {
-                        const isActive = location.pathname === item.href;
-                        return (
-                            <Link
-                                key={item.href}
-                                to={item.href}
-                                className={cn(
-                                    "flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary",
-                                    isActive ? "text-primary border-b-2 border-primary h-16" : "text-muted-foreground"
-                                )}
-                            >
-                                <item.icon className="h-4 w-4" />
-                                {item.name}
-                                {item.badge && (
-                                    <span className="ml-1 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-800">
-                                        {item.badge}
-                                    </span>
-                                )}
-                            </Link>
-                        );
-                    })}
-                </nav>
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login')
+  }
 
-                <div className="flex items-center gap-4">
-                    <div className="rounded-md bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-800">
-                        Enterprise
-                    </div>
-                    <button className="rounded-full bg-secondary p-2 hover:bg-secondary/80">
-                        <User className="h-4 w-4" />
-                    </button>
-                </div>
+  return (
+    <header className="cv-surface-elevated sticky top-0 z-40 backdrop-blur transition-colors duration-300">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          <div className="flex items-center">
+            <Link to="/" className="flex-shrink-0 flex items-center">
+              <svg className="h-8 w-auto text-app-green" />
+              <span className="ml-2 text-xl font-bold text-foreground">ChurnVision</span>
+            </Link>
+            <nav className="hidden md:ml-10 md:flex md:space-x-8">
+              {navigation.map((item) => {
+                const hasItemAccess = hasAccess(item.feature)
+                return (
+                  <Link
+                    key={item.name}
+                    to={hasItemAccess ? item.href : '#'}
+                    className={cn(
+                      'inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium relative transition-colors',
+                      hasItemAccess ? (
+                        location.pathname === item.href
+                          ? 'border-app-green text-foreground'
+                          : 'border-transparent text-neutral-muted hover:border-border hover:text-foreground'
+                      ) : 'border-transparent text-neutral-subtle cursor-not-allowed'
+                    )}
+                    aria-current={location.pathname === item.href ? 'page' : undefined}
+                    onClick={!hasItemAccess ? (e) => e.preventDefault() : undefined}
+                  >
+                    <item.icon className="mr-1 h-5 w-5" aria-hidden="true" />
+                    {item.name}
+                    {!hasItemAccess && (
+                      <Lock className="ml-1 h-3 w-3" aria-hidden="true" />
+                    )}
+                    {item.name === 'Playground' && hasItemAccess && (
+                      <span className="ml-1.5 px-1.5 py-0.5 text-xs font-semibold bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/30">
+                        Beta
+                      </span>
+                    )}
+                  </Link>
+                )
+              })}
+            </nav>
+          </div>
+          <div className="flex items-center space-x-4">
+            {/* License Tier Badge */}
+            <div className={cn(
+              'px-2 py-1 text-xs font-medium rounded-md border border-border bg-surface-muted text-neutral',
+              getLicenseTierColor(licenseTier)
+            )}>
+              {getLicenseTierDisplayName(licenseTier)}
             </div>
-        </header>
-    );
-}
+            <ThemeToggle />
+
+            {/* User Menu */}
+            {user && (
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="flex items-center space-x-2"
+                >
+                  <User className="h-4 w-4" />
+                  <span className="hidden sm:inline">{user.username}</span>
+                </Button>
+
+                {showUserMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setShowUserMenu(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-surface-elevated border border-border z-20">
+                      <div className="py-1">
+                        <div className="px-4 py-2 text-sm text-neutral-muted border-b border-border">
+                          <div className="font-medium text-foreground">{user.full_name || user.username}</div>
+                          <div className="text-xs">{user.email}</div>
+                        </div>
+                        <button
+                          onClick={handleLogout}
+                          className="w-full text-left px-4 py-2 text-sm text-neutral hover:bg-surface-muted flex items-center space-x-2 transition-colors"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          <span>Logout</span>
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </header>
+  )
+} 

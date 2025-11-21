@@ -1,16 +1,97 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  RiskThresholds,
+  DynamicRiskConfig,
+  AutoAdjustmentConfig,
+  getCurrentRiskConfig,
+  subscribeToThresholdChanges,
+  getDynamicRiskLevel,
+  getDynamicRiskLevelWithStyles,
+  getDynamicRiskDistribution,
+  autoAdjustThresholds,
+  getAutoAdjustmentConfig,
+} from '../config/riskThresholds';
 
-export const useDynamicRiskRanges = () => {
-    const [ranges, setRanges] = useState({
-        high: { min: 0.7, max: 1.0, color: 'rgba(239, 68, 68, 0.1)' },
-        medium: { min: 0.4, max: 0.7, color: 'rgba(245, 158, 11, 0.1)' },
-        low: { min: 0.0, max: 0.4, color: 'rgba(34, 197, 94, 0.1)' },
+export interface UseDynamicRiskRangesReturn {
+  // Current configuration
+  config: DynamicRiskConfig;
+  thresholds: RiskThresholds;
+  autoConfig: AutoAdjustmentConfig;
+  
+  // Auto-adjustment functions
+  autoAdjust: (employees: Array<{ churnProbability?: number }>, forceAdjust?: boolean) => Promise<{ adjusted: boolean; reason?: string; newThresholds?: RiskThresholds }>;
+  
+  // Utility functions
+  getRiskLevel: (probability: number) => 'High' | 'Medium' | 'Low';
+  getRiskLevelWithStyles: (probability: number) => any;
+  calculateRiskDistribution: (employees: Array<{ churnProbability?: number }>) => { high: number; medium: number; low: number };
+  
+  // State
+  isLoading: boolean;
+  error: string | null;
+}
+
+/**
+ * Hook for managing dynamic risk thresholds
+ * Provides reactive access to risk threshold configuration with automatic updates
+ */
+export function useDynamicRiskRanges(): UseDynamicRiskRangesReturn {
+  const [config, setConfig] = useState<DynamicRiskConfig>(getCurrentRiskConfig());
+  const [autoConfig] = useState<AutoAdjustmentConfig>(getAutoAdjustmentConfig());
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Subscribe to configuration changes
+  useEffect(() => {
+    const unsubscribe = subscribeToThresholdChanges((newConfig) => {
+      setConfig(newConfig);
+      setError(null);
     });
 
-    // In a real app, this might fetch from an API or configuration
-    useEffect(() => {
-        // Simulate loading or dynamic updates
-    }, []);
+    return unsubscribe;
+  }, []);
 
-    return ranges;
-};
+  // Auto-adjust thresholds
+  const handleAutoAdjust = useCallback(async (
+    employees: Array<{ churnProbability?: number }>,
+    forceAdjust = false
+  ) => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const result = await autoAdjustThresholds(employees, forceAdjust);
+      return result;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Auto-adjustment failed';
+      setError(errorMessage);
+      return { adjusted: false, reason: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  return {
+    // Current configuration
+    config,
+    thresholds: config.current,
+    autoConfig,
+    
+    // Auto-adjustment functions
+    autoAdjust: handleAutoAdjust,
+    
+    // Utility functions (these use current dynamic thresholds)
+    getRiskLevel: getDynamicRiskLevel,
+    getRiskLevelWithStyles: getDynamicRiskLevelWithStyles,
+    calculateRiskDistribution: getDynamicRiskDistribution,
+    
+    // State
+    isLoading,
+    error,
+  };
+}
+
+/**
+ * Alias for useDynamicRiskRanges for backward compatibility
+ */
+export const useCurrentRiskThresholds = useDynamicRiskRanges;

@@ -1,0 +1,15 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "ChurnVision Local",
+      "Group": "Development",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "churnvision",
+      "Username": "postgres",
+      "SSLMode": "prefer",
+      "PassFile": "/pgpass",
+      "Comment": "ChurnVision Enterprise Development Database"
+    }
+  }
+}

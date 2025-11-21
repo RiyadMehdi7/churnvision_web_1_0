@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # Backend API (Compiled with Nuitka for IP Protection)
+  backend:
+    image: churnvision/backend:stable
+    container_name: churnvision-backend
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=production
+      - LICENSE_KEY=${LICENSE_KEY}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - LICENSE_SECRET_KEY=${LICENSE_SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - OLLAMA_BASE_URL=http://ollama:11434
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro  # Read-only models
+      - ./license.key:/etc/churnvision/license.key:ro  # Read-only license
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    networks:
+      - churnvision-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend (Production Build)
+  frontend:
+    image: churnvision/frontend:stable
+    container_name: churnvision-frontend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - VITE_API_URL=http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - churnvision-network
+
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: churnvision-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-churnvision}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-churnvision}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - churnvision-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-churnvision}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Ollama LLM Engine
+  ollama:
+    image: ollama/ollama:latest
+    container_name: churnvision-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - churnvision-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: churnvision-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - churnvision-network
+
+volumes:
+  postgres_data:
+    driver: local
+  ollama_data:
+    driver: local
+
+networks:
+  churnvision-network:
+    driver: bridge

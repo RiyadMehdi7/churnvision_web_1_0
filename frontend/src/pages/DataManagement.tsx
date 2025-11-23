@@ -3353,7 +3353,7 @@ export function DataManagement(): React.ReactElement {
                                                                         <span className="block mt-1">
                                                                             Uploaded {formatDate(dataset.uploadedAt)}
                                                                         </span>
-                                                                        {dataset.rowCount !== undefined && (
+                                                                        {dataset.rowCount !== undefined && dataset.rowCount !== null && (
                                                                             <span className="ml-1">
                                                                                 &bull; {dataset.rowCount.toLocaleString()} rows
                                                                             </span>

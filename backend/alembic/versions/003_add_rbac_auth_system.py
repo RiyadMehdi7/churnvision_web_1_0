@@ -217,10 +217,10 @@ def upgrade() -> None:
     # Update conversations table to reference new users table
     # Note: This assumes conversations table exists from previous migration
     # We'll modify the foreign key to point to the new users table
-    try:
-        op.drop_constraint('conversations_user_id_fkey', 'conversations', type_='foreignkey')
-    except:
-        pass  # Constraint might not exist
+    # try:
+    #     op.drop_constraint('conversations_user_id_fkey', 'conversations', type_='foreignkey')
+    # except:
+    #     pass  # Constraint might not exist
 
     # Alter user_id column type if needed
     op.execute('ALTER TABLE conversations ALTER COLUMN user_id TYPE VARCHAR')

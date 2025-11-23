@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from typing import List
 import uuid
 from datetime import datetime
+from pathlib import Path
+from copy import deepcopy
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
@@ -15,6 +17,16 @@ from app.schemas.data_management import (
 )
 
 router = APIRouter()
+UPLOAD_DIR = Path("/tmp/churnvision/uploads")
+PROJECT_STORE: list[dict] = [{
+    "id": "default",
+    "name": "Default Project",
+    "path": "/default",
+    "dbPath": "default.db",
+    "exists": True,
+    "active": True,
+}]
+DATASET_STORE: list[dict] = []
 
 # --- Projects ---
 
@@ -24,30 +36,8 @@ async def list_projects(
     db: AsyncSession = Depends(get_db)
 ):
     """List available projects"""
-    # For now, return a default project or fetch from ScopedProject
-    # In a real web app, projects might be organizations or workspaces
-    
-    query = select(ScopedProject).where(ScopedProject.active == 1)
-    result = await db.execute(query)
-    projects = result.scalars().all()
-    
-    if not projects:
-        # Return a default project if none exist
-        return [Project(
-            name="Default Project",
-            path="/default",
-            dbPath="default.db",
-            exists=True
-        )]
-        
-    return [
-        Project(
-            name=p.project_name or f"Project {p.id}",
-            path=p.project_dir,
-            dbPath=f"{p.project_dir}/database.db",
-            exists=True
-        ) for p in projects
-    ]
+    # Use in-memory store for now; avoids recreating the default after deletion
+    return [Project(**p) for p in PROJECT_STORE]
 
 @router.post("/projects", response_model=OperationResult)
 async def create_project(
@@ -56,25 +46,19 @@ async def create_project(
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new project"""
-    # Mock implementation for web
-    new_project = ScopedProject(
-        scope_level="user",
-        scope_id=str(current_user.id),
-        project_dir=f"/projects/{request.name}",
-        project_name=request.name
-    )
-    db.add(new_project)
-    await db.commit()
-    
-    return OperationResult(
-        success=True,
-        project=Project(
-            name=request.name,
-            path=f"/projects/{request.name}",
-            dbPath=f"/projects/{request.name}/database.db",
-            exists=True
-        )
-    )
+    project_id = str(uuid.uuid4())
+    project_dir = f"/projects/{request.name}"
+    project = {
+        "id": project_id,
+        "name": request.name,
+        "path": project_dir,
+        "dbPath": f"{project_dir}/database.db",
+        "exists": True,
+        "active": False,
+    }
+    PROJECT_STORE.append(project)
+
+    return OperationResult(success=True, project=Project(**project))
 
 @router.post("/projects/active", response_model=OperationResult)
 async def set_active_project(
@@ -83,8 +67,8 @@ async def set_active_project(
     db: AsyncSession = Depends(get_db)
 ):
     """Set active project"""
-    # In a web app, active project is usually session-based or stored in user preferences
-    # For now, just return success
+    for p in PROJECT_STORE:
+        p["active"] = (p.get("dbPath") == request.dbPath)
     return OperationResult(success=True)
 
 @router.delete("/projects/{path:path}", response_model=OperationResult)
@@ -94,8 +78,27 @@ async def delete_project(
     db: AsyncSession = Depends(get_db)
 ):
     """Delete a project"""
-    # Mock implementation
-    return OperationResult(success=True)
+    removed = False
+    for p in list(PROJECT_STORE):
+        if p.get("path") == f"/{path.lstrip('/')}":
+            PROJECT_STORE.remove(p)
+            removed = True
+            break
+
+    # Remove datasets tied to the project
+    if removed:
+        target_path = f"/{path.lstrip('/')}"
+        target_id = None
+        for proj in PROJECT_STORE:
+            if proj.get("path") == target_path:
+                target_id = proj.get("id")
+                break
+        if target_id:
+            for d in list(DATASET_STORE):
+                if d.get("projectId") == target_id:
+                    DATASET_STORE.remove(d)
+
+    return OperationResult(success=removed, error=None if removed else "Project not found")
 
 # --- Datasets ---
 
@@ -105,24 +108,12 @@ async def list_datasets(
     db: AsyncSession = Depends(get_db)
 ):
     """List datasets"""
-    query = select(DatasetModel).where(DatasetModel.is_active == 1)
-    result = await db.execute(query)
-    datasets = result.scalars().all()
-    
-    return [
-        Dataset(
-            id=d.dataset_id,
-            name=d.name,
-            type=d.file_type or "Unknown",
-            size=d.size or 0,
-            uploadedAt=d.upload_date,
-            rowCount=d.row_count,
-            active=bool(d.is_active),
-            isSnapshot=bool(d.is_snapshot),
-            snapshotGroup=d.snapshot_group,
-            description=d.description
-        ) for d in datasets
-    ]
+    active_project = next((p for p in PROJECT_STORE if p.get("active")), None)
+    project_id = active_project.get("id") if active_project else None
+
+    datasets = [d for d in DATASET_STORE if (project_id is None or d.get("projectId") == project_id)]
+
+    return [Dataset(**d) for d in datasets]
 
 @router.delete("/datasets/{dataset_id}", response_model=OperationResult)
 async def delete_dataset(
@@ -229,10 +220,76 @@ async def import_project(
 
 @router.post("/upload", response_model=OperationResult)
 async def upload_file(
-    # file: UploadFile = File(...), # In real implementation
+    file: UploadFile = File(...),
+    columnMapping: str = Form(None),
+    projectName: str = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Upload file"""
-    # Mock implementation
-    return OperationResult(success=True, message="File uploaded successfully")
+    """Upload file (mock implementation that persists to tmp and creates a dataset record)."""
+    try:
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        dest = UPLOAD_DIR / file.filename
+        content = await file.read()
+        dest.write_bytes(content)
+
+        # Determine active project
+        active_project = next((p for p in PROJECT_STORE if p.get("active")), None)
+        project_id = None
+        if projectName:
+            by_name = next((p for p in PROJECT_STORE if p.get("name") == projectName), None)
+            project_id = by_name.get("id") if by_name else None
+        if not project_id and active_project:
+            project_id = active_project.get("id")
+
+        # Set active flags per project (only one active dataset per project)
+        if project_id:
+            for d in DATASET_STORE:
+                if d.get("projectId") == project_id:
+                    d["active"] = False
+
+        # Create a mock dataset record so the UI can display it
+        dataset = DatasetModel(
+            dataset_id=str(uuid.uuid4()),
+            name=file.filename,
+            upload_date=datetime.utcnow(),
+            row_count=None,
+            file_type=file.content_type or "unknown",
+            size=len(content),
+            is_active=1,
+            is_snapshot=0,
+            snapshot_group=None,
+            description=f"Uploaded {file.filename}" + (f" for project {projectName}" if projectName else ""),
+        )
+        db.add(dataset)
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
+        dataset_entry = {
+            "id": dataset.dataset_id,
+            "name": dataset.name,
+            "type": dataset.file_type or "Unknown",
+            "size": dataset.size or 0,
+            "uploadedAt": dataset.upload_date,
+            "rowCount": dataset.row_count,
+            "active": True if project_id else False,
+            "isSnapshot": bool(dataset.is_snapshot),
+            "snapshotGroup": dataset.snapshot_group,
+            "description": dataset.description,
+            "projectId": project_id,
+            "snapshotPairDatasetId": None,
+        }
+        DATASET_STORE.append(deepcopy(dataset_entry))
+
+        return OperationResult(
+            success=True,
+            message="File uploaded successfully",
+            filePath=str(dest),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload file: {exc}",
+        )

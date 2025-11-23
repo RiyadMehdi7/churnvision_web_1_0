@@ -101,9 +101,9 @@ class ModelMetricsResponse(BaseModel):
     precision: float
     recall: float
     f1_score: float
-    last_trained: datetime
-    predictions_made: int
-    feature_importance: Dict[str, float]
+    last_trained: Optional[datetime] = None
+    predictions_made: int = 0
+    feature_importance: Dict[str, float] = Field(default_factory=dict)
 
 
 class EmployeeCreate(BaseModel):

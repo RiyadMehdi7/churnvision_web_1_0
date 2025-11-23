@@ -3,10 +3,12 @@ from pydantic import BaseModel
 from datetime import datetime
 
 class Project(BaseModel):
+    id: Optional[str] = None
     name: str
     path: str
     dbPath: str
     exists: bool = True
+    active: bool = False
 
 class Dataset(BaseModel):
     id: str
@@ -20,6 +22,7 @@ class Dataset(BaseModel):
     snapshotGroup: Optional[str] = None
     snapshotPairDatasetId: Optional[str] = None
     description: Optional[str] = None
+    projectId: Optional[str] = None
 
 class Connection(BaseModel):
     id: str

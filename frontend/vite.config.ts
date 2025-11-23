@@ -35,7 +35,7 @@ const versionInfoPlugin: Plugin = {
       res.setHeader('Pragma', 'no-cache')
       res.setHeader('Expires', '0')
       res.setHeader('Surrogate-Control', 'no-store')
-      
+
       // Return version information
       res.end(JSON.stringify({
         version: packageVersion,
@@ -85,7 +85,7 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path

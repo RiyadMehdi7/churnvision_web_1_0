@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, Index
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, Index, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.db.base_class import Base
@@ -74,7 +74,7 @@ class ImportProfile(Base):
     __tablename__ = "import_profiles"
 
     id = Column(String, primary_key=True)
-    connection_id = Column(String, nullable=False)
+    connection_id = Column(String, ForeignKey("connections.connection_id"), nullable=False)
     name = Column(String, nullable=False)
     dataset_name = Column(String, nullable=False)
     query = Column(Text, nullable=True)

@@ -1,0 +1,15 @@
+$ vite --host --port "3000"
+Building frontend with version: 1.0.0, Electron mode: false
+WebSocket server error:
+Error: listen EPERM: operation not permitted ::1:4001
+    at Server.setupListenHandle [as _listen2] (node:net:1915:21)
+    at listenInCluster (node:net:1994:12)
+    at GetAddrInfoReqWrap.callback (node:net:2203:7)
+    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:132:8)
+error when starting dev server:
+Error: listen EPERM: operation not permitted 0.0.0.0:3000
+    at Server.setupListenHandle [as _listen2] (node:net:1915:21)
+    at listenInCluster (node:net:1994:12)
+    at Server.listen (node:net:2099:7)
+    at httpServer.listen (file:///Users/riyadmehdiyev/churnvision_web_1_0/frontend/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:38758:14)
+error: script "dev" exited with code 1

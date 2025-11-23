@@ -2,8 +2,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-import openai
-import ollama
+from openai import AsyncOpenAI
+from ollama import AsyncClient
 
 from app.core.config import settings
 from app.models.chatbot import Conversation, Message
@@ -49,23 +49,25 @@ class ChatbotService:
                 if not settings.OPENAI_API_KEY:
                     raise ValueError("OPENAI_API_KEY not configured")
 
-                openai.api_key = settings.OPENAI_API_KEY
-                response = openai.chat.completions.create(
+                client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=settings.LLM_REQUEST_TIMEOUT)
+                response = await client.chat.completions.create(
                     model=model,
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens
                 )
 
-                content = response.choices[0].message.content
+                content = response.choices[0].message.content or ""
+                usage = response.usage or None
                 metadata.update({
-                    "tokens_used": response.usage.total_tokens,
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens
+                    "tokens_used": usage.total_tokens if usage else None,
+                    "prompt_tokens": usage.prompt_tokens if usage else None,
+                    "completion_tokens": usage.completion_tokens if usage else None
                 })
 
             else:  # ollama
-                response = ollama.chat(
+                client = AsyncClient()
+                response = await client.chat(
                     model=model,
                     messages=messages,
                     options={
@@ -74,11 +76,12 @@ class ChatbotService:
                     }
                 )
 
-                content = response['message']['content']
+                message = response.get("message", {}) if isinstance(response, dict) else {}
+                content = message.get("content", "")
                 metadata.update({
-                    "tokens_used": response.get('eval_count', 0) + response.get('prompt_eval_count', 0),
-                    "prompt_tokens": response.get('prompt_eval_count', 0),
-                    "completion_tokens": response.get('eval_count', 0)
+                    "tokens_used": response.get('eval_count', 0) + response.get('prompt_eval_count', 0) if isinstance(response, dict) else None,
+                    "prompt_tokens": response.get('prompt_eval_count', 0) if isinstance(response, dict) else None,
+                    "completion_tokens": response.get('eval_count', 0) if isinstance(response, dict) else None
                 })
 
             return content, metadata

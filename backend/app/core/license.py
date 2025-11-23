@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 
 import jwt
-from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException, status
 from pydantic import BaseModel
 
 
@@ -36,6 +36,8 @@ class LicenseValidator:
     # Secret key for signing licenses (should be kept secure in production)
     SECRET_KEY = os.getenv("LICENSE_SECRET_KEY", "churnvision-enterprise-secret-2024")
     ALGORITHM = "HS256"
+    ENV_LICENSE_KEY = os.getenv("LICENSE_KEY")
+    CUSTOM_LICENSE_PATH = os.getenv("CHURNVISION_LICENSE_PATH")
 
     # License file paths
     PROD_LICENSE_PATH = Path("/etc/churnvision/license.key")
@@ -47,6 +49,8 @@ class LicenseValidator:
     @classmethod
     def get_license_path(cls) -> Path:
         """Get the appropriate license file path based on environment"""
+        if cls.CUSTOM_LICENSE_PATH:
+            return Path(cls.CUSTOM_LICENSE_PATH)
         if cls.IS_DEV_MODE:
             return cls.DEV_LICENSE_PATH
         return cls.PROD_LICENSE_PATH
@@ -54,6 +58,10 @@ class LicenseValidator:
     @classmethod
     def load_license(cls) -> Optional[str]:
         """Load license key from file"""
+        # Highest priority: environment variable
+        if cls.ENV_LICENSE_KEY:
+            return cls.ENV_LICENSE_KEY.strip()
+
         license_path = cls.get_license_path()
 
         if not license_path.exists():
@@ -64,6 +72,19 @@ class LicenseValidator:
         except Exception as e:
             print(f"Error reading license file: {e}")
             return None
+
+    @classmethod
+    def save_license(cls, license_key: str) -> None:
+        """Persist a license key to the active license path."""
+        license_path = cls.get_license_path()
+        try:
+            license_path.parent.mkdir(parents=True, exist_ok=True)
+            license_path.write_text(license_key.strip())
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to persist license key: {e}"
+            )
 
     @classmethod
     def decode_license(cls, license_key: str) -> LicenseInfo:
@@ -138,8 +159,11 @@ class LicenseValidator:
         Raises:
             HTTPException: If license is missing, invalid, or expired
         """
-        # In dev mode, return a dummy license
-        if cls.IS_DEV_MODE:
+        # Load license from file if present
+        license_key = cls.load_license()
+
+        # In dev mode, honor a stored key when present, otherwise return a dummy license
+        if cls.IS_DEV_MODE and not license_key:
             return LicenseInfo(
                 company_name="Development Mode",
                 license_type="enterprise",
@@ -148,9 +172,6 @@ class LicenseValidator:
                 expires_at=datetime.utcnow() + timedelta(days=365),
                 features=["all"]
             )
-
-        # Load license from file
-        license_key = cls.load_license()
 
         if not license_key:
             raise HTTPException(
@@ -263,3 +284,19 @@ def get_current_license() -> LicenseInfo:
             return {"message": f"Welcome {license.company_name}"}
     """
     return LicenseValidator.validate_license()
+
+
+def require_license_tier(required_tier: str):
+    """Dependency that enforces a minimum license tier."""
+    tier_order = {"starter": 0, "pro": 1, "enterprise": 2}
+
+    async def dependency(license_info: LicenseInfo = Depends(get_current_license)) -> LicenseInfo:
+        tier = license_info.license_type.lower()
+        if tier_order.get(tier, 0) < tier_order.get(required_tier, 0):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"{required_tier.title()} license required for this feature"
+            )
+        return license_info
+
+    return dependency

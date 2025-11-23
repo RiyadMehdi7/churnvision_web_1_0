@@ -13,12 +13,28 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '002'
-down_revision: Union[str, None] = '001_add_chatbot_tables'
+down_revision: Union[str, None] = '001'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Create legacy_users table
+    op.create_table('legacy_users',
+        sa.Column('id', sa.Integer(), primary_key=True, index=True),
+        sa.Column('email', sa.String(), unique=True, index=True, nullable=False),
+        sa.Column('username', sa.String(), unique=True, index=True, nullable=False),
+        sa.Column('hashed_password', sa.String(), nullable=False),
+        sa.Column('full_name', sa.String(), nullable=True),
+        sa.Column('is_active', sa.Boolean(), default=True, nullable=False),
+        sa.Column('is_superuser', sa.Boolean(), default=False, nullable=False),
+        sa.Column('tenant_id', sa.String(), index=True, nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), onupdate=sa.text('now()'), nullable=True),
+        sa.Column('last_login', sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint('id')
+    )
+
     # Create datasets table
     op.create_table('datasets',
         sa.Column('dataset_id', sa.String(), nullable=False),
@@ -562,20 +578,20 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['document_id'], ['rag_documents.id'], ondelete='CASCADE')
     )
 
-    # Create chat_messages table
-    op.create_table('chat_messages',
-        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column('session_id', sa.String(), nullable=False),
-        sa.Column('employee_id', sa.String(), nullable=True),
-        sa.Column('message', sa.Text(), nullable=False),
-        sa.Column('role', sa.String(), nullable=False),
-        sa.Column('timestamp', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
-        sa.Column('metadata', postgresql.JSON(astext_type=sa.Text()), nullable=True),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index('idx_chat_messages_session_id', 'chat_messages', ['session_id'])
-    op.create_index('idx_chat_messages_timestamp', 'chat_messages', ['timestamp'])
+    # Create chat_messages table - ALREADY CREATED IN 001
+    # op.create_table('chat_messages',
+    #     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    #     sa.Column('session_id', sa.String(), nullable=False),
+    #     sa.Column('employee_id', sa.String(), nullable=True),
+    #     sa.Column('message', sa.Text(), nullable=False),
+    #     sa.Column('role', sa.String(), nullable=False),
+    #     sa.Column('timestamp', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    #     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    #     sa.Column('metadata', postgresql.JSON(astext_type=sa.Text()), nullable=True),
+    #     sa.PrimaryKeyConstraint('id')
+    # )
+    # op.create_index('idx_chat_messages_session_id', 'chat_messages', ['session_id'])
+    # op.create_index('idx_chat_messages_timestamp', 'chat_messages', ['timestamp'])
 
     # Update conversations table to use user_id as String (for compatibility with new auth system)
     # This will be handled in the next migration if conversations table already exists
@@ -687,4 +703,11 @@ def downgrade() -> None:
 
     op.drop_index('idx_datasets_is_active', table_name='datasets')
     op.drop_index('idx_datasets_upload_date', table_name='datasets')
+    op.drop_index('idx_datasets_upload_date', table_name='datasets')
     op.drop_table('datasets')
+    
+    op.drop_index('ix_legacy_users_username', table_name='legacy_users')
+    op.drop_index('ix_legacy_users_tenant_id', table_name='legacy_users')
+    op.drop_index('ix_legacy_users_id', table_name='legacy_users')
+    op.drop_index('ix_legacy_users_email', table_name='legacy_users')
+    op.drop_table('legacy_users')

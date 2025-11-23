@@ -1,25 +1,31 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import Optional
 from datetime import datetime, timedelta
-import uuid
 import hashlib
+import platform
+import uuid
+from pathlib import Path
+from typing import Optional
 
-from app.api.deps import get_db
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
+
+from app.core.license import LicenseValidator
 
 router = APIRouter()
 
-# Pydantic models for request/response
+STATE_DIR = Path(__file__).resolve().parents[3] / ".churnvision"
+INSTALLATION_ID_PATH = STATE_DIR / "installation.id"
+
+
 class LicenseActivationRequest(BaseModel):
     license_key: str
-    installation_id: str
+    installation_id: Optional[str] = None
+
 
 class LicenseActivationResponse(BaseModel):
     success: bool
     message: str
     license_data: Optional[dict] = None
+
 
 class LicenseStatusResponse(BaseModel):
     status: str  # ACTIVE, EXPIRED, REVOKED, UNLICENSED, etc.
@@ -28,142 +34,130 @@ class LicenseStatusResponse(BaseModel):
     grace_period_ends: Optional[str] = None
     is_licensed: bool
 
+
 class InstallationIdResponse(BaseModel):
     installation_id: str
 
-# In-memory store for demo (in production, use database)
-# Format: { installation_id: { license_key, status, tier, expires_at } }
-LICENSE_STORE = {}
+
+def _load_or_create_installation_id() -> str:
+    """Persist a deterministic installation id for this deployment."""
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        if INSTALLATION_ID_PATH.exists():
+            existing = INSTALLATION_ID_PATH.read_text().strip()
+            if existing:
+                return existing
+
+        seed = f"{uuid.getnode()}-{platform.node()}"
+        install_id = hashlib.sha256(seed.encode()).hexdigest()[:32]
+        INSTALLATION_ID_PATH.write_text(install_id)
+        return install_id
+    except Exception:
+        # Fall back to a random id if persistence fails
+        return str(uuid.uuid4())
+
+
+def _status_from_license_info(license_info) -> LicenseStatusResponse:
+    now = datetime.utcnow()
+    expires_at = license_info.expires_at
+
+    grace_period_ends = None
+    if now > expires_at:
+        status_str = "EXPIRED"
+        is_licensed = False
+    elif expires_at - now <= timedelta(days=7):
+        status_str = "GRACE_PERIOD"
+        is_licensed = True
+        grace_period_ends = expires_at.isoformat()
+    else:
+        status_str = "ACTIVE"
+        is_licensed = True
+
+    return LicenseStatusResponse(
+        status=status_str,
+        tier=license_info.license_type or "starter",
+        expires_at=expires_at.isoformat(),
+        grace_period_ends=grace_period_ends,
+        is_licensed=is_licensed
+    )
+
 
 @router.get("/installation-id", response_model=InstallationIdResponse)
 async def get_installation_id():
     """
-    Get or generate a unique installation ID for this instance.
-    In production, this should be stored in a persistent location.
+    Retrieve or persist a stable installation identifier used for licensing.
     """
-    # For now, generate a UUID-based installation ID
-    # In a real app, you'd store this in database or config file
-    installation_id = str(uuid.uuid4())
+    return InstallationIdResponse(installation_id=_load_or_create_installation_id())
 
-    return InstallationIdResponse(installation_id=installation_id)
 
 @router.post("/activate", response_model=LicenseActivationResponse)
-async def activate_license(
-    request: LicenseActivationRequest,
-    db: AsyncSession = Depends(get_db)
-):
+async def activate_license(request: LicenseActivationRequest):
     """
-    Activate a license key for the given installation ID.
-    This is a simplified implementation - in production, you'd validate against
-    a license server or database.
+    Validate and persist a license key to the local license store.
     """
     license_key = request.license_key.strip()
-    installation_id = request.installation_id.strip()
-
-    if not license_key or not installation_id:
+    if not license_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="License key and installation ID are required"
+            detail="License key is required"
         )
 
-    # Simple validation: check if license key follows expected format
-    # Example: XXXX-XXXX-XXXX-XXXX (4 groups of 4 characters)
-    parts = license_key.split('-')
-    if len(parts) != 4 or any(len(p) != 4 for p in parts):
-        return LicenseActivationResponse(
-            success=False,
-            message="Invalid license key format. Expected format: XXXX-XXXX-XXXX-XXXX"
+    try:
+        license_info = LicenseValidator.decode_license(license_key)
+        LicenseValidator.save_license(license_key)
+    except HTTPException as exc:
+        raise exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to activate license: {exc}"
         )
-
-    # Determine tier based on license key pattern (simplified logic)
-    # In production, validate against your license database
-    key_hash = hashlib.md5(license_key.encode()).hexdigest()
-
-    # Simple tier detection (you'd replace this with actual validation)
-    if key_hash[0] in ['0', '1', '2']:
-        tier = 'enterprise'
-    elif key_hash[0] in ['3', '4', '5', '6']:
-        tier = 'pro'
-    else:
-        tier = 'starter'
-
-    # Set expiration (1 year from now for this demo)
-    expires_at = datetime.utcnow() + timedelta(days=365)
-
-    # Store license information
-    LICENSE_STORE[installation_id] = {
-        'license_key': license_key,
-        'status': 'ACTIVE',
-        'tier': tier,
-        'expires_at': expires_at.isoformat(),
-        'activated_at': datetime.utcnow().isoformat()
-    }
 
     license_data = {
-        'tier': tier,
-        'status': 'ACTIVE',
-        'expires_at': expires_at.isoformat(),
-        'installation_id': installation_id
+        "tier": license_info.license_type,
+        "status": "ACTIVE",
+        "expires_at": license_info.expires_at.isoformat(),
+        "installation_id": request.installation_id or _load_or_create_installation_id(),
+        "company_name": license_info.company_name,
+        "features": license_info.features,
     }
 
     return LicenseActivationResponse(
         success=True,
-        message=f"License activated successfully ({tier} tier)",
+        message="License activated successfully",
         license_data=license_data
     )
 
+
 @router.get("/status", response_model=LicenseStatusResponse)
-async def get_license_status(
-    installation_id: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_license_status(installation_id: Optional[str] = None):
     """
     Get the current license status for the installation.
     """
-    if not installation_id or installation_id not in LICENSE_STORE:
-        # No license found - return unlicensed status
+    license_key = LicenseValidator.load_license()
+    if not license_key:
         return LicenseStatusResponse(
             status="UNLICENSED",
             tier="starter",
             is_licensed=False
         )
 
-    license_info = LICENSE_STORE[installation_id]
+    try:
+        license_info = LicenseValidator.decode_license(license_key)
+        return _status_from_license_info(license_info)
+    except HTTPException as exc:
+        detail = str(exc.detail).lower()
+        status_label = "EXPIRED" if "expired" in detail else "INVALID"
+        return LicenseStatusResponse(
+            status=status_label,
+            tier="starter",
+            is_licensed=False
+        )
 
-    # Check expiration
-    expires_at = datetime.fromisoformat(license_info['expires_at'])
-    now = datetime.utcnow()
-
-    if now > expires_at:
-        status_str = "EXPIRED"
-        is_licensed = False
-        grace_period_ends = None
-    elif now > expires_at - timedelta(days=7):
-        # Grace period (7 days before expiration)
-        status_str = "GRACE_PERIOD"
-        is_licensed = True
-        grace_period_ends = expires_at.isoformat()
-    else:
-        status_str = license_info['status']
-        is_licensed = True
-        grace_period_ends = None
-
-    return LicenseStatusResponse(
-        status=status_str,
-        tier=license_info['tier'],
-        expires_at=license_info['expires_at'],
-        grace_period_ends=grace_period_ends,
-        is_licensed=is_licensed
-    )
 
 @router.post("/refresh")
-async def refresh_license_status(
-    installation_id: str,
-    db: AsyncSession = Depends(get_db)
-):
+async def refresh_license_status():
     """
     Refresh license status (useful for checking with remote license server).
-    For now, just returns current status.
     """
-    status_response = await get_license_status(installation_id, db)
-    return status_response
+    return await get_license_status()

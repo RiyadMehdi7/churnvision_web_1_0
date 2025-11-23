@@ -14,6 +14,19 @@ from app.schemas.user import User as UserSchema, UserCreate
 
 router = APIRouter()
 
+def _validate_password_policy(password: str) -> None:
+    """Enforce password policy configured in settings."""
+    if len(password) < settings.MIN_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Password must be at least {settings.MIN_PASSWORD_LENGTH} characters long."
+        )
+    if settings.REQUIRE_SPECIAL_CHARS and not any(not c.isalnum() for c in password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must include at least one special character."
+        )
+
 
 @router.post("/login", response_model=LoginResponse)
 async def login(
@@ -125,6 +138,8 @@ async def register(
     """
     Register a new user.
     """
+    _validate_password_policy(user_in.password)
+
     # Check if user already exists
     result = await db.execute(
         select(User).filter(

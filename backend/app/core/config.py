@@ -5,6 +5,8 @@ from typing import Optional
 class Settings(BaseSettings):
     PROJECT_NAME: str = "ChurnVision Enterprise"
     API_V1_STR: str = "/api/v1"
+    ENVIRONMENT: str = "development"
+    DEBUG: bool = True
 
     # Database settings
     POSTGRES_USER: str = "postgres"
@@ -17,6 +19,8 @@ class Settings(BaseSettings):
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
+    SQLALCHEMY_ECHO: bool = False
 
     # Security settings
     SECRET_KEY: str = "your-secret-key-change-this-in-production-min-32-chars"
@@ -38,6 +42,11 @@ class Settings(BaseSettings):
     DEFAULT_LLM_PROVIDER: str = "openai"  # 'openai' or 'ollama'
     CHATBOT_MAX_HISTORY: int = 10  # Maximum number of previous messages to include in context
     CHATBOT_SYSTEM_PROMPT: str = "You are a helpful AI assistant for ChurnVision Enterprise, a customer churn prediction platform. You help users understand their data, analyze churn patterns, and make data-driven decisions."
+    LLM_REQUEST_TIMEOUT: int = 30  # seconds
+
+    def model_post_init(self, __context):
+        if self.ENVIRONMENT == "production" and self.SECRET_KEY.startswith("your-secret-key-change-this"):
+            raise ValueError("SECRET_KEY must be set in production.")
 
     class Config:
         env_file = ".env"

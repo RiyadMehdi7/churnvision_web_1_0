@@ -19,7 +19,7 @@ interface CustomizableHomeContentProps {
 const CustomizableHomeContent: React.FC<CustomizableHomeContentProps> = ({ onToggleClassicView }) => {
   const { activeProject } = useProject();
   const { homeEmployees, isLoadingHomeData, fetchHomeData } = useGlobalDataCache();
-  
+
   const {
     currentMode,
     setMode,
@@ -43,11 +43,11 @@ const CustomizableHomeContent: React.FC<CustomizableHomeContentProps> = ({ onTog
       try {
         // Initialize dashboard service
         await dashboardService.initialize(true); // Assume enterprise for demo
-        
+
         // Load layouts for current mode
         const layouts = dashboardService.getLayoutsByMode(currentMode);
         setLocalAvailableLayouts(layouts);
-        
+
         // Set default layout if none selected
         if (!currentLayout && layouts.length > 0) {
           const defaultLayout = layouts.find(l => l.isDefault) || layouts[0];
@@ -70,12 +70,14 @@ const CustomizableHomeContent: React.FC<CustomizableHomeContentProps> = ({ onTog
             setCurrentLayout(fallbackLayout);
           }
         }
-        
+
         // Load employee data if needed
         if (activeProject && (!homeEmployees || homeEmployees.length === 0)) {
-          await fetchHomeData(activeProject.dbPath, false);
+          if (activeProject?.id) {
+            fetchHomeData(activeProject.id, false);
+          }
         }
-        
+
         setIsInitialized(true);
       } catch (err) {
         setError('Failed to initialize dashboard');
@@ -90,15 +92,15 @@ const CustomizableHomeContent: React.FC<CustomizableHomeContentProps> = ({ onTog
     try {
       await roleModeManager.switchMode(newMode);
       setMode(newMode);
-      
+
       // Load layouts for new mode
       const layouts = dashboardService.getLayoutsByMode(newMode);
       setLocalAvailableLayouts(layouts);
-      
+
       // Set default layout for new mode
       const defaultLayout = layouts.find(l => l.isDefault) || layouts[0];
       setCurrentLayout(defaultLayout);
-      
+
       // Clear any AI cache for mode-specific data
       aiCacheManager.invalidateAIInsights();
     } catch (err) {
@@ -268,7 +270,7 @@ const CustomizableHomeContent: React.FC<CustomizableHomeContentProps> = ({ onTog
       pdf.setFontSize(24);
       pdf.setTextColor(59, 130, 246); // Blue color
       pdf.text('ChurnVision Dashboard Report', margin, 30);
-      
+
       pdf.setFontSize(12);
       pdf.setTextColor(107, 114, 128); // Gray color
       pdf.text(`Layout: ${currentLayout.name}`, margin, 40);
@@ -293,19 +295,19 @@ const CustomizableHomeContent: React.FC<CustomizableHomeContentProps> = ({ onTog
         }
 
         const widgetTitle = getWidgetTitle(widget.type);
-        const category = widget.type.includes('executive') ? 'Executive' : 
-                        widget.type.includes('ai') ? 'AI Insights' : 
-                        widget.type.includes('analytics') ? 'Analytics' : 'Operational';
+        const category = widget.type.includes('executive') ? 'Executive' :
+          widget.type.includes('ai') ? 'AI Insights' :
+            widget.type.includes('analytics') ? 'Analytics' : 'Operational';
 
         pdf.setFontSize(12);
         pdf.setTextColor(17, 24, 39);
         pdf.text(`${index + 1}. ${widgetTitle}`, margin, yPosition);
-        
+
         pdf.setFontSize(9);
         pdf.setTextColor(107, 114, 128);
         pdf.text(`Category: ${category}`, margin + 5, yPosition + 5);
         pdf.text(`Position: ${widget.position.x},${widget.position.y} | Size: ${widget.position.w}x${widget.position.h}`, margin + 5, yPosition + 10);
-        
+
         yPosition += 20;
       });
 
@@ -327,7 +329,7 @@ const CustomizableHomeContent: React.FC<CustomizableHomeContentProps> = ({ onTog
       // Failed to generate PDF - logged silently in production
       // Fallback to JSON export
       const dataStr = JSON.stringify(currentLayout, null, 2);
-      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+      const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
       const exportFileDefaultName = `${currentLayout.name.replace(/\s+/g, '_')}_layout.json`;
       const linkElement = document.createElement('a');
       linkElement.setAttribute('href', dataUri);
@@ -410,7 +412,7 @@ const CustomizableHomeContent: React.FC<CustomizableHomeContentProps> = ({ onTog
     const gridWidth = 12;
     const gridHeight = 20; // Reasonable max height
     const grid: boolean[][] = Array(gridHeight).fill(null).map(() => Array(gridWidth).fill(false));
-    
+
     // Mark occupied positions
     widgets.forEach(widget => {
       const { x, y, w, h } = widget.position;
@@ -428,11 +430,11 @@ const CustomizableHomeContent: React.FC<CustomizableHomeContentProps> = ({ onTog
     // Find the first available position
     const widgetWidth = 6;
     const widgetHeight = 4;
-    
+
     for (let y = 0; y <= gridHeight - widgetHeight; y++) {
       for (let x = 0; x <= gridWidth - widgetWidth; x++) {
         let canPlace = true;
-        
+
         // Check if the area is free
         for (let dy = 0; dy < widgetHeight; dy++) {
           for (let dx = 0; dx < widgetWidth; dx++) {
@@ -443,13 +445,13 @@ const CustomizableHomeContent: React.FC<CustomizableHomeContentProps> = ({ onTog
           }
           if (!canPlace) break;
         }
-        
+
         if (canPlace) {
           return { x, y, w: widgetWidth, h: widgetHeight };
         }
       }
     }
-    
+
     // Fallback: place at the bottom
     const maxY = Math.max(...widgets.map(w => w.position.y + w.position.h), 0);
     return { x: 0, y: maxY, w: widgetWidth, h: widgetHeight };
@@ -503,7 +505,7 @@ const CustomizableHomeContent: React.FC<CustomizableHomeContentProps> = ({ onTog
                 ChurnVision Dashboard
               </h1>
               <p className="text-gray-600 dark:text-gray-400">
-                {currentMode === 'c-level' ? 'Executive View' : 'Department Manager View'} • 
+                {currentMode === 'c-level' ? 'Executive View' : 'Department Manager View'} •
                 {currentLayout?.name || 'Default Layout'}
               </p>
             </div>

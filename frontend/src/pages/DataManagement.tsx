@@ -14,9 +14,9 @@ import { useGlobalDataCache } from '@/hooks/useGlobalDataCache';
 import { useProject } from '@/contexts/ProjectContext'; // Import from local context
 import { parse as csvParse } from 'papaparse';
 // Excel parsing is handled by FastAPI backend
-// import ExcelJS from 'exceljs';
+import ExcelJS from 'exceljs';
 import { logger } from '@/utils/logger'; // Import frontend logger
-import type { ConnectionTestParams } from '@/types/electron'; // Removed ConnectionCreateParams
+// // import type { ConnectionTestParams } from '@/types/electron'; // Removed ConnectionCreateParams
 import { Button } from "@/components/ui/button";
 import { useToast } from '@/hooks/use-toast';
 import { useBatchReasoning } from '../hooks/useReasoning';
@@ -97,6 +97,7 @@ interface ValidationResult {
 
 // Revert to local Project interface definition
 interface Project {
+    id: string;
     name: string;
     path: string; // Directory path
     dbPath: string; // Path to database.db file
@@ -510,7 +511,7 @@ export function DataManagement(): React.ReactElement {
         setIsMetricsLoading(true);
         setMetricsError('');
         try {
-            // @ts-expect-error: getModelMetrics may not be typed on ElectronAPI
+            // getModelMetrics may not be typed on ElectronAPI
             const response = await api.get('/churn/model/metrics');
             const result = response.data;
             if (result?.success) {
@@ -1268,7 +1269,9 @@ export function DataManagement(): React.ReactElement {
                     setProcessingStep('training');
                     setUploadMessage('Data saved. Starting model training...');
                     // Use non-null assertion as activeProject is checked at function start
-                    startGlobalPolling(activeProject!.dbPath);
+                    if (activeProject?.id) {
+                        startGlobalPolling(activeProject.id);
+                    }
                 } else {
                     setProcessingStep('complete');
                     setUploadStatus('success');
@@ -1373,6 +1376,14 @@ export function DataManagement(): React.ReactElement {
 
         try {
             // Prepare params matching ConnectionTestParams
+            interface ConnectionTestParams {
+                type: string;
+                host: string;
+                port: string;
+                username: string;
+                password?: string;
+                databaseName: string;
+            }
             const params: ConnectionTestParams = {
                 type: dbType,
                 host: dbConfig.host,
@@ -1866,14 +1877,14 @@ export function DataManagement(): React.ReactElement {
                         const rows: string[][] = [];
 
                         const headerRow = worksheet.getRow(1);
-                        headerRow.eachCell((cell, colNumber) => {
+                        headerRow.eachCell((cell: any, colNumber: number) => {
                             headers[colNumber - 1] = cell.text || `Column${colNumber}`;
                         });
 
-                        worksheet.eachRow((row, rowNumber) => {
+                        worksheet.eachRow((row: any, rowNumber: number) => {
                             if (rowNumber === 1) return;
                             const rowData: string[] = [];
-                            row.eachCell((cell, colNumber) => {
+                            row.eachCell((cell: any, colNumber: number) => {
                                 rowData[colNumber - 1] = cell.text || '';
                             });
                             rows.push(rowData);
@@ -1925,7 +1936,7 @@ export function DataManagement(): React.ReactElement {
             setGeneralError('Cannot activate dataset: No active project selected.');
             return;
         }
-        const currentProjectId = activeProject.dbPath; // Use project ID
+        const currentProjectId = activeProject.id; // Use project ID
 
         setGeneralError('');
         try {
@@ -1954,7 +1965,7 @@ export function DataManagement(): React.ReactElement {
         const globalFetchTrainingStatus = useGlobalDataCache.getState().fetchTrainingStatus;
         // Call it only if project is loaded and active
         if (activeProject && !isLoadingProject) {
-            globalFetchTrainingStatus(activeProject.dbPath);
+            globalFetchTrainingStatus(activeProject.id);
         }
     }, [activeProject, isLoadingProject]); // Add dependencies
 
@@ -2540,7 +2551,7 @@ export function DataManagement(): React.ReactElement {
             logger.warn('handleStartTraining: Preconditions not met.', { hasProject: !!activeProject, hasActiveDataset: !!activeDataset, trainingStatus }, 'DataManagement');
             return;
         }
-        const currentProjectId = activeProject.dbPath; // Get project ID
+        const projectId = activeProject.id; // Get project ID
 
         setGeneralError('');
 
@@ -2551,8 +2562,8 @@ export function DataManagement(): React.ReactElement {
             if (result.success && result.status) {
                 logger.info('Training successfully queued via API.', { status: result.status }, 'DataManagement');
                 // Start GLOBAL POLLING - PASS PROJECT ID
-                logger.info(`Triggering global cache polling for training status (Project: ${currentProjectId}).`, undefined, 'DataManagement');
-                startGlobalPolling(currentProjectId);
+                logger.info(`Triggering global cache polling for training status (Project: ${projectId}).`, undefined, 'DataManagement');
+                startGlobalPolling(projectId);
             } else {
                 const errorMessage = result.error || 'Failed to start training (unknown reason)';
                 throw new Error(errorMessage);
@@ -2673,6 +2684,7 @@ export function DataManagement(): React.ReactElement {
                                         <Folder className="w-4 h-4 text-gray-600 dark:text-gray-400 flex-shrink-0" />
                                     )}
                                     <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate" title={proj.name}>{proj.name}</span>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-[200px]" title={proj.id}>{proj.id}</p>
                                 </div>
                                 <div className="flex items-center gap-1.5 flex-shrink-0">
                                     {/* Activate button based on activeProject from context */}

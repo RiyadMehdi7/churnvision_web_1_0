@@ -183,10 +183,10 @@ function AppContent(): ReactElement {
 
     const preloadAppData = async () => {
       // Ensure we have a project ID before fetching
-      const projectId = activeProject?.dbPath;
+      const projectId = activeProject?.id;
       if (!projectId) {
-          // No active project ID found, skipping data preload
-          return;
+        // No active project ID found, skipping data preload
+        return;
       }
 
       try {
@@ -212,8 +212,8 @@ function AppContent(): ReactElement {
     if (isAuthenticated && !isLoadingProject && activeProject) {
       preloadAppData();
     } else if (isAuthenticated && !isLoadingProject && !activeProject) {
-        // Handle case where user is authenticated but no project is active
-        // Authenticated but no active project after loading - handled silently in production
+      // Handle case where user is authenticated but no project is active
+      // Authenticated but no active project after loading - handled silently in production
     }
 
     // Cleanup function
@@ -274,15 +274,15 @@ function AppContent(): ReactElement {
   useEffect(() => {
     // Start automatic threshold sync with backend every 30 minutes
     // Only start if we have a project database path
-    if (activeProject?.dbPath) {
-      thresholdSyncService.startAutoSync(30, activeProject.dbPath);
+    if (activeProject?.id) {
+      thresholdSyncService.startAutoSync(30);
       appLogger.info('Started threshold sync service');
     }
 
     return () => {
       thresholdSyncService.stopAutoSync();
     };
-  }, [activeProject?.dbPath]);
+  }, [activeProject?.id]);
 
   // === Effect for AI Model Type Selection - Web Default ===
   useEffect(() => {
@@ -502,51 +502,51 @@ function AppContent(): ReactElement {
 
   // === Main Return (after loading and error checks) ===
   return (
-      <div className="h-screen flex flex-col overflow-hidden bg-background text-foreground transition-colors duration-300">
-        <SkipToContent />
-        {/* Render based on authentication - license checks disabled */}
-        <>
-          <Header />
-          <main id="main-content" className="flex-1 bg-surface-subtle overflow-auto transition-colors duration-300" tabIndex={-1}>
-            <Suspense
-              fallback={
-                <div
-                  style={{
-                    willChange: 'transform, opacity',
-                    transform: 'translate3d(0, 0, 0)',
-                    backfaceVisibility: 'hidden',
-                  }}
-                >
-                  <LoadingOverlay isLoading={true} text="Loading page..." />
-                </div>
-              }
-            >
-              <KeepAliveRoutes routes={allRoutes} />
-            </Suspense>
-          </main>
-          <Footer />
-        </>
+    <div className="h-screen flex flex-col overflow-hidden bg-background text-foreground transition-colors duration-300">
+      <SkipToContent />
+      {/* Render based on authentication - license checks disabled */}
+      <>
+        <Header />
+        <main id="main-content" className="flex-1 bg-surface-subtle overflow-auto transition-colors duration-300" tabIndex={-1}>
+          <Suspense
+            fallback={
+              <div
+                style={{
+                  willChange: 'transform, opacity',
+                  transform: 'translate3d(0, 0, 0)',
+                  backfaceVisibility: 'hidden',
+                }}
+              >
+                <LoadingOverlay isLoading={true} text="Loading page..." />
+              </div>
+            }
+          >
+            <KeepAliveRoutes routes={allRoutes} />
+          </Suspense>
+        </main>
+        <Footer />
+      </>
 
-        {import.meta.env.DEV && (
-           <div
-             className="fixed bottom-0 right-0 bg-yellow-500 text-black px-2 py-1 text-xs font-mono z-50 cursor-pointer"
-           >
-             {isElectron ? 'Electron' : 'Browser'} v{appVersion}
-           </div>
-        )}
-        <OnboardingTutorial
-          isOpen={showOnboarding}
-          onClose={() => completeOnboarding()}
-          onComplete={completeOnboarding}
-          currentMode="d-level"
-        />
-      </div>
+      {import.meta.env.DEV && (
+        <div
+          className="fixed bottom-0 right-0 bg-yellow-500 text-black px-2 py-1 text-xs font-mono z-50 cursor-pointer"
+        >
+          {isElectron ? 'Electron' : 'Browser'} v{appVersion}
+        </div>
+      )}
+      <OnboardingTutorial
+        isOpen={showOnboarding}
+        onClose={() => completeOnboarding()}
+        onComplete={completeOnboarding}
+        currentMode="d-level"
+      />
+    </div>
   );
 }
 
 // Helper Hook - no longer needed for web application (removed Electron API check)
 const useLicenseProviderStateCheck = () => {
-    return { apiAvailable: true }; // Always available via backend API
+  return { apiAvailable: true }; // Always available via backend API
 }
 
 // Main App component now wraps content with the provider
@@ -608,8 +608,8 @@ export const App: React.FC = (): React.ReactElement => {
         isVisible={showLaunchAnimation}
         versionLabel={appVersion ? `v${appVersion}` : undefined}
       />
-      <ErrorBoundary 
-        level="critical" 
+      <ErrorBoundary
+        level="critical"
         showDetails={process.env.NODE_ENV === 'development'}
         onError={(error, errorInfo) => {
           errorReporter.report({

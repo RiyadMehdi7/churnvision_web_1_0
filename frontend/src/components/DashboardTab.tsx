@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  Search, 
+import {
+  Search,
   ChevronUp,
   ChevronDown,
   FolderKanban,
@@ -49,7 +49,7 @@ const EmployeeTableRow = memo(({
 }) => {
   // Handle potential NaN in churnProbability
   const probability = isNaN(employee.churnProbability) ? 0 : employee.churnProbability;
-  
+
   // Block risk indicators during calibration/enhancement
   const [calibrating, setCalibrating] = useState<boolean>(isCalibrating());
   useEffect(() => {
@@ -62,14 +62,14 @@ const EmployeeTableRow = memo(({
     ? { color: 'text-gray-600', bgColor: 'bg-gray-100', darkColor: 'dark:text-gray-300', darkBgColor: 'dark:bg-gray-800/60' }
     : getRiskLevelForEmployeeWithStyles(probability);
   const riskLevel = blocked ? 'Calibrating' : getRiskLevelForEmployee(probability);
-  
+
   // Check if employee data seems malformed
   const hasIssues = !employee.full_name || employee.full_name.includes('Unknown') || !employee.structure_name || !employee.position;
-  
+
   // Memoize confidence calculations for performance
   const confidence = useMemo(() => {
-    return employee.reasoningConfidence 
-      ? Math.round(employee.reasoningConfidence * 100) 
+    return employee.reasoningConfidence
+      ? Math.round(employee.reasoningConfidence * 100)
       : (employee.confidenceScore || 0);
   }, [employee.reasoningConfidence, employee.confidenceScore]);
 
@@ -84,64 +84,64 @@ const EmployeeTableRow = memo(({
     e.stopPropagation(); // Prevent row click
     onReasoningClick(employee);
   }, [onReasoningClick, employee]);
-  
+
   return (
     <div
       style={style}
       className={cn(
-          `flex items-center border-b border-gray-100 dark:border-gray-700/80`,
-          `hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${hasIssues ? 'bg-red-50 dark:bg-red-900/10' : ''} cursor-pointer`
+        `flex items-center border-b border-gray-100 dark:border-gray-700/80`,
+        `hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${hasIssues ? 'bg-red-50 dark:bg-red-900/10' : ''} cursor-pointer`
       )}
       onClick={() => onReasoningClick(employee)}
     >
-       <div className="px-6 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 truncate w-[20%]">
-         {employee.full_name || (
-            <span className="text-red-500 dark:text-red-400 flex items-center gap-1">
-                 Missing Name
+      <div className="px-6 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 truncate w-[20%]">
+        {employee.full_name || (
+          <span className="text-red-500 dark:text-red-400 flex items-center gap-1">
+            Missing Name
+          </span>
+        )}
+      </div>
+      <div className="px-6 py-3 text-sm text-gray-600 dark:text-gray-400 truncate w-[15%]">
+        {employee.structure_name || 'Unassigned'}
+      </div>
+      <div className="px-6 py-3 text-sm text-gray-600 dark:text-gray-400 truncate w-[15%]">
+        {employee.position || 'Unassigned'}
+      </div>
+      <div className="px-6 py-3 w-[10%]">
+        <span className={cn(
+          'px-2.5 py-0.5 text-xs font-medium rounded-full inline-block',
+          `${riskInfo.color} ${riskInfo.bgColor} ${riskInfo.darkColor} ${riskInfo.darkBgColor}`
+        )}>
+          {riskLevel}
+        </span>
+      </div>
+      <div className="px-6 py-3 w-[15%]">
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-medium text-gray-900 dark:text-gray-200">
+            {(probability * 100).toFixed(1)}%
+          </div>
+          <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800">
+            <div className={`w-2 h-2 rounded-full ${confidenceColor}`}></div>
+            <span className="text-xs text-blue-700 dark:text-blue-300 whitespace-nowrap font-medium">
+              {confidence}% conf.
             </span>
-         )}
-       </div>
-       <div className="px-6 py-3 text-sm text-gray-600 dark:text-gray-400 truncate w-[15%]">
-         {employee.structure_name || 'Unassigned'}
-       </div>
-       <div className="px-6 py-3 text-sm text-gray-600 dark:text-gray-400 truncate w-[15%]">
-         {employee.position || 'Unassigned'}
-       </div>
-        <div className="px-6 py-3 w-[10%]">
-         <span className={cn(
-           'px-2.5 py-0.5 text-xs font-medium rounded-full inline-block',
-           `${riskInfo.color} ${riskInfo.bgColor} ${riskInfo.darkColor} ${riskInfo.darkBgColor}`
-         )}>
-           {riskLevel}
-         </span>
-       </div>
-       <div className="px-6 py-3 w-[15%]">
-         <div className="flex items-center gap-2">
-           <div className="text-sm font-medium text-gray-900 dark:text-gray-200">
-             {(probability * 100).toFixed(1)}%
-           </div>
-           <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800">
-             <div className={`w-2 h-2 rounded-full ${confidenceColor}`}></div>
-             <span className="text-xs text-blue-700 dark:text-blue-300 whitespace-nowrap font-medium">
-               {confidence}% conf.
-             </span>
-           </div>
-         </div>
-       </div>
-       <div className="px-6 py-3 text-sm text-gray-600 dark:text-gray-400 w-[10%]">
-         {employee.status || 'Active'}
-       </div>
-       <div className="px-6 py-3 w-[15%]">
-         <div className="flex items-center gap-2">
-           <button
-             onClick={handleReasoningClick}
-             className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/30 dark:hover:bg-purple-800/50 text-purple-700 dark:text-purple-300 rounded transition-colors"
-           >
-             <Brain className="w-3 h-3" />
-             Reasoning
-           </button>
-         </div>
-       </div>
+          </div>
+        </div>
+      </div>
+      <div className="px-6 py-3 text-sm text-gray-600 dark:text-gray-400 w-[10%]">
+        {employee.status || 'Active'}
+      </div>
+      <div className="px-6 py-3 w-[15%]">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleReasoningClick}
+            className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/30 dark:hover:bg-purple-800/50 text-purple-700 dark:text-purple-300 rounded transition-colors"
+          >
+            <Brain className="w-3 h-3" />
+            Reasoning
+          </button>
+        </div>
+      </div>
     </div>
   );
 });
@@ -222,17 +222,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     trainingStatus
   } = useGlobalDataCache();
   const isModelReady = trainingStatus?.status === 'complete';
-  
+
   // Dynamic risk thresholds are available through helper functions
-  
+
   const getRiskLevelForEmployeeForEmployee = (probability: number) => {
     return getRiskLevelForEmployee(probability);
   };
-  
+
   const getRiskLevelForEmployeeWithStylesForEmployee = (probability: number) => {
     return getRiskLevelForEmployeeWithStyles(probability);
   };
-  
+
   // Local state for UI interactions
   const [isUploadWindowOpen, setIsUploadWindowOpen] = useState(false);
   const [showNotification, setShowNotification] = useState(false);
@@ -304,18 +304,22 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       console.log('[Dashboard Tab] No active project, skipping data initialization.');
       return;
     }
-    
+
     const initializeData = async () => {
       try {
         const urlParams = new URLSearchParams(window.location.search);
         const isPostUpload = urlParams.get('refresh') === 'true';
-        
+
         if (isPostUpload) {
           console.log('Post-upload refresh detected. Forcing data refresh...');
-          await fetchHomeData(activeProject.dbPath, true);
+          if (activeProject?.id) {
+            await fetchHomeData(activeProject.id, true);
+          }
           window.history.replaceState({}, document.title, window.location.pathname);
         } else {
-          await fetchHomeData(activeProject.dbPath, false);
+          if (activeProject?.id) {
+            await fetchHomeData(activeProject.id, false);
+          }
         }
       } catch (err) {
         console.error('Error loading data:', err);
@@ -336,7 +340,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       autoThresholdService.stop();
     };
   }, [isModelReady, homeEmployees]);
-  
+
   // Use homeEmployees directly from the global cache
   const employees = homeEmployees || [];
   const isLoading = isLoadingHomeData;
@@ -344,23 +348,23 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   // Base filtered data (before dropdown filters) for cascade filtering
   const baseFilteredEmployees = useMemo(() => {
     if (!debouncedSearchTerm) return employees;
-    
+
     const searchLower = debouncedSearchTerm.toLowerCase();
     return employees.filter(employee => {
       const fullName = employee.full_name || '';
       const structureName = employee.structure_name || '';
       const position = employee.position || '';
-      
+
       return fullName.toLowerCase().includes(searchLower) ||
-             structureName.toLowerCase().includes(searchLower) ||
-             position.toLowerCase().includes(searchLower);
+        structureName.toLowerCase().includes(searchLower) ||
+        position.toLowerCase().includes(searchLower);
     });
   }, [employees, debouncedSearchTerm]);
 
   // Cascade filter options based on current selections
   const availableDepartments = useMemo(() => {
     let dataForDepts = baseFilteredEmployees;
-    
+
     if (selectedPosition && selectedPosition !== 'All') {
       dataForDepts = dataForDepts.filter(emp => (emp.position || 'Unassigned') === selectedPosition);
     }
@@ -373,18 +377,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     if (selectedStatus && selectedStatus !== 'All') {
       dataForDepts = dataForDepts.filter(emp => (emp.status || 'Active') === selectedStatus);
     }
-    
+
     const deptSet = new Set<string>();
     dataForDepts.forEach(emp => {
       deptSet.add(emp.structure_name || emp.department || 'Unassigned');
     });
-    
+
     return ['All', ...Array.from(deptSet).sort()];
   }, [baseFilteredEmployees, selectedPosition, selectedRiskLevel, selectedStatus, getRiskLevelForEmployee]);
 
   const availablePositions = useMemo(() => {
     let dataForPositions = baseFilteredEmployees;
-    
+
     if (selectedDepartment && selectedDepartment !== 'All') {
       dataForPositions = dataForPositions.filter(emp => (emp.structure_name || emp.department || 'Unassigned') === selectedDepartment);
     }
@@ -397,18 +401,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     if (selectedStatus && selectedStatus !== 'All') {
       dataForPositions = dataForPositions.filter(emp => (emp.status || 'Active') === selectedStatus);
     }
-    
+
     const posSet = new Set<string>();
     dataForPositions.forEach(emp => {
       posSet.add(emp.position || 'Unassigned');
     });
-    
+
     return ['All', ...Array.from(posSet).sort()];
   }, [baseFilteredEmployees, selectedDepartment, selectedRiskLevel, selectedStatus, getRiskLevelForEmployee]);
 
   const availableRiskLevels = useMemo(() => {
     let dataForRisk = baseFilteredEmployees;
-    
+
     if (selectedDepartment && selectedDepartment !== 'All') {
       dataForRisk = dataForRisk.filter(emp => (emp.structure_name || emp.department || 'Unassigned') === selectedDepartment);
     }
@@ -418,19 +422,19 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     if (selectedStatus && selectedStatus !== 'All') {
       dataForRisk = dataForRisk.filter(emp => (emp.status || 'Active') === selectedStatus);
     }
-    
+
     const riskSet = new Set<string>();
     dataForRisk.forEach(emp => {
       const riskLevel = getRiskLevelForEmployee(emp.churnProbability || 0);
       riskSet.add(riskLevel);
     });
-    
+
     return ['All', ...Array.from(riskSet).sort()];
   }, [baseFilteredEmployees, selectedDepartment, selectedPosition, selectedStatus, getRiskLevelForEmployee]);
 
   const availableStatuses = useMemo(() => {
     let dataForStatus = baseFilteredEmployees;
-    
+
     if (selectedDepartment && selectedDepartment !== 'All') {
       dataForStatus = dataForStatus.filter(emp => (emp.structure_name || emp.department || 'Unassigned') === selectedDepartment);
     }
@@ -443,12 +447,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         return riskLevel === selectedRiskLevel;
       });
     }
-    
+
     const statusSet = new Set<string>();
     dataForStatus.forEach(emp => {
       statusSet.add(emp.status || 'Active');
     });
-    
+
     return ['All', ...Array.from(statusSet).sort()];
   }, [baseFilteredEmployees, selectedDepartment, selectedPosition, selectedRiskLevel, getRiskLevelForEmployee]);
 
@@ -491,22 +495,22 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         low_risk_count: 0
       };
     }
-    
+
     let churnSum = 0;
     const riskDistribution = { high: 0, medium: 0, low: 0 };
-    
+
     for (const emp of filteredEmployees) {
       const churnProb = emp.churnProbability || 0;
       churnSum += churnProb;
-      
+
       const riskLevel = getRiskLevelForEmployeeForEmployee(churnProb);
       if (riskLevel === 'High') riskDistribution.high++;
       else if (riskLevel === 'Medium') riskDistribution.medium++;
       else riskDistribution.low++;
     }
-    
+
     const avgChurnProb = churnSum / totalEmployees;
-    
+
     return {
       total_employees: totalEmployees,
       average_churn_probability: avgChurnProb,
@@ -580,8 +584,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   const SortIcon = ({ field }: { field: SortableField }) => {
     if (sortField !== field) return null
-    return sortDirection === 'asc' ? 
-      <ChevronUp key={`sort-icon-${field}-asc`} className="w-4 h-4 ml-1" /> : 
+    return sortDirection === 'asc' ?
+      <ChevronUp key={`sort-icon-${field}-asc`} className="w-4 h-4 ml-1" /> :
       <ChevronDown key={`sort-icon-${field}-desc`} className="w-4 h-4 ml-1" />
   }
 
@@ -595,14 +599,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   // Check for data upload note
   useEffect(() => {
     const dataUploadNote = localStorage.getItem('dataUploadNote');
-    
+
     if (dataUploadNote) {
       setNotificationMessage(dataUploadNote);
       setShowNotification(true);
       localStorage.removeItem('dataUploadNote');
     }
   }, []);
-  
+
   const handleNotificationClose = useCallback(() => {
     setShowNotification(false);
   }, []);
@@ -632,12 +636,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           onClose={() => setIsUploadWindowOpen(false)}
           onUploadSuccess={() => {
             setTimeout(() => {
-              fetchHomeData(activeProject.dbPath, true);
+              if (!activeProject?.id) return;
+              fetchHomeData(activeProject.id, true);
             }, 2000);
           }}
         />
       )}
-      
+
       {/* Data Upload Notification */}
       <DataUploadNotification
         show={showNotification}
@@ -676,7 +681,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       )}
 
       {/* Metrics Section */}
-      <motion.div 
+      <motion.div
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -689,30 +694,30 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             `border-gray-200/75 dark:border-gray-700/50 shadow-xs`
           )}
         >
-           <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Average Churn Probability</p>
-           <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-             {(displayMetrics.average_churn_probability * 100).toFixed(1)}%
-           </p>
+          <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Average Churn Probability</p>
+          <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+            {(displayMetrics.average_churn_probability * 100).toFixed(1)}%
+          </p>
         </motion.div>
-        
+
         {/* Risk Bar Cards */}
-        <RiskBarCard 
-          title="High Risk" 
-          count={displayMetrics.risk_levels.high} 
-          total={displayMetrics.total_employees} 
-          colorClass="red" 
+        <RiskBarCard
+          title="High Risk"
+          count={displayMetrics.risk_levels.high}
+          total={displayMetrics.total_employees}
+          colorClass="red"
         />
-        <RiskBarCard 
-          title="Medium Risk" 
-          count={displayMetrics.risk_levels.medium} 
-          total={displayMetrics.total_employees} 
-          colorClass="yellow" 
+        <RiskBarCard
+          title="Medium Risk"
+          count={displayMetrics.risk_levels.medium}
+          total={displayMetrics.total_employees}
+          colorClass="yellow"
         />
-        <RiskBarCard 
-          title="Low Risk" 
-          count={displayMetrics.risk_levels.low} 
-          total={displayMetrics.total_employees} 
-          colorClass="green" 
+        <RiskBarCard
+          title="Low Risk"
+          count={displayMetrics.risk_levels.low}
+          total={displayMetrics.total_employees}
+          colorClass="green"
         />
       </motion.div>
 
@@ -738,7 +743,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </SelectContent>
         </Select>
         <Select value={selectedPosition} onValueChange={setSelectedPosition}>
-           <SelectTrigger>
+          <SelectTrigger>
             <SelectValue placeholder={`All Positions (${availablePositions.length - 1})`} />
           </SelectTrigger>
           <SelectContent>
@@ -748,7 +753,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </SelectContent>
         </Select>
         <Select value={selectedRiskLevel} onValueChange={setSelectedRiskLevel}>
-           <SelectTrigger>
+          <SelectTrigger>
             <SelectValue placeholder={`All Risk Levels (${availableRiskLevels.length - 1})`} />
           </SelectTrigger>
           <SelectContent>
@@ -758,7 +763,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </SelectContent>
         </Select>
         <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-           <SelectTrigger>
+          <SelectTrigger>
             <SelectValue placeholder={`All Statuses (${availableStatuses.length - 1})`} />
           </SelectTrigger>
           <SelectContent>
@@ -770,7 +775,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       </div>
 
       {/* Table Section */}
-       <div ref={parentRef} className="flex-1 bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-auto min-h-0 border border-gray-200/75 dark:border-gray-700/50 relative" style={{ maxHeight: '400px' }}>
+      <div ref={parentRef} className="flex-1 bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-auto min-h-0 border border-gray-200/75 dark:border-gray-700/50 relative" style={{ maxHeight: '400px' }}>
         {isLoading || sortedEmployees.length === 0 ? (
           <div className="flex items-center justify-center h-full min-h-[300px]">
             {isLoading && <LoadingStates.PageLoading text="Loading employee data..." />}
@@ -786,72 +791,72 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <table className="w-full table-fixed border-collapse">
               <thead className="bg-gray-50 dark:bg-gray-700/50 sticky top-0 z-10">
                 <tr>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[20%]">
-                     <div className="flex items-center" onClick={() => handleSort('full_name')}>
-                       Name <SortIcon field="full_name" />
-                     </div>
-                   </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[15%]">
-                     <div className="flex items-center" onClick={() => handleSort('structure_name')}>
-                       Department <SortIcon field="structure_name" />
-                     </div>
-                   </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[15%]">
-                     <div className="flex items-center" onClick={() => handleSort('position')}>
-                       Position <SortIcon field="position" />
-                     </div>
-                   </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[10%]">
-                     <div className="flex items-center" onClick={() => handleSort('riskLevel')}>
-                       Risk <SortIcon field="riskLevel" />
-                     </div>
-                   </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[15%]">
-                     <div className="flex items-center" onClick={() => handleSort('churnProbability')}>
-                       Churn % <SortIcon field="churnProbability" />
-                     </div>
-                   </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[10%]">
-                     <div className="flex items-center" onClick={() => handleSort('status')}>
-                       Status <SortIcon field="status" />
-                     </div>
-                   </th>
-                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 w-[15%]">
-                     Actions
-                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[20%]">
+                    <div className="flex items-center" onClick={() => handleSort('full_name')}>
+                      Name <SortIcon field="full_name" />
+                    </div>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[15%]">
+                    <div className="flex items-center" onClick={() => handleSort('structure_name')}>
+                      Department <SortIcon field="structure_name" />
+                    </div>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[15%]">
+                    <div className="flex items-center" onClick={() => handleSort('position')}>
+                      Position <SortIcon field="position" />
+                    </div>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[10%]">
+                    <div className="flex items-center" onClick={() => handleSort('riskLevel')}>
+                      Risk <SortIcon field="riskLevel" />
+                    </div>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[15%]">
+                    <div className="flex items-center" onClick={() => handleSort('churnProbability')}>
+                      Churn % <SortIcon field="churnProbability" />
+                    </div>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[10%]">
+                    <div className="flex items-center" onClick={() => handleSort('status')}>
+                      Status <SortIcon field="status" />
+                    </div>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 w-[15%]">
+                    Actions
+                  </th>
                 </tr>
               </thead>
             </table>
             <div
-               className="relative w-full"
-               style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+              className="relative w-full"
+              style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
             >
-                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                 const employee = sortedEmployees[virtualRow.index];
-                 if (!employee) return null;
-                 return (
-                   <EmployeeTableRow
-                     key={employee.hr_code || virtualRow.index}
-                     employee={employee}
-                     onReasoningClick={handleReasoningClick}
-                     getRiskLevelForEmployee={getRiskLevelForEmployeeForEmployee}
-                     getRiskLevelForEmployeeWithStyles={getRiskLevelForEmployeeWithStylesForEmployee}
-                      isEnhancing={isEnhancingWithReasoning}
-                     style={{
-                       position: 'absolute',
-                       top: 0,
-                       left: 0,
-                       width: '100%',
-                       height: `${virtualRow.size}px`,
-                       transform: `translateY(${virtualRow.start}px)`,
-                     }}
-                   />
-                 );
-               })}
-             </div>
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const employee = sortedEmployees[virtualRow.index];
+                if (!employee) return null;
+                return (
+                  <EmployeeTableRow
+                    key={employee.hr_code || virtualRow.index}
+                    employee={employee}
+                    onReasoningClick={handleReasoningClick}
+                    getRiskLevelForEmployee={getRiskLevelForEmployeeForEmployee}
+                    getRiskLevelForEmployeeWithStyles={getRiskLevelForEmployeeWithStylesForEmployee}
+                    isEnhancing={isEnhancingWithReasoning}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: `${virtualRow.size}px`,
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  />
+                );
+              })}
+            </div>
           </>
         )}
-       </div>
+      </div>
     </div>
   );
 };

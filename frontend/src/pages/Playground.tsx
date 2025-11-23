@@ -1535,7 +1535,7 @@ export function Playground() {
         // Use fetchPlaygroundData if it's specifically for playground, or fetchHomeData if it's the general one
         // Assuming fetchHomeData populates playgroundEmployees or a similar field
         if (!globalCache.playgroundEmployees || globalCache.playgroundEmployees.length === 0) {
-          await globalCache.fetchHomeData(activeProject?.dbPath || null);
+          await globalCache.fetchHomeData(activeProject?.id || null);
         } else {
           // Data already loaded
         }

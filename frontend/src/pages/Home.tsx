@@ -33,7 +33,7 @@ import { getCurrentThresholds, getDynamicRiskLevel, getDynamicRiskLevelWithStyle
 import { autoThresholdService } from '../services/autoThresholdService';
 
 // Import analysis data types
-import type { 
+import type {
   WorkforceTrendsAnalysisData,
   DepartmentAnalysisData,
   EnhancedExitPatternMiningData
@@ -58,7 +58,7 @@ async function analyzeChurnPatternsLocal(analysisData: any[], thresholds = { hig
   try {
     // Use enhanced pattern analysis
     const patterns = analyzeEmployeePatterns(analysisData, thresholds);
-    
+
     return {
       id: `churn-patterns-${Date.now()}`,
       type: 'churn-patterns',
@@ -146,15 +146,15 @@ async function generateOrganizationalInsightsLocal(analysisData: any[], departme
       title: 'Organizational Insights',
       summary: `Comprehensive analysis of ${analysisData.length} employees across ${departments.length - 1} departments.`,
       insights: [
-        { 
-          id: '1', 
-          title: 'Department Risk Analysis', 
-          description: `${deptRisks[0]?.department || 'Unknown'} shows highest average risk at ${((deptRisks[0]?.avgRisk || 0) * 100).toFixed(1)}%` 
+        {
+          id: '1',
+          title: 'Department Risk Analysis',
+          description: `${deptRisks[0]?.department || 'Unknown'} shows highest average risk at ${((deptRisks[0]?.avgRisk || 0) * 100).toFixed(1)}%`
         },
-        { 
-          id: '2', 
-          title: 'Risk Distribution', 
-          description: `${metrics.high_risk_count} high-risk employees (${((metrics.high_risk_count / metrics.total_employees) * 100).toFixed(1)}% of workforce)` 
+        {
+          id: '2',
+          title: 'Risk Distribution',
+          description: `${metrics.high_risk_count} high-risk employees (${((metrics.high_risk_count / metrics.total_employees) * 100).toFixed(1)}% of workforce)`
         }
       ],
       recommendations: [
@@ -241,7 +241,7 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
   if (highRisk.length > 0) {
     const avgHighRisk = Math.round((highRisk.reduce((sum, emp) => sum + (emp.churnProbability || 0), 0) / highRisk.length) * 100 * 100) / 100;
     const maxRisk = Math.round(Math.max(...highRisk.map(emp => emp.churnProbability || 0)) * 100 * 100) / 100;
-    
+
     insights.push({
       id: 'high-risk-pattern',
       title: 'Critical Risk Concentration',
@@ -250,7 +250,7 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
       confidence: 0.95,
       impact: 'high'
     });
-    
+
     recommendations.push({
       id: 'high-risk-action',
       title: 'Immediate Retention Intervention',
@@ -263,7 +263,7 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
 
   if (mediumRisk.length > 0) {
     const avgMediumRisk = Math.round((mediumRisk.reduce((sum, emp) => sum + (emp.churnProbability || 0), 0) / mediumRisk.length) * 100 * 100) / 100;
-    
+
     insights.push({
       id: 'medium-risk-pattern',
       title: 'Elevated Risk Population',
@@ -272,7 +272,7 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
       confidence: 0.88,
       impact: 'medium'
     });
-    
+
     recommendations.push({
       id: 'medium-risk-action',
       title: 'Proactive Retention Strategy',
@@ -300,7 +300,7 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
         const risk = emp.churnProbability || 0;
         return risk > thresholds.mediumRisk && risk <= thresholds.highRisk;
       }).length;
-      
+
       return {
         dept,
         avgRisk,
@@ -316,7 +316,7 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
   if (deptRisks.length > 0) {
     const highestRiskDept = deptRisks[0];
     const lowestRiskDept = deptRisks[deptRisks.length - 1];
-    
+
     if (highestRiskDept.avgRisk > (avgRisk / 100) * 1.2) {
       insights.push({
         id: 'dept-risk-concentration',
@@ -326,7 +326,7 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
         confidence: 0.92,
         impact: 'high'
       });
-      
+
       recommendations.push({
         id: 'dept-intervention',
         title: 'Department-Level Retention Program',
@@ -379,7 +379,7 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
         confidence: 0.78,
         impact: 'medium'
       });
-      
+
       recommendations.push({
         id: 'position-retention',
         title: 'Role-Specific Retention Strategy',
@@ -399,7 +399,7 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
     else if (tenure < 3) group = 'Early (1-3 years)';
     else if (tenure < 5) group = 'Mid (3-5 years)';
     else group = 'Senior (5+ years)';
-    
+
     if (!acc[group]) acc[group] = [];
     acc[group].push(emp);
     return acc;
@@ -425,7 +425,7 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
         confidence: 0.82,
         impact: 'medium'
       });
-      
+
       recommendations.push({
         id: 'tenure-retention',
         title: 'Tenure-Specific Engagement',
@@ -475,28 +475,28 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
   // Department Risk Bar Chart with better styling
   const DepartmentRiskChart = () => (
     <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={deptRisks.slice(0, 10).map(d => ({ 
-        name: d.dept, 
-        risk: d.avgRisk, 
+      <BarChart data={deptRisks.slice(0, 10).map(d => ({
+        name: d.dept,
+        risk: d.avgRisk,
         count: d.count,
         highRisk: d.highRiskCount,
         mediumRisk: d.mediumRiskCount
       }))}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-        <XAxis 
-          dataKey="name" 
-          angle={-45} 
-          textAnchor="end" 
+        <XAxis
+          dataKey="name"
+          angle={-45}
+          textAnchor="end"
           height={80}
           tick={{ fontSize: 11 }}
           stroke="#6b7280"
         />
-        <YAxis 
+        <YAxis
           tick={{ fontSize: 11 }}
           stroke="#6b7280"
           label={{ value: 'Risk %', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
         />
-        <Tooltip 
+        <Tooltip
           formatter={(value, name) => [
             `${value}%`,
             name === 'risk' ? 'Average Risk' : name
@@ -510,26 +510,26 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
   // Position Risk Chart with better styling
   const PositionRiskChart = () => (
     <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={positionRisks.slice(0, 8).map(p => ({ 
-        name: p.position, 
-        risk: p.avgRisk, 
-        count: p.count 
+      <BarChart data={positionRisks.slice(0, 8).map(p => ({
+        name: p.position,
+        risk: p.avgRisk,
+        count: p.count
       }))}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-        <XAxis 
-          dataKey="name" 
-          angle={-45} 
-          textAnchor="end" 
+        <XAxis
+          dataKey="name"
+          angle={-45}
+          textAnchor="end"
           height={80}
           tick={{ fontSize: 11 }}
           stroke="#6b7280"
         />
-        <YAxis 
+        <YAxis
           tick={{ fontSize: 11 }}
           stroke="#6b7280"
           label={{ value: 'Risk %', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
         />
-        <Tooltip 
+        <Tooltip
           formatter={(value, name) => [
             `${value}%`,
             name === 'risk' ? 'Average Risk' : name
@@ -543,23 +543,23 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
   // Tenure Risk Chart with better styling
   const TenureRiskChart = () => (
     <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={tenureRisks.map(t => ({ 
-        name: t.group, 
-        risk: t.avgRisk, 
-        count: t.count 
+      <BarChart data={tenureRisks.map(t => ({
+        name: t.group,
+        risk: t.avgRisk,
+        count: t.count
       }))}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-        <XAxis 
+        <XAxis
           dataKey="name"
           tick={{ fontSize: 11 }}
           stroke="#6b7280"
         />
-        <YAxis 
+        <YAxis
           tick={{ fontSize: 11 }}
           stroke="#6b7280"
           label={{ value: 'Risk %', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
         />
-        <Tooltip 
+        <Tooltip
           formatter={(value, name) => [
             `${value}%`,
             name === 'risk' ? 'Average Risk' : name
@@ -595,9 +595,9 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
     data: tenureRisks.map(t => ({ name: t.group, value: t.avgRisk, count: t.count }))
   });
 
-  return { 
-    insights, 
-    recommendations, 
+  return {
+    insights,
+    recommendations,
     visualizations,
     metrics: {
       totalEmployees,
@@ -636,7 +636,7 @@ function createFallbackAnalysis(type: string, employeeCount: number) {
 // Simple insights generation functions that match the expected interfaces
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function generateWorkforceTrendsData(employees: Employee[], thresholds: { highRisk: number; mediumRisk: number }): WorkforceTrendsAnalysisData {
-  
+
   // Calculate risk distribution
   const highRisk = employees.filter(emp => (emp.churnProbability || 0) > thresholds.highRisk);
   const mediumRisk = employees.filter(emp => {
@@ -657,7 +657,7 @@ function generateWorkforceTrendsData(employees: Employee[], thresholds: { highRi
     const totalEmployees = deptEmployees.length;
     const highRiskCount = deptEmployees.filter(emp => (emp.churnProbability || 0) > thresholds.highRisk).length;
     const avgRisk = deptEmployees.reduce((sum, emp) => sum + (emp.churnProbability || 0), 0) / totalEmployees;
-    
+
     return {
       department,
       count: totalEmployees,
@@ -681,7 +681,7 @@ function generateWorkforceTrendsData(employees: Employee[], thresholds: { highRi
     const totalEmployees = posEmployees.length;
     const highRiskCount = posEmployees.filter(emp => (emp.churnProbability || 0) > thresholds.highRisk).length;
     const avgRisk = posEmployees.reduce((sum, emp) => sum + (emp.churnProbability || 0), 0) / totalEmployees;
-    
+
     return {
       position,
       count: totalEmployees,
@@ -703,7 +703,7 @@ function generateWorkforceTrendsData(employees: Employee[], thresholds: { highRi
   const highRiskPercentage = Math.round((highRisk.length / employees.length) * 100);
   const mediumRiskPercentage = Math.round((mediumRisk.length / employees.length) * 100);
   const organizationalScore = Math.max(0, Math.min(100, 100 - (highRiskPercentage * 2 + mediumRiskPercentage * 0.5)));
-  
+
   // Generate strategic insights
   const topRiskDepts = departmentRisks.slice(0, 3).map(d => d.department);
   const topRiskPositions = positionRisks.slice(0, 3).map(p => p.position);
@@ -767,7 +767,7 @@ function generateWorkforceTrendsData(employees: Employee[], thresholds: { highRi
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function generateDepartmentAnalysisData(employees: Employee[], thresholds: { highRisk: number; mediumRisk: number }, selectedDept?: string): DepartmentAnalysisData {
-  
+
   // Group employees by department
   const deptGroups = employees.reduce((acc: Record<string, Employee[]>, emp) => {
     const dept = emp.structure_name || emp.department || 'Unknown';
@@ -809,7 +809,7 @@ function generateDepartmentAnalysisData(employees: Employee[], thresholds: { hig
   const orgAvgRisk = employees.reduce((sum, emp) => sum + (emp.churnProbability || 0), 0) / employees.length;
   const highRiskDepts = departments.filter(d => d.avgRisk > thresholds.highRisk);
   const totalHighRisk = departments.reduce((sum, dept) => sum + dept.highRisk, 0);
-  
+
   // Generate insights based on analysis type
   let insights;
   let departmentData: any = null;
@@ -817,7 +817,7 @@ function generateDepartmentAnalysisData(employees: Employee[], thresholds: { hig
   if (selectedDept && departments.find(d => d.department === selectedDept)) {
     // Specific department analysis
     const targetDept = departments.find(d => d.department === selectedDept)!;
-    
+
     // Generate position analysis for the department
     const deptEmployees = deptGroups[selectedDept];
     const positions = deptEmployees.reduce((acc: Record<string, Employee[]>, emp) => {
@@ -957,7 +957,7 @@ function generateDepartmentAnalysisData(employees: Employee[], thresholds: { hig
     departments: selectedDept ? undefined : departments,
     departmentData,
     insights,
-    summary: selectedDept 
+    summary: selectedDept
       ? `Detailed analysis of ${selectedDept} department completed`
       : `Department analysis completed for ${employees.length} employees across ${departments.length} departments`,
     availableDepartments: Object.keys(deptGroups)
@@ -969,22 +969,22 @@ function generateExitPatternData(employees: Employee[]): EnhancedExitPatternMini
   // Look for actual resigned employees in the dataset
   const resignedEmployees = employees.filter(emp => {
     const status = emp.status?.toLowerCase() || '';
-    return status.includes('resigned') || 
-           status.includes('terminated') ||
-           status.includes('left') ||
-           status.includes('quit') ||
-           status.includes('inactive') ||
-           status.includes('exit') ||
-           status === 'resigned' ||
-           status === 'terminated' ||
-           status === 'left' ||
-           status === 'quit' ||
-           status === 'inactive' ||
-           status === 'exit' ||
-           // Also check if employee has termination date
-           (emp.termination_date && emp.termination_date !== '' && emp.termination_date !== null);
+    return status.includes('resigned') ||
+      status.includes('terminated') ||
+      status.includes('left') ||
+      status.includes('quit') ||
+      status.includes('inactive') ||
+      status.includes('exit') ||
+      status === 'resigned' ||
+      status === 'terminated' ||
+      status === 'left' ||
+      status === 'quit' ||
+      status === 'inactive' ||
+      status === 'exit' ||
+      // Also check if employee has termination date
+      (emp.termination_date && emp.termination_date !== '' && emp.termination_date !== null);
   });
-  
+
   const totalExits = resignedEmployees.length;
 
   // Debug logging (commented out to prevent infinite re-renders)
@@ -1006,10 +1006,10 @@ function generateExitPatternData(employees: Employee[]): EnhancedExitPatternMini
 
   const departmentPatterns = Object.entries(deptGroups).map(([department, deptEmployees]) => {
     const deptResigned = deptEmployees.filter(emp => resignedEmployees.includes(emp));
-    const avgTenure = deptResigned.length > 0 
+    const avgTenure = deptResigned.length > 0
       ? deptResigned.reduce((sum, emp) => sum + (emp.tenure || 0), 0) / deptResigned.length
       : deptEmployees.reduce((sum, emp) => sum + (emp.tenure || 0), 0) / deptEmployees.length;
-    
+
     return {
       department,
       resignation_count: deptResigned.length,
@@ -1032,10 +1032,10 @@ function generateExitPatternData(employees: Employee[]): EnhancedExitPatternMini
 
   const positionPatterns = Object.entries(positionGroups).map(([position, posEmployees]) => {
     const posResigned = posEmployees.filter(emp => resignedEmployees.includes(emp));
-    const avgTenure = posResigned.length > 0 
+    const avgTenure = posResigned.length > 0
       ? posResigned.reduce((sum, emp) => sum + (emp.tenure || 0), 0) / posResigned.length
       : posEmployees.reduce((sum, emp) => sum + (emp.tenure || 0), 0) / posEmployees.length;
-    
+
     return {
       position,
       resignation_count: posResigned.length,
@@ -1062,7 +1062,7 @@ function generateExitPatternData(employees: Employee[]): EnhancedExitPatternMini
     return {
       tenure_range: range,
       resignation_count: resignedInRange.length,
-      avg_tenure_in_range: resignedInRange.length > 0 
+      avg_tenure_in_range: resignedInRange.length > 0
         ? resignedInRange.reduce((sum, emp) => sum + (emp.tenure || 0), 0) / resignedInRange.length
         : rangeEmployees.reduce((sum, emp) => sum + (emp.tenure || 0), 0) / Math.max(rangeEmployees.length, 1),
       total_in_range: rangeEmployees.length,
@@ -1086,20 +1086,20 @@ function generateExitPatternData(employees: Employee[]): EnhancedExitPatternMini
       affectedEmployees: affectedCount,
       avgImpact: factor.weight + 0.1,
       type: factor.name.includes('Career') || factor.name.includes('Compensation') ? 'business_rule' as const : 'ml_factor' as const,
-      examples: factor.name === 'Limited Career Growth' 
+      examples: factor.name === 'Limited Career Growth'
         ? ['No promotion in 2+ years', 'Unclear career path', 'Limited skill development']
         : factor.name === 'Work-Life Balance Issues'
-        ? ['Long working hours', 'High stress levels', 'Burnout indicators']  
-        : factor.name === 'Compensation Dissatisfaction'
-        ? ['Below market salary', 'No recent raises', 'Bonus structure issues']
-        : ['Poor manager relationship', 'Lack of feedback', 'Micromanagement']
+          ? ['Long working hours', 'High stress levels', 'Burnout indicators']
+          : factor.name === 'Compensation Dissatisfaction'
+            ? ['Below market salary', 'No recent raises', 'Bonus structure issues']
+            : ['Poor manager relationship', 'Lack of feedback', 'Micromanagement']
     };
   });
 
   // Seasonal patterns - distribute resigned employees across months realistically
   const monthlyDistribution = [0.1, 0.08, 0.12, 0.09, 0.07, 0.11, 0.10, 0.08, 0.09, 0.08, 0.06, 0.12];
   const seasonalPatterns = [
-    'January', 'February', 'March', 'April', 'May', 'June', 
+    'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
   ].map((month, index) => ({
     month,
@@ -1126,23 +1126,23 @@ function generateExitPatternData(employees: Employee[]): EnhancedExitPatternMini
   const totalTurnoverRate = employees.length > 0 ? Math.round((totalExits / employees.length) * 100 * 10) / 10 : 0;
 
   const keyPatterns = [
-    totalExits === 0 
+    totalExits === 0
       ? 'No resigned employees found in current dataset - all employees appear to be active'
-      : departmentPatterns.length > 0 && departmentPatterns[0].resignation_count > 0 
-      ? `${mostAffectedDept} department has highest resignations (${departmentPatterns[0]?.resignation_count} actual exits, ${departmentPatterns[0]?.turnover_rate}% turnover rate)`
-      : 'Even distribution of resignations across departments',
+      : departmentPatterns.length > 0 && departmentPatterns[0].resignation_count > 0
+        ? `${mostAffectedDept} department has highest resignations (${departmentPatterns[0]?.resignation_count} actual exits, ${departmentPatterns[0]?.turnover_rate}% turnover rate)`
+        : 'Even distribution of resignations across departments',
     totalExits === 0
       ? 'Exit pattern analysis requires historical data of employees who have left the company'
-      : tenurePatterns.length > 0 
-      ? `${mostCommonTenureRange} tenure range shows highest exit rate (${tenurePatterns.find(t => t.tenure_range === mostCommonTenureRange)?.resignation_count} resignations)`
-      : 'No clear tenure pattern in resignations',
+      : tenurePatterns.length > 0
+        ? `${mostCommonTenureRange} tenure range shows highest exit rate (${tenurePatterns.find(t => t.tenure_range === mostCommonTenureRange)?.resignation_count} resignations)`
+        : 'No clear tenure pattern in resignations',
     totalExits === 0
       ? 'To enable exit pattern analysis, import data with resigned/terminated employees marked with appropriate status values'
       : `${totalExits} total resignations identified from ${employees.length} employees (${totalTurnoverRate}% turnover rate)`
   ];
 
   const riskIndicators = [
-    totalExits === 0 
+    totalExits === 0
       ? 'Unable to assess turnover risk - no resigned employee data available'
       : totalTurnoverRate > 15 ? 'High turnover rate detected across organization' : totalTurnoverRate > 10 ? 'Moderate turnover levels' : 'Low turnover rate',
     totalExits === 0
@@ -1162,7 +1162,7 @@ function generateExitPatternData(employees: Employee[]): EnhancedExitPatternMini
     'Structured stay interviews and feedback sessions'
   ];
 
-  const departmentInsights = departmentPatterns.slice(0, 3).map(dept => 
+  const departmentInsights = departmentPatterns.slice(0, 3).map(dept =>
     `${dept.department}: ${dept.resignation_count} resignations (${dept.turnover_rate}% turnover, ${Math.round(dept.avg_tenure * 10) / 10} avg tenure)`
   );
 
@@ -1178,7 +1178,7 @@ function generateExitPatternData(employees: Employee[]): EnhancedExitPatternMini
       riskFactorData
     },
     insights: {
-      detailedAnalysis: totalExits === 0 
+      detailedAnalysis: totalExits === 0
         ? `Exit pattern analysis cannot be performed: No resigned employees found in the current dataset of ${employees.length} employees. All employees appear to have "Active" status. To enable meaningful exit pattern analysis, you need to import historical data that includes employees with status values like "Resigned", "Terminated", "Left", etc. This analysis is designed to identify patterns among employees who have already left the company to help prevent future turnover.`
         : `Exit pattern analysis reveals ${totalExits} actual resignations from ${employees.length} total employees (${totalTurnoverRate}% turnover rate). ${mostAffectedDept} department shows highest impact with ${departmentPatterns[0]?.resignation_count || 0} resignations (${departmentPatterns[0]?.turnover_rate || 0}% department turnover). Most critical tenure period: ${mostCommonTenureRange} with ${tenurePatterns.find(t => t.tenure_range === mostCommonTenureRange)?.resignation_count || 0} resignations. Primary risk factor: ${topRiskFactor} affecting ${commonRiskFactors[0]?.affectedEmployees || 0} resigned employees.`,
       keyPatterns,
@@ -1198,7 +1198,7 @@ function generateExitPatternData(employees: Employee[]): EnhancedExitPatternMini
         riskFactorTrend: topRiskFactor.toLowerCase().includes('career') ? 'Development focused' : 'Compensation focused'
       }
     },
-    summary: totalExits === 0 
+    summary: totalExits === 0
       ? `Exit pattern analysis unavailable: No resigned employees found in dataset. Current data contains ${employees.length} active employees only. Import historical resignation data to enable this analysis.`
       : `Exit pattern analysis completed: ${totalExits} actual resignations analyzed across ${departmentPatterns.length} departments with ${totalTurnoverRate}% overall turnover rate.`
   };
@@ -1455,7 +1455,7 @@ export function Home(): React.ReactElement {
 
   // Tab state management
   const [activeTab, setActiveTab] = useState<'dashboard' | 'deep-analysis' | 'network'>('dashboard');
-  
+
   // Wrapper function to prevent access to insights tab
   const setActiveTabSafe = (tab: 'dashboard' | 'deep-analysis' | 'network') => {
     setActiveTab(tab);
@@ -1471,7 +1471,7 @@ export function Home(): React.ReactElement {
   });
   const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
   const [analysisResults, setAnalysisResults] = useState<any>(null);
-  
+
   // Insights tab state - Temporarily disabled
   // const [selectedInsightType, setSelectedInsightType] = useState<'workforce-trends' | 'department-analysis' | 'exit-patterns'>('workforce-trends');
   // const [insightsData, setInsightsData] = useState<WorkforceTrendsAnalysisData | DepartmentAnalysisData | EnhancedExitPatternMiningData | null>(null);
@@ -1528,13 +1528,15 @@ export function Home(): React.ReactElement {
 
         if (isPostUpload) {
           // Force a complete refresh of the data
-          await fetchHomeData(activeProject.dbPath, true);
+          await fetchHomeData(activeProject.id, true);
 
           // Clear the URL parameter after using it
           window.history.replaceState({}, document.title, window.location.pathname);
         } else {
-          // Normal initialization - fetch data if it's not already in the cache
-          await fetchHomeData(activeProject.dbPath, false);
+          // Initial load - use cache if available
+          // Pass false to forceRefresh to use cache
+          // Pass project ID to fetchHomeData
+          await fetchHomeData(activeProject.id, false);
         }
 
       } catch (err) {
@@ -1554,7 +1556,7 @@ export function Home(): React.ReactElement {
       typeof (emp as any)?.reasoningChurnRisk === 'number' ||
       (emp as any)?.hasReasoningData
     )
-  , [employees]);
+    , [employees]);
 
   // Base filtered data (before dropdown filters) for cascade filtering
   const baseFilteredEmployees = useMemo(() => {
@@ -1984,7 +1986,7 @@ export function Home(): React.ReactElement {
           onUploadSuccess={() => {
             // Force refresh data after upload with a delay to ensure backend has processed
             setTimeout(() => {
-              fetchHomeData(activeProject.dbPath, true);
+              fetchHomeData(activeProject.id, true);
             }, 2000);
           }}
         />
@@ -2635,7 +2637,7 @@ export function Home(): React.ReactElement {
                   <span>{analysisResults.timestamp.toLocaleString()}</span>
                 </div>
               </div>
-              <AnalysisResultVisualization 
+              <AnalysisResultVisualization
                 result={analysisResults}
                 onExport={(format) => {
                   // Create export data
@@ -2694,7 +2696,7 @@ export function Home(): React.ReactElement {
                         `).join('')}
                       </div>
                     `;
-                    
+
                     // Create temporary element for PDF generation
                     const element = document.createElement('div');
                     element.innerHTML = pdfContent;
@@ -2702,7 +2704,7 @@ export function Home(): React.ReactElement {
                     element.style.left = '-9999px';
                     element.style.top = '0';
                     document.body.appendChild(element);
-                    
+
                     // Use html2canvas to capture the content
                     import('html2canvas').then(html2canvas => {
                       html2canvas.default(element, {
@@ -2717,7 +2719,7 @@ export function Home(): React.ReactElement {
                           const imgData = canvas.toDataURL('image/png');
                           const pdfWidth = pdf.internal.pageSize.getWidth();
                           const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-                          
+
                           pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
                           pdf.save(`churn-analysis-${new Date().toISOString().split('T')[0]}.pdf`);
                         });
@@ -2755,12 +2757,12 @@ export function Home(): React.ReactElement {
                         rec.timeframe
                       ])
                     ];
-                    
+
                     // Convert to CSV format for Excel
-                    const csvContent = excelData.map(row => 
+                    const csvContent = excelData.map(row =>
                       row.map((cell: any) => `"${String(cell).replace(/"/g, '""')}"`).join(',')
                     ).join('\n');
-                    
+
                     // Download CSV file
                     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                     const link = document.createElement('a');

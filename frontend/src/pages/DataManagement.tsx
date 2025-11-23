@@ -406,7 +406,7 @@ export function DataManagement(): React.ReactElement {
     const navigate = useNavigate();
     const { toast } = useToast();
     // Use the project context
-    const { activeProject, isLoadingProject } = useProject();
+    const { activeProject, isLoadingProject, setActiveProject } = useProject();
 
     // Get the action from the global cache hook
     const startGlobalPolling = useGlobalDataCache(state => state.startPollingTrainingStatus);
@@ -726,6 +726,14 @@ export function DataManagement(): React.ReactElement {
             const fetchedProjects = response.data;
             logger.info('DataManagement: Fetched projects', { count: fetchedProjects.length }, 'DataManagement');
             setProjects(fetchedProjects || []);
+
+            // Sync active project with context: prefer active flag, otherwise keep current
+            const activeFromApi = (fetchedProjects || []).find((p: Project) => p.active);
+            if (activeFromApi) {
+                setActiveProject(activeFromApi);
+            } else if (!activeProject && fetchedProjects?.length) {
+                setActiveProject(fetchedProjects[0]);
+            }
         } catch (err: any) {
             logger.error('DataManagement: Error fetching projects', err, 'DataManagement');
             setProjectError(err.message || 'Failed to load projects.');
@@ -733,7 +741,7 @@ export function DataManagement(): React.ReactElement {
         } finally {
             setIsProjectListLoading(false); // Use specific loading state
         }
-    }, []);
+    }, [activeProject, setActiveProject]);
 
     // handleSetActiveProject - Calls API, context listener will update the state
     const handleSetActiveProject = useCallback(async (dbPath: string | null) => {
@@ -746,14 +754,17 @@ export function DataManagement(): React.ReactElement {
                 throw new Error(result.error || 'Failed to set active project.');
             }
             logger.info(`DataManagement: Set active project requested`, { dbPath }, 'DataManagement');
-            // State update will happen via the context listener
+
+            // Update context active project immediately for UI unlock
+            const matching = projects.find(p => p.dbPath === dbPath) || null;
+            setActiveProject(matching);
         } catch (err: any) {
             logger.error('DataManagement: Error setting active project', err, 'DataManagement');
             setProjectError(err.message || 'Could not set active project.');
         } finally {
             // Optional: Clear temporary loading state
         }
-    }, []);
+    }, [projects, setActiveProject]);
 
     // handleCreateProject - Refreshes list, optionally sets active via API call
     const handleCreateProject = useCallback(async () => {
@@ -769,7 +780,7 @@ export function DataManagement(): React.ReactElement {
             if (result.success) {
                 logger.info('DataManagement: Project created successfully', result.project, 'DataManagement');
                 setNewProjectName(''); // Clear input
-                await fetchProjects(); // Refresh the list
+                await fetchProjects(); // Refresh the list (will sync context)
                 // Optionally set the new project as active via API call
                 if (result.project?.dbPath) {
                     await handleSetActiveProject(result.project.dbPath);
@@ -802,6 +813,9 @@ export function DataManagement(): React.ReactElement {
             if (result.success) {
                 logger.info(`DataManagement: Project "${project.name}" deleted`, undefined, 'DataManagement');
                 await fetchProjects(); // Refresh list
+                if (activeProject?.path === project.path) {
+                    setActiveProject(null);
+                }
                 // Active project state update is handled by the context listener if the deleted project was active
             } else {
                 throw new Error(result.error || 'Failed to delete project.');
@@ -813,7 +827,7 @@ export function DataManagement(): React.ReactElement {
             setIsProjectListLoading(false); // Clear loading state
             deletingProjectRef.current = null; // Reset guard
         }
-    }, [fetchProjects]);
+    }, [activeProject, fetchProjects, setActiveProject]);
 
     // --- End Project API Functions ---
 

@@ -162,8 +162,8 @@ class LicenseValidator:
         # Load license from file if present
         license_key = cls.load_license()
 
-        # In dev mode, honor a stored key when present, otherwise return a dummy license
-        if cls.IS_DEV_MODE and not license_key:
+        # In dev mode, allow running without a signed key or with the placeholder dev key
+        if cls.IS_DEV_MODE and (not license_key or license_key.strip() == "dev-license-key"):
             return LicenseInfo(
                 company_name="Development Mode",
                 license_type="enterprise",

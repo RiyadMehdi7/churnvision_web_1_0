@@ -8,6 +8,7 @@ import json
 from datetime import datetime
 from typing import Optional, Any, Dict
 from sqlalchemy import Column, Integer, String, DateTime, Text, Index
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base_class import Base
@@ -102,13 +103,18 @@ class AuditLogger:
             user_agent=user_agent,
             status_code=status_code,
             duration_ms=duration_ms,
-            metadata=json.dumps(metadata) if metadata else None,
+            log_metadata=json.dumps(metadata) if metadata else None,
             error_message=error_message
         )
 
-        db.add(log_entry)
-        await db.commit()
-        await db.refresh(log_entry)
+        try:
+            db.add(log_entry)
+            await db.commit()
+            await db.refresh(log_entry)
+        except SQLAlchemyError as exc:
+            # Schema may lag in dev; avoid breaking main flows due to audit writes
+            await db.rollback()
+            print(f"Audit log write skipped due to DB error: {exc}")
 
         return log_entry
 

@@ -1,5 +1,5 @@
 /* @refresh reload */
-import React, { createContext, useState, useEffect, useContext, ReactNode, useMemo } from 'react';
+import React, { createContext, useState, useEffect, useContext, ReactNode, useMemo, useCallback, useRef } from 'react';
 import { useGlobalDataCache } from '@/hooks/useGlobalDataCache';
 import { logger } from '@/utils/clientLogger';
 import api from '@/services/api';
@@ -8,10 +8,11 @@ import api from '@/services/api';
 interface ActiveProject {
     id: string;
     name: string;
-    created_at: string;
-    updated_at: string;
+    created_at?: string;
+    updated_at?: string;
     dbPath?: string; // Legacy support
     path?: string;   // Legacy support
+    active?: boolean; // Needed for /data-management/projects response
 }
 
 // Define the context type
@@ -37,22 +38,26 @@ export function ProjectProvider({ children }: ProjectProviderProps): JSX.Element
     const resetGlobalCache = useGlobalDataCache(state => state.resetCache);
 
     // Function to refresh projects
-    const refreshProjects = async () => {
+    const refreshProjects = useCallback(async () => {
         logger.project.info('Attempting to refresh projects list...');
         try {
-            const response = await api.get('/projects');
+            const response = await api.get('/data-management/projects');
             logger.project.info('Projects list refreshed successfully');
-            // You might need to update activeProject based on the response
-            if (response.data.length > 0 && !activeProject) {
-                setActiveProjectState(response.data[0]);
+
+            // Prefer project marked active; otherwise pick first
+            const projects: ActiveProject[] = response.data || [];
+            const active = projects.find(p => p.active);
+            if (projects.length > 0 && (!activeProject || active)) {
+                setActiveProjectState(active || projects[0]);
             }
         } catch (error) {
             logger.project.error('Error refreshing projects list', error);
         }
-    };
+    // Stable; don't depend on activeProject to avoid effect loops
+    }, []);
 
     // Function to set active project
-    const setActiveProject = (project: ActiveProject | null) => {
+    const setActiveProject = useCallback((project: ActiveProject | null) => {
         setActiveProjectState(project);
         if (project) {
             localStorage.setItem('activeProjectId', project.id);
@@ -60,9 +65,13 @@ export function ProjectProvider({ children }: ProjectProviderProps): JSX.Element
             localStorage.removeItem('activeProjectId');
             resetGlobalCache();
         }
-    };
+    }, [resetGlobalCache]);
+
+    const initializedRef = useRef(false);
 
     useEffect(() => {
+        if (initializedRef.current) return; // Prevent double init (StrictMode/hot reload)
+        initializedRef.current = true;
         const getInitialProject = async () => {
             setIsLoadingProject(true);
             logger.project.info('Attempting to fetch initial active project...');
@@ -71,21 +80,24 @@ export function ProjectProvider({ children }: ProjectProviderProps): JSX.Element
                 // Check if there's a saved project ID in localStorage
                 const savedProjectId = localStorage.getItem('activeProjectId');
 
+                const response = await api.get('/data-management/projects');
+                const projects: ActiveProject[] = response.data || [];
+
+                // If we have a saved id, try to use it; otherwise prefer active flag then first
                 if (savedProjectId) {
-                    // Fetch the specific project
-                    try {
-                        const response = await api.get(`/projects/${savedProjectId}`);
-                        logger.project.info('Setting initial active project', { projectName: response.data.name });
-                        setActiveProjectState(response.data);
-                    } catch (error) {
-                        // Project not found, fetch all and use first
-                        logger.project.warn('Saved project not found, fetching all projects');
+                    const saved = projects.find(p => p.id === savedProjectId);
+                    if (saved) {
+                        logger.project.info('Setting initial active project', { projectName: saved.name });
+                        setActiveProjectState(saved);
+                    } else {
+                        logger.project.warn('Saved project not found, selecting first available');
                         localStorage.removeItem('activeProjectId');
-                        await refreshProjects();
+                        const fallback = projects.find(p => p.active) || projects[0] || null;
+                        setActiveProjectState(fallback ?? null);
                     }
                 } else {
-                    // No saved project, fetch all and use first
-                    await refreshProjects();
+                    const fallback = projects.find(p => p.active) || projects[0] || null;
+                    setActiveProjectState(fallback ?? null);
                 }
             } catch (error) {
                 logger.project.error('Error fetching initial active project:', error);
@@ -106,7 +118,7 @@ export function ProjectProvider({ children }: ProjectProviderProps): JSX.Element
         isLoadingProject,
         refreshProjects,
         setActiveProject
-    }), [activeProject, isLoadingProject]);
+    }), [activeProject, isLoadingProject, refreshProjects, setActiveProject]);
 
     // Render the provider with the calculated value
     return (

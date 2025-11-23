@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, update
 from typing import List
 import uuid
 from datetime import datetime
@@ -126,6 +126,45 @@ async def delete_dataset(
     await db.execute(query)
     await db.commit()
     
+    return OperationResult(success=True)
+
+
+@router.post("/datasets/{dataset_id}/activate", response_model=OperationResult)
+async def activate_dataset(
+    dataset_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Set a dataset as active for the current project (and deactivate others)."""
+    active_project = next((p for p in PROJECT_STORE if p.get("active")), None)
+    project_id = active_project.get("id") if active_project else None
+
+    found = False
+    for d in DATASET_STORE:
+        if project_id and d.get("projectId") != project_id:
+            continue
+        if d.get("id") == dataset_id:
+            d["active"] = True
+            found = True
+        else:
+            # Deactivate other datasets for the same project scope
+            d["active"] = False
+
+    if not found:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+
+    # Sync active flags to DB best-effort
+    try:
+        await db.execute(update(DatasetModel).values(is_active=0))
+        await db.execute(
+            update(DatasetModel)
+            .where(DatasetModel.dataset_id == dataset_id)
+            .values(is_active=1)
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+
     return OperationResult(success=True)
 
 # --- Connections ---

@@ -7,6 +7,8 @@ import api from '../services/api';
 import { calculateRiskDistribution } from '../config/riskThresholds';
 import { filterActiveEmployees } from '../utils/employeeFilters';
 
+const DEBUG = import.meta.env.DEV;
+
 // Define the structure for the model training status
 interface ModelTrainingStatus {
     status: 'idle' | 'queued' | 'in_progress' | 'complete' | 'error';
@@ -173,6 +175,20 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
 
         // Fetch Home page data
         fetchHomeData: async (projectId, forceRefresh = false) => {
+            const hasToken = !!(localStorage.getItem('access_token') || localStorage.getItem('churnvision_access_token'));
+
+            if (!hasToken) {
+                console.log('[fetchHomeData] No access token, skipping fetch.');
+                set({
+                    homeEmployees: [],
+                    homeMetrics: null,
+                    isLoadingHomeData: false,
+                    isLoadingAIAssistantData: false,
+                    isLoadingPlaygroundData: false,
+                });
+                return;
+            }
+
             if (!projectId) {
                 console.log('[fetchHomeData] No projectId, resetting data.');
                 set({ homeEmployees: null, homeMetrics: null, isLoadingHomeData: false });
@@ -511,21 +527,42 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
                 console.log('[fetchTrainingStatus] No projectId, skipping status fetch.');
                 return;
             }
+
+            // Avoid 401 spam when user is not authenticated
+            const hasToken = !!(localStorage.getItem('access_token') || localStorage.getItem('churnvision_access_token'));
+            if (!hasToken) {
+                console.log('[fetchTrainingStatus] No access token found, skipping status fetch.');
+                return;
+            }
             try {
                 // Use API to check model status
                 // We use /churn/model/metrics to check if a model exists and is trained
                 try {
                     const response = await api.get('/churn/model/metrics');
+                    const metrics = response.data || {};
 
-                    // If successful, model exists and is trained
+                    // Require a last_trained timestamp to treat the model as trained
+                    if (!metrics.last_trained) {
+                        set({
+                            trainingStatus: {
+                                status: 'idle',
+                                progress: 0,
+                                message: 'No model trained',
+                                companyId: projectId
+                            },
+                            isTrainingComplete: false
+                        });
+                        return;
+                    }
+
                     const currentStatus = get().trainingStatus;
                     const newStatus: ModelTrainingStatus = {
                         status: 'complete',
                         progress: 100,
                         message: 'Model trained successfully',
                         companyId: projectId,
-                        startTime: response.data.last_trained ? new Date(response.data.last_trained) : undefined,
-                        endTime: response.data.last_trained ? new Date(response.data.last_trained) : undefined
+                        startTime: metrics.last_trained ? new Date(metrics.last_trained) : undefined,
+                        endTime: metrics.last_trained ? new Date(metrics.last_trained) : undefined
                     };
 
                     const justCompleted = currentStatus?.status !== 'complete';
@@ -539,6 +576,7 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
                 } catch (error: any) {
                     // If 404, model is not trained yet
                     if (error.response && error.response.status === 404) {
+                        if (DEBUG) console.info('[fetchTrainingStatus] Model not trained yet, setting idle.');
                         set({
                             trainingStatus: {
                                 status: 'idle',

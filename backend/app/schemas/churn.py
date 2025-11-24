@@ -141,12 +141,12 @@ class EmployeeCreate(BaseModel):
 class EmployeeResponse(BaseModel):
     """Schema for employee response"""
     id: int
-    tenant_id: str
+    tenant_id: Optional[str] = None
     full_name: str
-    role: str
-    salary: float
-    department: str
-    is_active: bool
+    role: Optional[str] = None
+    salary: Optional[float] = None
+    department: Optional[str] = None
+    is_active: Optional[bool] = None
     churn_risk: Optional[ChurnRiskLevel] = None
     churn_probability: Optional[float] = None
 

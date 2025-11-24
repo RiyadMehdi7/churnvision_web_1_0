@@ -1,11 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+from pathlib import Path
 import pandas as pd
 import io
 import time
+import json
+import numpy as np
 
 from app.api.deps import get_current_user, get_db
+from app.api.v1.data_management import PROJECT_STORE, DATASET_STORE
 from app.models.user import User
 from app.services.churn_prediction import ChurnPredictionService
 from app.core.audit import AuditLogger
@@ -104,6 +109,152 @@ async def predict_batch_churn(
         )
 
 
+def _get_active_dataset_for_project() -> str:
+    """Return file path for the active dataset of the active project."""
+    active_project = next((p for p in PROJECT_STORE if p.get("active")), None)
+    if not active_project:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active project selected")
+
+    project_id = active_project.get("id")
+    active_dataset = next((d for d in DATASET_STORE if d.get("projectId") == project_id and d.get("active")), None)
+    if not active_dataset:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active dataset for project")
+
+    file_path = active_dataset.get("filePath")
+    if not file_path:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Active dataset missing file path")
+
+    if not Path(file_path).exists():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Active dataset file not found on disk")
+
+    return file_path
+
+
+def _load_active_dataset_with_mapping() -> tuple[pd.DataFrame, Optional[Dict[str, Any]]]:
+    """Load the active dataset CSV and return it with any stored column mapping."""
+    file_path = _get_active_dataset_for_project()
+    # Find mapping for the active dataset
+    active_project = next((p for p in PROJECT_STORE if p.get("active")), None)
+    project_id = active_project.get("id") if active_project else None
+    dataset_entry = next((d for d in DATASET_STORE if d.get("projectId") == project_id and d.get("active")), None)
+    mapping = dataset_entry.get("columnMapping") if dataset_entry else None
+
+    df = pd.read_csv(file_path)
+    return df, mapping
+
+
+def _normalize_value(value: Any) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return 0.0
+
+
+def _build_training_frame(df: pd.DataFrame, mapping: Optional[Dict[str, Any]]) -> pd.DataFrame:
+    """
+    Convert arbitrary HR dataset into the feature set expected by the churn model.
+    Uses Data Management column mapping when provided; otherwise falls back to best-effort defaults.
+    """
+
+    # Apply column mapping to create canonical columns
+    canonical_map = {
+        "identifier": "hr_code",
+        "name": "full_name",
+        "department": "department",
+        "position": "position",
+        "cost": "employee_cost",
+        "status": "status",
+        "manager_id": "manager_id",
+        "tenure": "tenure",
+        "termination_date": "termination_date",
+        "performance_rating_latest": "performance_rating_latest",
+    }
+
+    if mapping and isinstance(mapping, dict):
+        for key, canonical in canonical_map.items():
+            mapped_col = mapping.get(key)
+            if mapped_col and mapped_col in df.columns and canonical not in df.columns:
+                df = df.rename(columns={mapped_col: canonical})
+
+    # Derive feature columns expected by churn model
+    # satisfaction_level: use performance_rating_latest if available (scale 0-5 -> 0-1)
+    if "performance_rating_latest" in df.columns:
+        df["satisfaction_level"] = df["performance_rating_latest"].apply(lambda v: min(max(_normalize_value(v) / 5.0, 0), 1))
+    else:
+        df["satisfaction_level"] = 0.5
+
+    # last_evaluation: mirror satisfaction_level unless a better column exists
+    df["last_evaluation"] = df.get("satisfaction_level", pd.Series([0.5] * len(df)))
+
+    # number_project: fall back to 3 if missing
+    df["number_project"] = 3
+
+    # average_monthly_hours: fall back to 160 if missing
+    df["average_monthly_hours"] = 160
+
+    # time_spend_company: use tenure if present, else 3
+    if "tenure" in df.columns:
+        df["time_spend_company"] = df["tenure"].apply(_normalize_value)
+    else:
+        df["time_spend_company"] = 3
+
+    # work_accident and promotion_last_5years: default to 0
+    df["work_accident"] = 0
+    df["promotion_last_5years"] = 0
+
+    # department: use mapped department if present, else placeholder
+    if "department" in df.columns:
+        df["department"] = df["department"].fillna("unknown")
+    else:
+        df["department"] = "general"
+
+    # salary_level: derive from employee_cost quantiles if available, else medium
+    if "employee_cost" in df.columns:
+        cost_series = df["employee_cost"].apply(_normalize_value)
+        if len(cost_series) > 0:
+            thresholds = np.quantile(cost_series, [0.33, 0.66])
+
+            def bucket(cost: float) -> str:
+                if cost <= thresholds[0]:
+                    return "low"
+                if cost <= thresholds[1]:
+                    return "medium"
+                return "high"
+
+            df["salary_level"] = cost_series.apply(bucket)
+        else:
+            df["salary_level"] = "medium"
+    else:
+        df["salary_level"] = "medium"
+
+    # left: derive from status if available, else 0
+    if "status" in df.columns:
+        def status_to_left(val: Any) -> int:
+            sval = str(val).strip().lower()
+            if any(k in sval for k in ["resign", "terminated", "left", "inactive", "exit"]):
+                return 1
+            return 0
+        df["left"] = df["status"].apply(status_to_left)
+    else:
+        df["left"] = 0
+
+    # Ensure required columns exist
+    required_columns = [
+        'satisfaction_level', 'last_evaluation', 'number_project',
+        'average_monthly_hours', 'time_spend_company', 'work_accident',
+        'promotion_last_5years', 'department', 'salary_level', 'left'
+    ]
+
+    missing_after_enrichment = [c for c in required_columns if c not in df.columns]
+    if missing_after_enrichment:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unable to build training features, missing: {missing_after_enrichment}"
+        )
+
+    return df[required_columns]
+
+
 @router.post("/train")
 async def train_churn_model(
     file: UploadFile | None = File(None),
@@ -131,45 +282,21 @@ async def train_churn_model(
     start_time = time.time()
 
     try:
-        # If no file uploaded, generate a small synthetic dataset to keep UX flowing
-        if file is None:
-            data = {
-                'satisfaction_level': [0.8, 0.3, 0.6, 0.4],
-                'last_evaluation': [0.7, 0.5, 0.9, 0.6],
-                'number_project': [3, 2, 5, 4],
-                'average_monthly_hours': [160, 220, 180, 200],
-                'time_spend_company': [3, 6, 4, 5],
-                'work_accident': [0, 0, 1, 0],
-                'promotion_last_5years': [0, 0, 1, 0],
-                'department': ['sales', 'hr', 'technical', 'support'],
-                'salary_level': ['medium', 'low', 'high', 'medium'],
-                'left': [0, 1, 0, 1]
-            }
-            df = pd.DataFrame(data)
-        else:
-            # Validate file type
+        # Determine data source: uploaded file takes precedence, otherwise use active dataset + mapping
+        if file is not None:
             if not file.filename.endswith('.csv'):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Only CSV files are supported"
                 )
-
             contents = await file.read()
             df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
+            mapping = None
+        else:
+            df, mapping = _load_active_dataset_with_mapping()
 
-            # Validate required columns
-            required_columns = [
-                'satisfaction_level', 'last_evaluation', 'number_project',
-                'average_monthly_hours', 'time_spend_company', 'work_accident',
-                'promotion_last_5years', 'department', 'salary_level', 'left'
-            ]
-
-            missing_columns = set(required_columns) - set(df.columns)
-            if missing_columns:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Missing required columns: {missing_columns}"
-                )
+        # Build feature frame using mapping/enrichment so any dataset with the DM-required columns can train
+        df_features = _build_training_frame(df, mapping)
 
         # Train model
         training_request = ModelTrainingRequest(
@@ -177,7 +304,18 @@ async def train_churn_model(
             use_existing_data=False
         )
 
-        result = await churn_service.train_model(training_request, df)
+        result = await churn_service.train_model(training_request, df_features)
+
+        # Cache metrics so status checks reflect the trained model
+        churn_service.model_metrics = {
+            "accuracy": result.accuracy,
+            "precision": result.precision,
+            "recall": result.recall,
+            "f1_score": result.f1_score,
+            "trained_at": result.trained_at,
+            "predictions_made": 0,
+        }
+        churn_service.feature_importance = result.feature_importance
 
         # Calculate duration
         duration_ms = int((time.time() - start_time) * 1000)
@@ -191,7 +329,7 @@ async def train_churn_model(
             model_type=model_type,
             accuracy=result.accuracy,
             duration_ms=duration_ms,
-            samples_count=len(df)
+            samples_count=len(df_features)
         )
 
         # Return shape expected by frontend (success/status)
@@ -229,26 +367,10 @@ async def train_churn_model(
             endpoint="/api/v1/churn/train",
             status_code=500
         )
-        # Fallback response to keep UI flowing
-        fallback_metrics = {
-            "accuracy": 0.7,
-            "precision": 0.7,
-            "recall": 0.7,
-            "f1_score": 0.7,
-            "trained_at": datetime.utcnow().isoformat()
-        }
-        churn_service.model_metrics = {
-            **fallback_metrics,
-            "trained_at": datetime.utcnow()
-        }
-        churn_service.feature_importance = churn_service.feature_importance or {}
-
-        return {
-            "success": True,
-            "status": "complete",
-            "metrics": fallback_metrics,
-            "warning": f"Training fallback used due to error: {str(e)}"
-        }
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Training failed: {str(e)}"
+        )
 
 
 @router.get("/model/metrics", response_model=ModelMetricsResponse)
@@ -270,6 +392,9 @@ async def get_model_metrics(
 
         # Return cached metrics or safe defaults
         metrics = churn_service.model_metrics or {}
+
+        if not churn_service.model or not metrics or not metrics.get('trained_at'):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not trained")
 
         return ModelMetricsResponse(
             model_id="current",

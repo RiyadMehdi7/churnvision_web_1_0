@@ -291,3 +291,10 @@ services:
     Write `backend/app/main.py` with a simple "Health Check" endpoint using FastAPI. Then set up the Dockerfile.
 
 This guide is strict enough to keep code quality high, but flexible enough to let you move fast. It specifically addresses the **security** (Nuitka/License) and **architecture** (FastAPI/React) needs of your pivot.
+
+## Active Technologies
+- Binary file /Users/riyadmehdiyev/churnvision_web_1_0/specs/001-intuitive-data-management/plan.md matches + Binary file /Users/riyadmehdiyev/churnvision_web_1_0/specs/001-intuitive-data-management/plan.md matches (001-intuitive-data-management)
+- Binary file /Users/riyadmehdiyev/churnvision_web_1_0/specs/001-intuitive-data-management/plan.md matches (001-intuitive-data-management)
+
+## Recent Changes
+- 001-intuitive-data-management: Added Binary file /Users/riyadmehdiyev/churnvision_web_1_0/specs/001-intuitive-data-management/plan.md matches + Binary file /Users/riyadmehdiyev/churnvision_web_1_0/specs/001-intuitive-data-management/plan.md matches

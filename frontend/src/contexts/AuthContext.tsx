@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authService, LoginCredentials, RegisterData, UserData } from '../services/authService';
+import { UNAUTHORIZED_EVENT } from '../services/api';
 
 interface AuthContextType {
   user: UserData | null;
@@ -51,6 +52,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     initializeAuth();
+
+    // Listen for forced logout events from the API layer (401 responses)
+    const handleUnauthorized = () => {
+      authService.clearAuth();
+      setUser(null);
+      setIsLoading(false);
+    };
+
+    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => {
+      window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    };
   }, []);
 
   const login = useCallback(async (credentials: LoginCredentials) => {

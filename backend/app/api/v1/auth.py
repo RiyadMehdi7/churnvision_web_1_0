@@ -1,6 +1,6 @@
 from datetime import timedelta, datetime
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -31,6 +31,7 @@ def _validate_password_policy(password: str) -> None:
 @router.post("/login", response_model=LoginResponse)
 async def login(
     login_data: LoginRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db)
 ) -> Any:
     """
@@ -65,6 +66,17 @@ async def login(
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         subject=user.id, expires_delta=access_token_expires
+    )
+
+    # Also set an HTTP-only cookie so the frontend remains authenticated even if headers are dropped
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=False,  # Set to True when serving over HTTPS
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/"
     )
 
     return LoginResponse(
@@ -190,6 +202,7 @@ async def read_users_me(
 
 @router.post("/logout")
 async def logout(
+    response: Response,
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """
@@ -197,11 +210,14 @@ async def logout(
     Note: With JWT tokens, logout is typically handled client-side by removing the token.
     This endpoint is provided for consistency and can be extended with token blacklisting.
     """
+    response.delete_cookie("access_token", path="/")
+    response.delete_cookie("churnvision_access_token", path="/")
     return {"message": "Successfully logged out"}
 
 
 @router.post("/refresh", response_model=Token)
 async def refresh_token(
+    response: Response,
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """
@@ -210,6 +226,16 @@ async def refresh_token(
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         subject=current_user.id, expires_delta=access_token_expires
+    )
+
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=False,  # Set to True when serving over HTTPS
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/"
     )
 
     return Token(

@@ -56,6 +56,13 @@ class EmployeeService {
   private currentProjectId: string | null = null;
   // private activeRequests = new Map<string, AbortController>(); // Unused 
 
+  private hasAccessToken(): boolean {
+    return !!(
+      localStorage.getItem('access_token') ||
+      localStorage.getItem('churnvision_access_token')
+    );
+  }
+
   constructor() {
     this.isOfflineMode = !navigator.onLine;
 
@@ -130,7 +137,8 @@ class EmployeeService {
 
       // Use HTTP API instead of Electron IPC
       // Note: projectId is currently unused in the backend endpoint but kept for future compatibility
-      const response = await api.get('/employees');
+      // Use trailing slash to avoid proxy redirects that can drop credentials in some browsers
+      const response = await api.get('/employees/');
       const rawResponse = response.data;
 
       const responseRows = Array.isArray(rawResponse)
@@ -249,6 +257,12 @@ class EmployeeService {
   // Second parameter allows forcing a refresh from API instead of cache
   // It now requires projectId
   async getEmployees(projectId: string | null, forceRefresh = false): Promise<Employee[]> {
+    // Short-circuit when not authenticated to avoid repeated 401 spam
+    if (!this.hasAccessToken()) {
+      console.warn('getEmployees skipped: no access token found (user not authenticated).');
+      return [];
+    }
+
     if (!projectId && !this.isOfflineMode) {
       console.warn("getEmployees called without projectId in online mode. Returning empty array.");
       return [];

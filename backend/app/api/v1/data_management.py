@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, update
 from typing import List
+import json
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -107,11 +108,14 @@ async def list_datasets(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """List datasets"""
+    """List datasets scoped to the active project only."""
     active_project = next((p for p in PROJECT_STORE if p.get("active")), None)
-    project_id = active_project.get("id") if active_project else None
+    if not active_project:
+        # When no active project is selected, do not leak datasets from other projects
+        return []
 
-    datasets = [d for d in DATASET_STORE if (project_id is None or d.get("projectId") == project_id)]
+    project_id = active_project.get("id")
+    datasets = [d for d in DATASET_STORE if d.get("projectId") == project_id]
 
     return [Dataset(**d) for d in datasets]
 
@@ -121,11 +125,31 @@ async def delete_dataset(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete a dataset"""
-    query = delete(DatasetModel).where(DatasetModel.dataset_id == dataset_id)
-    await db.execute(query)
-    await db.commit()
-    
+    """Delete a dataset scoped to the active project."""
+    active_project = next((p for p in PROJECT_STORE if p.get("active")), None)
+    if not active_project:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active project selected")
+
+    project_id = active_project.get("id")
+
+    # Remove from in-memory store first so the UI reflects the change immediately
+    removed = False
+    for idx, d in enumerate(list(DATASET_STORE)):
+        if d.get("id") == dataset_id and d.get("projectId") == project_id:
+            DATASET_STORE.pop(idx)
+            removed = True
+            break
+
+    if not removed:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found for active project")
+
+    # Best-effort delete from DB (datasets table does not store project_id)
+    try:
+        await db.execute(delete(DatasetModel).where(DatasetModel.dataset_id == dataset_id))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+
     return OperationResult(success=True)
 
 
@@ -137,7 +161,10 @@ async def activate_dataset(
 ):
     """Set a dataset as active for the current project (and deactivate others)."""
     active_project = next((p for p in PROJECT_STORE if p.get("active")), None)
-    project_id = active_project.get("id") if active_project else None
+    if not active_project:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active project selected")
+
+    project_id = active_project.get("id")
 
     found = False
     for d in DATASET_STORE:
@@ -151,7 +178,7 @@ async def activate_dataset(
             d["active"] = False
 
     if not found:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found for active project")
 
     # Sync active flags to DB best-effort
     try:
@@ -261,6 +288,7 @@ async def import_project(
 async def upload_file(
     file: UploadFile = File(...),
     columnMapping: str = Form(None),
+    mappings: str = Form(None),
     projectName: str = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -277,15 +305,29 @@ async def upload_file(
         project_id = None
         if projectName:
             by_name = next((p for p in PROJECT_STORE if p.get("name") == projectName), None)
-            project_id = by_name.get("id") if by_name else None
+            if not by_name:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+            project_id = by_name.get("id")
         if not project_id and active_project:
             project_id = active_project.get("id")
+
+        if not project_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active project selected")
 
         # Set active flags per project (only one active dataset per project)
         if project_id:
             for d in DATASET_STORE:
                 if d.get("projectId") == project_id:
                     d["active"] = False
+
+        # Parse column mapping (optional) sent by the UI
+        parsed_mapping = None
+        mapping_payload = columnMapping or mappings
+        if mapping_payload:
+            try:
+                parsed_mapping = json.loads(mapping_payload)
+            except Exception:
+                parsed_mapping = None
 
         # Create a mock dataset record so the UI can display it
         dataset = DatasetModel(
@@ -319,6 +361,8 @@ async def upload_file(
             "description": dataset.description,
             "projectId": project_id,
             "snapshotPairDatasetId": None,
+            "filePath": str(dest),
+            "columnMapping": parsed_mapping,
         }
         DATASET_STORE.append(deepcopy(dataset_entry))
 

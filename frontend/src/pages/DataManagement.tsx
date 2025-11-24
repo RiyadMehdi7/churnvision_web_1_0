@@ -102,6 +102,7 @@ interface Project {
     path: string; // Directory path
     dbPath: string; // Path to database.db file
     exists?: boolean; // Whether the db file exists
+    active?: boolean; // Whether the project is currently active
 }
 
 // Configuration for mappable fields in the UI
@@ -719,6 +720,14 @@ export function DataManagement(): React.ReactElement {
     // --- Project API Functions ---
     // Fetch project list (now uses isProjectListLoading state)
     const fetchProjects = useCallback(async () => {
+        const hasToken = !!(localStorage.getItem('access_token') || localStorage.getItem('churnvision_access_token'));
+        if (!hasToken) {
+            logger.warn('DataManagement: fetchProjects skipped - no access token present.', undefined, 'DataManagement');
+            setProjects([]);
+            setIsProjectListLoading(false);
+            return;
+        }
+
         setIsProjectListLoading(true); // Use specific loading state
         setProjectError(null);
         try {

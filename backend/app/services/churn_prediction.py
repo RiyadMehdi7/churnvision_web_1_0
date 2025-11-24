@@ -85,6 +85,7 @@ class ChurnPredictionService:
             'marketing', 'RandD', 'accounting', 'hr', 'management'
         ])
         self.label_encoders['salary_level'].fit(['low', 'medium', 'high'])
+        self.model_metrics = {}
 
     def _save_model(self):
         """Save model, scaler, and encoders to disk"""
@@ -377,6 +378,15 @@ class ChurnPredictionService:
             ]
             self.feature_importance = dict(zip(feature_names, self.model.feature_importances_.tolist()))
 
+        trained_at = datetime.utcnow()
+
+        # Persist metrics for status checks
+        self.model_metrics = {
+            **metrics,
+            'trained_at': trained_at,
+            'predictions_made': 0
+        }
+
         # Save model
         self._save_model()
 
@@ -389,7 +399,7 @@ class ChurnPredictionService:
             precision=metrics['precision'],
             recall=metrics['recall'],
             f1_score=metrics['f1_score'],
-            trained_at=datetime.utcnow(),
+            trained_at=trained_at,
             training_samples=len(X),
             feature_importance=self.feature_importance
         )

@@ -1,5 +1,5 @@
 from typing import AsyncGenerator, Optional
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +10,8 @@ from app.core.config import settings
 from app.models.user import User
 from app.schemas.token import TokenPayload
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+# Allow graceful handling when Authorization header is absent so we can fall back to cookies
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login", auto_error=False)
 
 
 async def get_db() -> AsyncGenerator:
@@ -20,7 +21,8 @@ async def get_db() -> AsyncGenerator:
 
 async def get_current_user(
     db: AsyncSession = Depends(get_db),
-    token: str = Depends(oauth2_scheme)
+    token: Optional[str] = Depends(oauth2_scheme),
+    request: Request = None
 ) -> User:
     """
     Get the current authenticated user from JWT token.
@@ -28,6 +30,7 @@ async def get_current_user(
     Args:
         db: Database session
         token: JWT access token
+        request: Incoming request (used for cookie fallback)
 
     Returns:
         Current authenticated user
@@ -40,6 +43,16 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    # If no Authorization header was provided, fall back to a secure cookie
+    if not token and request:
+        token = request.cookies.get("access_token") or request.cookies.get("churnvision_access_token")
+        # Support "Bearer <token>" value stored in cookie if present
+        if token and token.lower().startswith("bearer "):
+            token = token.split(" ", 1)[1]
+
+    if not token:
+        raise credentials_exception
 
     try:
         payload = jwt.decode(

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { API_BASE_URL } from '@config/apiConfig';
 
 type DbHealth = { ok: boolean; error?: string; missing?: string[]; counts?: Record<string, number>; dbPath?: string };
 type LlmStatus = { ready: boolean; reason?: string; modelType: string };
@@ -16,7 +17,7 @@ const Diagnostics: React.FC = () => {
       } catch {}
       try {
         // Check database health via API
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'}/health`);
+        const response = await fetch(`${API_BASE_URL}/health`);
         const h = await response.json();
         setDb({ ok: h.status === 'healthy', dbPath: 'API Backend' });
       } catch {}
@@ -69,4 +70,3 @@ const Diagnostics: React.FC = () => {
 };
 
 export default Diagnostics;
-

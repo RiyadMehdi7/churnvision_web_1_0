@@ -1,7 +1,7 @@
 import axios from 'axios';
+import { AUTH_BASE_URL } from '@config/apiConfig';
 
-const API_URL = import.meta.env.VITE_API_URL || '';
-const AUTH_ENDPOINT = `${API_URL}/api/v1/auth`;
+const AUTH_ENDPOINT = AUTH_BASE_URL;
 
 export interface LoginCredentials {
   username: string;
@@ -170,6 +170,8 @@ class AuthService {
    */
   setAccessToken(token: string): void {
     localStorage.setItem(this.TOKEN_KEY, token);
+    // Also set a generic key for consumers expecting 'access_token'
+    localStorage.setItem('access_token', token);
   }
 
   /**
@@ -212,6 +214,9 @@ class AuthService {
    */
   clearAuth(): void {
     localStorage.removeItem(this.TOKEN_KEY);
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('churnvision_refresh_token');
     localStorage.removeItem(this.USER_KEY);
   }
 

@@ -20,10 +20,17 @@ async def read_employees(
     """
     Retrieve employees.
     """
-    query = select(Employee).offset(skip).limit(limit)
-    result = await db.execute(query)
-    employees = result.scalars().all()
-    return employees
+    try:
+        query = select(Employee).offset(skip).limit(limit)
+        result = await db.execute(query)
+        employees = result.scalars().all()
+        return employees
+    except Exception as e:
+        # Surface a graceful error instead of a generic 500 to help frontend handling
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load employees: {e}"
+        )
 
 @router.get("/{employee_id}", response_model=EmployeeResponse)
 async def read_employee(

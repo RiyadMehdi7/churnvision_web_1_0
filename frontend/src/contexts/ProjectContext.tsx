@@ -31,6 +31,13 @@ interface ProjectProviderProps {
     children: ReactNode;
 }
 
+const hasAccessToken = () => {
+    return !!(
+        localStorage.getItem('access_token') ||
+        localStorage.getItem('churnvision_access_token')
+    );
+};
+
 // Create the Provider component
 export function ProjectProvider({ children }: ProjectProviderProps): JSX.Element {
     const [activeProject, setActiveProjectState] = useState<ActiveProject | null>(null);
@@ -39,6 +46,13 @@ export function ProjectProvider({ children }: ProjectProviderProps): JSX.Element
 
     // Function to refresh projects
     const refreshProjects = useCallback(async () => {
+        if (!hasAccessToken()) {
+            logger.project.warn('refreshProjects skipped: no access token present (user not authenticated).');
+            setActiveProjectState(null);
+            setIsLoadingProject(false);
+            return;
+        }
+
         logger.project.info('Attempting to refresh projects list...');
         try {
             const response = await api.get('/data-management/projects');
@@ -75,6 +89,14 @@ export function ProjectProvider({ children }: ProjectProviderProps): JSX.Element
         const getInitialProject = async () => {
             setIsLoadingProject(true);
             logger.project.info('Attempting to fetch initial active project...');
+
+            if (!hasAccessToken()) {
+                logger.project.warn('Skipping initial project fetch: no access token present (user not authenticated).');
+                setActiveProjectState(null);
+                resetGlobalCache();
+                setIsLoadingProject(false);
+                return;
+            }
 
             try {
                 // Check if there's a saved project ID in localStorage

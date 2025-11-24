@@ -23,6 +23,8 @@ class Dataset(BaseModel):
     snapshotPairDatasetId: Optional[str] = None
     description: Optional[str] = None
     projectId: Optional[str] = None
+    filePath: Optional[str] = None
+    columnMapping: Optional[dict] = None
 
 class Connection(BaseModel):
     id: str

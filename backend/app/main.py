@@ -11,10 +11,10 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS Middleware
+# CORS Middleware (env-driven)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4001", "http://localhost:3000"],  # Frontend URLs
+    allow_origins=settings.ALLOWED_ORIGINS or ["http://localhost:4001", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

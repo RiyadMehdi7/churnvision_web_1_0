@@ -13,6 +13,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from pydantic import BaseModel
 
+from app.core.config import settings
 
 class LicenseInfo(BaseModel):
     """License information model"""
@@ -34,7 +35,7 @@ class LicenseValidator:
     """
 
     # Secret key for signing licenses (should be kept secure in production)
-    SECRET_KEY = os.getenv("LICENSE_SECRET_KEY", "churnvision-enterprise-secret-2024")
+    SECRET_KEY = os.getenv("LICENSE_SECRET_KEY", settings.LICENSE_SECRET_KEY)
     ALGORITHM = "HS256"
     ENV_LICENSE_KEY = os.getenv("LICENSE_KEY")
     CUSTOM_LICENSE_PATH = os.getenv("CHURNVISION_LICENSE_PATH")

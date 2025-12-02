@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, Index, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Text, Index, ForeignKey, JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.db.base_class import Base
@@ -19,12 +19,16 @@ class Dataset(Base):
     is_snapshot = Column(Integer, default=0, nullable=False)
     snapshot_group = Column(String, nullable=True)
     description = Column(Text, nullable=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    file_path = Column(String, nullable=True)
+    column_mapping = Column(JSON, nullable=True)
 
     # Relationships
     hr_data_inputs = relationship("HRDataInput", back_populates="dataset", cascade="all, delete-orphan")
     employee_snapshots = relationship("EmployeeSnapshot", back_populates="dataset", cascade="all, delete-orphan")
     training_jobs = relationship("TrainingJob", back_populates="dataset", cascade="all, delete-orphan")
     churn_outputs = relationship("ChurnOutput", back_populates="dataset", cascade="all, delete-orphan")
+    project = relationship("Project", back_populates="datasets")
 
 
 # Indexes

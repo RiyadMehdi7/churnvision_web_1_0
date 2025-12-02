@@ -1,29 +1,213 @@
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Dict
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Any, Dict, List
+
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy import select, func, and_, insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 
 from app.api.deps import get_current_user, get_db
+from app.models.churn import ChurnOutput, ChurnReasoning
+from app.models.dataset import Dataset as DatasetModel
+from app.models.hr_data import HRDataInput
 from app.models.user import User
-from app.models.employee import Employee
-from app.schemas.churn import EmployeeResponse
+from app.services.project_service import get_active_project, ensure_default_project
 
 router = APIRouter()
 
-@router.get("/", response_model=List[EmployeeResponse])
+
+class EmployeeRecord(BaseModel):
+    """Lightweight employee record returned to the UI."""
+    hr_code: str
+    full_name: str
+    structure_name: str
+    position: str
+    status: Optional[str] = None
+    manager_id: Optional[str] = None
+    tenure: Optional[float] = None
+    employee_cost: Optional[float] = None
+    resign_proba: Optional[float] = None
+    shap_values: Optional[Dict[str, float]] = None
+    additional_data: Optional[Dict[str, Any]] = None
+    termination_date: Optional[str] = None
+    reasoning_churn_risk: Optional[float] = None
+    reasoning_stage: Optional[str] = None
+    reasoning_confidence: Optional[float] = None
+    performance_rating_latest: Optional[float] = None
+    eltv_pre_treatment: Optional[float] = None
+
+
+async def _get_active_dataset_entry(db: AsyncSession) -> Optional[DatasetModel]:
+    await ensure_default_project(db)
+    active_project = await get_active_project(db)
+    return await db.scalar(
+        select(DatasetModel).where(
+            DatasetModel.project_id == active_project.id,
+            DatasetModel.is_active == 1,
+        )
+    )
+
+
+async def _hydrate_hr_data_from_active_dataset(db: AsyncSession) -> Optional[str]:
+    """
+    If the HR data table is empty for the active dataset, hydrate it from the
+    dataset file so the Home page has something to display.
+    """
+    dataset_entry = await _get_active_dataset_entry(db)
+    if not dataset_entry or not dataset_entry.file_path:
+        return None
+
+    dataset_id = dataset_entry.dataset_id
+    path_obj = Path(dataset_entry.file_path)
+    if not path_obj.exists():
+        return None
+
+    # Only hydrate when we do not yet have rows for this dataset
+    existing_count = await db.execute(
+        select(func.count()).select_from(HRDataInput).where(HRDataInput.dataset_id == dataset_id)
+    )
+    if existing_count.scalar_one() > 0:
+        return dataset_id
+
+    # Use the stored column mapping (if any) to rename columns
+    mapping = dataset_entry.column_mapping or {}
+    try:
+        df = pd.read_csv(path_obj)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to read active dataset: {e}"
+        )
+
+    rename_map = {}
+    canonical_fields = {
+        "hr_code": "hr_code",
+        "full_name": "full_name",
+        "structure_name": "structure_name",
+        "position": "position",
+        "status": "status",
+        "manager_id": "manager_id",
+        "tenure": "tenure",
+        "employee_cost": "employee_cost",
+        "termination_date": "termination_date",
+    }
+    for target, default_col in canonical_fields.items():
+        source_col = mapping.get(target) or default_col
+        if source_col in df.columns:
+            rename_map[source_col] = target
+
+    required = {"hr_code", "full_name", "structure_name", "position", "status", "manager_id", "tenure"}
+    missing = [field for field in required if field not in rename_map.values()]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Active dataset is missing required columns: {missing}"
+        )
+
+    df = df.rename(columns=rename_map)
+    df["status"] = df.get("status", "Active").fillna("Active")
+    df["report_date"] = df.get("report_date") if "report_date" in df.columns else datetime.utcnow().date()
+
+    records: List[dict] = []
+    for _, row in df.iterrows():
+        records.append({
+            "hr_code": str(row.get("hr_code")),
+            "dataset_id": dataset_id,
+            "full_name": row.get("full_name"),
+            "structure_name": row.get("structure_name"),
+            "position": row.get("position"),
+            "status": row.get("status", "Active"),
+            "manager_id": row.get("manager_id"),
+            "tenure": float(row.get("tenure")) if pd.notnull(row.get("tenure")) else None,
+            "employee_cost": float(row.get("employee_cost")) if pd.notnull(row.get("employee_cost")) else None,
+            "report_date": row.get("report_date"),
+            "termination_date": row.get("termination_date") if pd.notnull(row.get("termination_date")) else None,
+            "additional_data": row.get("additional_data") if isinstance(row.get("additional_data"), dict) else None,
+        })
+
+    if records:
+        await db.execute(insert(HRDataInput), records)
+        await db.commit()
+
+    return dataset_id
+
+
+@router.get("/", response_model=List[EmployeeRecord])
 async def read_employees(
     db: AsyncSession = Depends(get_db),
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 10000,
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """
-    Retrieve employees.
+    Retrieve employees, hydrating from the active dataset if the HR table is empty.
     """
     try:
-        query = select(Employee).offset(skip).limit(limit)
+        # Ensure we have HR data for the active dataset
+        dataset_entry = await _get_active_dataset_entry(db)
+        dataset_id = dataset_entry.dataset_id if dataset_entry else None
+        hydrated_dataset_id = await _hydrate_hr_data_from_active_dataset(db)
+        dataset_id = dataset_id or hydrated_dataset_id
+
+        # If we still do not have a dataset, return empty list
+        if not dataset_id:
+            return []
+
+        query = (
+            select(
+                HRDataInput.hr_code,
+                HRDataInput.full_name,
+                HRDataInput.structure_name,
+                HRDataInput.position,
+                HRDataInput.status,
+                HRDataInput.manager_id,
+                HRDataInput.tenure,
+                HRDataInput.employee_cost,
+                HRDataInput.termination_date,
+                HRDataInput.additional_data,
+                ChurnOutput.resign_proba,
+                ChurnOutput.shap_values,
+                ChurnReasoning.churn_risk.label("reasoning_churn_risk"),
+                ChurnReasoning.stage.label("reasoning_stage"),
+                ChurnReasoning.confidence_level.label("reasoning_confidence"),
+            )
+            .select_from(HRDataInput)
+            .outerjoin(
+                ChurnOutput,
+                and_(
+                    ChurnOutput.hr_code == HRDataInput.hr_code,
+                    ChurnOutput.dataset_id == HRDataInput.dataset_id,
+                ),
+            )
+            .outerjoin(ChurnReasoning, ChurnReasoning.hr_code == HRDataInput.hr_code)
+            .where(HRDataInput.dataset_id == dataset_id)
+            .offset(skip)
+            .limit(limit)
+        )
         result = await db.execute(query)
-        employees = result.scalars().all()
+
+        employees: List[EmployeeRecord] = []
+        for row in result:
+            employees.append(EmployeeRecord(
+                hr_code=row.hr_code,
+                full_name=row.full_name,
+                structure_name=row.structure_name,
+                position=row.position,
+                status=row.status,
+                manager_id=row.manager_id,
+                tenure=float(row.tenure) if row.tenure is not None else None,
+                employee_cost=float(row.employee_cost) if row.employee_cost is not None else None,
+                resign_proba=float(row.resign_proba) if row.resign_proba is not None else None,
+                shap_values=row.shap_values,
+                additional_data=row.additional_data,
+                termination_date=str(row.termination_date) if row.termination_date else None,
+                reasoning_churn_risk=float(row.reasoning_churn_risk) if row.reasoning_churn_risk is not None else None,
+                reasoning_stage=row.reasoning_stage,
+                reasoning_confidence=float(row.reasoning_confidence) if row.reasoning_confidence is not None else None,
+            ))
         return employees
     except Exception as e:
         # Surface a graceful error instead of a generic 500 to help frontend handling
@@ -31,20 +215,3 @@ async def read_employees(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to load employees: {e}"
         )
-
-@router.get("/{employee_id}", response_model=EmployeeResponse)
-async def read_employee(
-    employee_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> Any:
-    """
-    Get employee by ID.
-    """
-    employee = await db.get(Employee, employee_id)
-    if not employee:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Employee not found",
-        )
-    return employee

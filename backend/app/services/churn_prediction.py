@@ -1,14 +1,14 @@
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
+from pathlib import Path
+import pickle
+
 import numpy as np
 import pandas as pd
+import xgboost as xgb
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-import xgboost as xgb
-import pickle
-import os
-from pathlib import Path
 
 from app.schemas.churn import (
     ChurnPredictionRequest,
@@ -18,8 +18,9 @@ from app.schemas.churn import (
     ModelTrainingResponse,
     EmployeeChurnFeatures,
     BatchChurnPredictionRequest,
-    BatchChurnPredictionResponse
+    BatchChurnPredictionResponse,
 )
+from app.core.config import settings
 
 
 class ChurnPredictionService:
@@ -31,12 +32,13 @@ class ChurnPredictionService:
         self.label_encoders = {}
         self.feature_importance = {}
         self.model_metrics = {}
-        self.model_path = Path("models/churn_model.pkl")
-        self.scaler_path = Path("models/scaler.pkl")
-        self.encoders_path = Path("models/encoders.pkl")
+        model_dir = Path(settings.MODELS_DIR)
+        self.model_path = model_dir / "churn_model.pkl"
+        self.scaler_path = model_dir / "scaler.pkl"
+        self.encoders_path = model_dir / "encoders.pkl"
 
         # Ensure models directory exists
-        self.model_path.parent.mkdir(exist_ok=True)
+        self.model_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Load existing model if available
         self._load_model()

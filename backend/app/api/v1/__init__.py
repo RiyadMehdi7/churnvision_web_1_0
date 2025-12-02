@@ -15,9 +15,8 @@ from app.api.v1 import (
 )
 from app.core.license import get_current_license, require_license_tier
 
-# Apply license validation to all feature routers
+# Apply license validation to all feature routers (except auth/license)
 protected_router = APIRouter(dependencies=[Depends(get_current_license)])
-protected_router.include_router(auth.router, prefix="/auth", tags=["authentication"])
 protected_router.include_router(employees.router, prefix="/employees", tags=["employees"])
 protected_router.include_router(chatbot.router, prefix="/chatbot", tags=["chatbot"])
 protected_router.include_router(intelligent_chat.router, prefix="/intelligent-chat", tags=["intelligent-chat"])
@@ -41,4 +40,6 @@ protected_router.include_router(projects.router, tags=["projects"])
 # Expose license routes without the dependency so activation/status endpoints stay reachable
 api_router = APIRouter()
 api_router.include_router(license_routes.router, prefix="/license", tags=["license"])
+# Auth must remain accessible even before a license is installed
+api_router.include_router(auth.router, prefix="/auth", tags=["authentication"])
 api_router.include_router(protected_router)

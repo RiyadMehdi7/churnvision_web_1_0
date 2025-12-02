@@ -1,19 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Dict, Any, Optional
+import io
+import json
+import time
 from datetime import datetime
 from pathlib import Path
-import pandas as pd
-import io
-import time
-import json
+from typing import List, Dict, Any, Optional
+
 import numpy as np
+import pandas as pd
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
-from app.api.v1.data_management import PROJECT_STORE, DATASET_STORE
-from app.models.user import User
-from app.services.churn_prediction import ChurnPredictionService
 from app.core.audit import AuditLogger
+from app.models.dataset import Dataset as DatasetModel
+from app.models.user import User
 from app.schemas.churn import (
     ChurnPredictionRequest,
     ChurnPredictionResponse,
@@ -21,8 +22,10 @@ from app.schemas.churn import (
     BatchChurnPredictionResponse,
     ModelTrainingRequest,
     ModelTrainingResponse,
-    ModelMetricsResponse
+    ModelMetricsResponse,
 )
+from app.services.churn_prediction import ChurnPredictionService
+from app.services.project_service import get_active_project, ensure_default_project
 
 router = APIRouter()
 
@@ -109,37 +112,33 @@ async def predict_batch_churn(
         )
 
 
-def _get_active_dataset_for_project() -> str:
-    """Return file path for the active dataset of the active project."""
-    active_project = next((p for p in PROJECT_STORE if p.get("active")), None)
-    if not active_project:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active project selected")
-
-    project_id = active_project.get("id")
-    active_dataset = next((d for d in DATASET_STORE if d.get("projectId") == project_id and d.get("active")), None)
-    if not active_dataset:
+async def _get_active_dataset_for_project(db: AsyncSession) -> DatasetModel:
+    """Return the active dataset row for the active project."""
+    await ensure_default_project(db)
+    active_project = await get_active_project(db)
+    dataset = await db.scalar(
+        select(DatasetModel).where(
+            DatasetModel.project_id == active_project.id,
+            DatasetModel.is_active == 1,
+        )
+    )
+    if not dataset:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active dataset for project")
 
-    file_path = active_dataset.get("filePath")
-    if not file_path:
+    if not dataset.file_path:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Active dataset missing file path")
 
-    if not Path(file_path).exists():
+    if not Path(dataset.file_path).exists():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Active dataset file not found on disk")
 
-    return file_path
+    return dataset
 
 
-def _load_active_dataset_with_mapping() -> tuple[pd.DataFrame, Optional[Dict[str, Any]]]:
+async def _load_active_dataset_with_mapping(db: AsyncSession) -> tuple[pd.DataFrame, Optional[Dict[str, Any]]]:
     """Load the active dataset CSV and return it with any stored column mapping."""
-    file_path = _get_active_dataset_for_project()
-    # Find mapping for the active dataset
-    active_project = next((p for p in PROJECT_STORE if p.get("active")), None)
-    project_id = active_project.get("id") if active_project else None
-    dataset_entry = next((d for d in DATASET_STORE if d.get("projectId") == project_id and d.get("active")), None)
-    mapping = dataset_entry.get("columnMapping") if dataset_entry else None
-
-    df = pd.read_csv(file_path)
+    dataset = await _get_active_dataset_for_project(db)
+    mapping = dataset.column_mapping
+    df = pd.read_csv(dataset.file_path)
     return df, mapping
 
 
@@ -293,7 +292,7 @@ async def train_churn_model(
             df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
             mapping = None
         else:
-            df, mapping = _load_active_dataset_with_mapping()
+            df, mapping = await _load_active_dataset_with_mapping(db)
 
         # Build feature frame using mapping/enrichment so any dataset with the DM-required columns can train
         df_features = _build_training_frame(df, mapping)

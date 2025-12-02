@@ -1177,43 +1177,7 @@ export function DataManagement(): React.ReactElement {
         setProcessingStep('uploading');
         setGeneralError(''); // Clear general errors before starting
 
-        try {
-            // Create form data for upload
-            const formData = new FormData();
-            formData.append('file', selectedFile);
-            formData.append('columnMapping', JSON.stringify(columnMapping));
-            if (activeProject) {
-                formData.append('projectName', activeProject.name);
-            }
-
-            const response = await api.post('/data-management/upload', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data'
-                },
-                onUploadProgress: (progressEvent) => {
-                    const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 100));
-                    setUploadProgress(percentCompleted);
-                }
-            });
-
-            const result = response.data;
-
-            if (result.success) {
-                setUploadStatus('success');
-                setUploadMessage('File uploaded successfully.');
-                fetchDatasets();
-            } else {
-                throw new Error(result.message || 'Upload failed.');
-            }
-        } catch (error: any) {
-            logger.error("Error uploading data:", error, 'DataManagement');
-            setUploadStatus('error');
-            setUploadMessage(error.message || 'File upload failed.');
-            setGeneralError(error.message || 'File upload failed.');
-        }
-
-        // Prepare data for IPC call
-        const currentDatasetName = selectedFile.name; // Or use a state variable if you have one
+        const currentDatasetName = selectedFile.name;
         const backendMappings = {
             hr_code: columnMapping.identifier,
             full_name: columnMapping.name,
@@ -1224,7 +1188,6 @@ export function DataManagement(): React.ReactElement {
             manager_id: columnMapping.manager_id,
             tenure: columnMapping.tenure
         };
-        const mappingsJson = JSON.stringify(backendMappings);
 
         try {
             // --- Read file buffer --- START ---
@@ -1248,13 +1211,13 @@ export function DataManagement(): React.ReactElement {
             setUploadProgress(10); // Show some progress after reading
             // --- Read file buffer --- END ---
 
-            setUploadMessage('Sending file to main process...');
+            setUploadMessage('Sending file to backend...');
             logger.info('Sending file data via IPC...', {
                 filename: fixedPreview ? `autofixed_${selectedFile.name.replace(/\.(csv|xlsx|xls)$/i, '')}.csv` : selectedFile.name,
                 size: fileSize, // Use file size
                 type: selectedFile.type,
                 datasetName: currentDatasetName.trim(),
-                mappings: mappingsJson
+                mappings: JSON.stringify(backendMappings)
             }, 'DataManagement');
 
             // Upload file via FastAPI
@@ -1270,45 +1233,50 @@ export function DataManagement(): React.ReactElement {
             formData.append('mappings', JSON.stringify(backendMappings));
             formData.append('datasetName', currentDatasetName.trim());
             formData.append('xDataMode', (localStorage.getItem('settings.dataMode') === 'performance') ? 'performance' : 'wage');
+            if (activeProject) {
+                formData.append('projectName', activeProject.name);
+            }
 
             const response = await api.post('/data-management/upload', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
+                onUploadProgress: (progressEvent) => {
+                    const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 100));
+                    setUploadProgress(Math.max(10, percentCompleted));
+                }
             });
             const result = response.data;
 
             // Assuming the IPC handler returns the structure from processUploadedFile
-            if (result?.success) {
-                setProcessingStep('saving');
-                setUploadMessage('Data saved.');
-                setUploadProgress(100);
+            if (!result?.success) {
+                throw new Error((result as any)?.error || (result as any)?.message || 'File processing failed.');
+            }
 
-                const needsTraining = (result as any).needsTraining;
-                await fetchDatasets(); // Refresh dataset list regardless of training status
-                logger.info("Upload successful via IPC, datasets refreshed.", { result }, 'DataManagement');
+            setProcessingStep('saving');
+            setUploadMessage('Data saved.');
+            setUploadProgress(100);
 
-                if (needsTraining) {
-                    setProcessingStep('training');
-                    setUploadMessage('Data saved. Starting model training...');
-                    // Use non-null assertion as activeProject is checked at function start
-                    if (activeProject?.id) {
-                        startGlobalPolling(activeProject.id);
-                    }
-                } else {
-                    setProcessingStep('complete');
-                    setUploadStatus('success');
-                    setUploadMessage((result as any).message || 'File uploaded and processed successfully!');
-                    setSelectedFile(null); // Clear file input
-                    setShowMappingUI(false); // Hide mapping
-                    setDataPreview(null); // Clear preview
-                    setValidationResults(null);
-                    // Optionally navigate or reset further state
-                    // navigateToHomeWithRefresh(); // Commented out to stay on page
+            const needsTraining = (result as any).needsTraining;
+            await fetchDatasets(); // Refresh dataset list regardless of training status
+            logger.info("Upload successful via IPC, datasets refreshed.", { result }, 'DataManagement');
+
+            if (needsTraining) {
+                setProcessingStep('training');
+                setUploadMessage('Data saved. Starting model training...');
+                if (activeProject?.id) {
+                    startGlobalPolling(activeProject.id);
                 }
             } else {
-                // Handle failure response from IPC
-                throw new Error((result as any)?.error || 'File processing failed in main process.');
+                setProcessingStep('complete');
+                setUploadStatus('success');
+                setUploadMessage((result as any).message || 'File uploaded and processed successfully!');
+                setSelectedFile(null); // Clear file input
+                setShowMappingUI(false); // Hide mapping
+                setDataPreview(null); // Clear preview
+                setValidationResults(null);
+                // Optionally navigate or reset further state
+                // navigateToHomeWithRefresh(); // Commented out to stay on page
             }
 
         } catch (error: unknown) { // Catch unknown
@@ -1328,7 +1296,7 @@ export function DataManagement(): React.ReactElement {
             setGeneralError(errorMessage); // Also show general error if applicable
         }
         // Add activeProject to dependencies if needed, though projectId is captured
-    }, [selectedFile, dataPreview, columnMapping, isColumnMappingComplete, fetchDatasets, navigateToHomeWithRefresh, startGlobalPolling, activeProject]); // Removed getElectronApi from dependencies
+    }, [selectedFile, dataPreview, columnMapping, isColumnMappingComplete, fetchDatasets, startGlobalPolling, activeProject, fixedPreview]); // Removed getElectronApi from dependencies
 
     // Run DB Import using current mapping
     const handleRunDbImport = useCallback(async () => {

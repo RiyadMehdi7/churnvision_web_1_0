@@ -11,6 +11,7 @@ from app.models.auth import UserAccount, Session, Role, Permission, RolePermissi
 
 # Dataset and connection models
 from app.models.dataset import Dataset, Connection, ScopedProject, ImportProfile  # noqa
+from app.models.project import Project  # noqa
 
 # HR data models
 from app.models.hr_data import HRDataInput, EmployeeSnapshot, InterviewData  # noqa

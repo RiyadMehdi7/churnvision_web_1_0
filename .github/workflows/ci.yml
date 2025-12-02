@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: churnvision
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/churnvision
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          uv pip install --system -e .
+          uv pip install --system pytest pytest-asyncio httpx
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          cd backend
+          uv run alembic upgrade head
+
+      - name: Backend tests
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          cd backend
+          uv run pytest -q
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "latest"
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          bun install --frozen-lockfile
+
+      - name: Frontend lint
+        run: |
+          cd frontend
+          bun run lint
+
+      - name: Frontend tests
+        run: |
+          cd frontend
+          bun run test --runInBand
+
+      - name: Build backend image
+        run: docker build -t churnvision/backend:ci backend
+
+      - name: Build frontend image
+        run: docker build -t churnvision/frontend:ci -f frontend/Dockerfile .

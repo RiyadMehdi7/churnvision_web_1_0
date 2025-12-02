@@ -32,6 +32,7 @@ class ChurnPredictionService:
         self.label_encoders = {}
         self.feature_importance = {}
         self.model_metrics = {}
+        self.active_version: Optional[str] = None
         model_dir = Path(settings.MODELS_DIR)
         self.model_path = model_dir / "churn_model.pkl"
         self.scaler_path = model_dir / "scaler.pkl"
@@ -56,14 +57,21 @@ class ChurnPredictionService:
                 with open(self.encoders_path, 'rb') as f:
                     self.label_encoders = pickle.load(f)
 
+                self.active_version = self.model_path.stem
                 return True
             else:
-                # Initialize with default model if no saved model exists
+                if settings.ENVIRONMENT == "production":
+                    raise RuntimeError(f"Model artifacts missing at {self.model_path}. Train a model before serving.")
+                # In development, initialize a default model for convenience
                 self._initialize_default_model()
+                self.active_version = "dev-default"
                 return False
         except Exception as e:
             print(f"Error loading model: {e}")
+            if settings.ENVIRONMENT == "production":
+                raise
             self._initialize_default_model()
+            self.active_version = "dev-default"
             return False
 
     def _initialize_default_model(self):
@@ -249,6 +257,8 @@ class ChurnPredictionService:
 
         # Get prediction
         if self.model is None:
+            if settings.ENVIRONMENT == "production":
+                raise RuntimeError("No trained model loaded. Train a model before serving predictions.")
             # If no trained model, use heuristic-based prediction
             probability = self._heuristic_prediction(request.features)
         else:
@@ -393,6 +403,7 @@ class ChurnPredictionService:
         self._save_model()
 
         model_id = f"{request.model_type}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        self.active_version = model_id
 
         return ModelTrainingResponse(
             model_id=model_id,

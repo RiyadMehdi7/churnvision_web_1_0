@@ -8,12 +8,13 @@ from typing import List, Dict, Any, Optional
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.core.audit import AuditLogger
 from app.models.dataset import Dataset as DatasetModel
+from app.models.churn import ChurnModel
 from app.models.user import User
 from app.schemas.churn import (
     ChurnPredictionRequest,
@@ -134,12 +135,12 @@ async def _get_active_dataset_for_project(db: AsyncSession) -> DatasetModel:
     return dataset
 
 
-async def _load_active_dataset_with_mapping(db: AsyncSession) -> tuple[pd.DataFrame, Optional[Dict[str, Any]]]:
+async def _load_active_dataset_with_mapping(db: AsyncSession) -> tuple[pd.DataFrame, Optional[Dict[str, Any]], DatasetModel]:
     """Load the active dataset CSV and return it with any stored column mapping."""
     dataset = await _get_active_dataset_for_project(db)
     mapping = dataset.column_mapping
     df = pd.read_csv(dataset.file_path)
-    return df, mapping
+    return df, mapping, dataset
 
 
 def _normalize_value(value: Any) -> float:
@@ -281,6 +282,7 @@ async def train_churn_model(
     start_time = time.time()
 
     try:
+        dataset_used: Optional[DatasetModel] = None
         # Determine data source: uploaded file takes precedence, otherwise use active dataset + mapping
         if file is not None:
             if not file.filename.endswith('.csv'):
@@ -291,8 +293,13 @@ async def train_churn_model(
             contents = await file.read()
             df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
             mapping = None
+            # Best effort: tie to active dataset if one exists
+            try:
+                dataset_used = await _get_active_dataset_for_project(db)
+            except HTTPException:
+                dataset_used = None
         else:
-            df, mapping = await _load_active_dataset_with_mapping(db)
+            df, mapping, dataset_used = await _load_active_dataset_with_mapping(db)
 
         # Build feature frame using mapping/enrichment so any dataset with the DM-required columns can train
         df_features = _build_training_frame(df, mapping)
@@ -305,6 +312,33 @@ async def train_churn_model(
 
         result = await churn_service.train_model(training_request, df_features)
 
+        # Persist model metadata and mark active
+        model_version = result.model_id
+        await db.execute(
+            update(ChurnModel).values(is_active=0)
+        )
+        db.add(ChurnModel(
+            model_name=model_type,
+            model_version=model_version,
+            dataset_id=dataset_used.dataset_id if dataset_used else None,
+            parameters=training_request.hyperparameters or {},
+            training_data_info=f"rows={len(df_features)}",
+            performance_metrics=None,
+            metrics={
+                "accuracy": result.accuracy,
+                "precision": result.precision,
+                "recall": result.recall,
+                "f1_score": result.f1_score,
+            },
+            artifact_path=str(churn_service.model_path),
+            scaler_path=str(churn_service.scaler_path),
+            encoders_path=str(churn_service.encoders_path),
+            trained_at=result.trained_at,
+            is_active=1,
+            pipeline_generated=1,
+        ))
+        await db.commit()
+
         # Cache metrics so status checks reflect the trained model
         churn_service.model_metrics = {
             "accuracy": result.accuracy,
@@ -312,6 +346,7 @@ async def train_churn_model(
             "recall": result.recall,
             "f1_score": result.f1_score,
             "trained_at": result.trained_at,
+            "model_version": model_version,
             "predictions_made": 0,
         }
         churn_service.feature_importance = result.feature_importance

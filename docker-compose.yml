@@ -5,8 +5,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/churnvision
-      - LICENSE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb21wYW55X25hbWUiOiJDaHVyblZpc2lvbiBEZXZlbG9wbWVudCIsImxpY2Vuc2VfdHlwZSI6ImVudGVycHJpc2UiLCJtYXhfZW1wbG95ZWVzIjo5OTk5OTksImlzc3VlZF9hdCI6IjIwMjUtMTEtMjlUMTg6MjA6MTYuMzgxMDAyIiwiZXhwaXJlc19hdCI6IjIwMzUtMTEtMjdUMTg6MjA6MTYuMzgxMDAyIiwiZmVhdHVyZXMiOlsiYWxsIl0sImhhcmR3YXJlX2lkIjpudWxsfQ.VgcGaG9Q9T9lUrCm2TO5cdyd0iJMAeF7z1K1MW8RBt0
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/churnvision}
+      - LICENSE_KEY=${LICENSE_KEY:-dev-license-key}
+      - LICENSE_SECRET_KEY=${LICENSE_SECRET_KEY:-churnvision-enterprise-secret-2024}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-this-in-production-min-32-chars}
     volumes:
       - ./backend/app:/app/app
       - ./ml/models:/app/models
@@ -19,11 +21,12 @@ services:
     working_dir: /app
     volumes:
       - ./frontend:/app
+      - /app/node_modules  # Anonymous volume to prevent host node_modules from overwriting container's
     ports:
       - "3000:4001"
     environment:
       - VITE_API_URL=http://localhost:8000
-    command: ["bun", "run", "dev", "--host"]
+    command: sh -c "rm -rf node_modules && bun install && bun run dev --host"
     depends_on:
       - backend
 

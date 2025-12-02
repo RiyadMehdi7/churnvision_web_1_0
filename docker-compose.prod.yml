@@ -8,6 +8,7 @@ services:
     restart: unless-stopped
     environment:
       - ENVIRONMENT=production
+      - DEBUG=false
       - LICENSE_KEY=${LICENSE_KEY}
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - LICENSE_SECRET_KEY=${LICENSE_SECRET_KEY}
@@ -18,6 +19,7 @@ services:
     volumes:
       - ./models:/app/models  # Shared model artifacts
       - ./license.key:/etc/churnvision/license.key:ro  # Read-only license
+      - ./logs:/app/logs  # Persistent logs
     depends_on:
       db:
         condition: service_healthy
@@ -31,6 +33,19 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   # Frontend (Production Build)
   frontend:
@@ -46,6 +61,19 @@ services:
       - backend
     networks:
       - churnvision-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # PostgreSQL Database
   db:
@@ -59,6 +87,7 @@ services:
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups  # Mount for backup scripts
     ports:
       - "5432:5432"
     networks:
@@ -68,6 +97,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   # Ollama LLM Engine
   ollama:
@@ -82,11 +124,21 @@ services:
       - churnvision-network
     deploy:
       resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
         reservations:
+          cpus: '1.0'
+          memory: 2G
           devices:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   # Nginx Reverse Proxy (Optional)
   nginx:
@@ -104,6 +156,19 @@ services:
       - frontend
     networks:
       - churnvision-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:

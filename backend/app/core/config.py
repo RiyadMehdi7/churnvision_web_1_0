@@ -1,6 +1,26 @@
+import secrets
 from typing import Optional, List
 from pydantic import PostgresDsn, computed_field, Field, AliasChoices, field_validator
 from pydantic_settings import BaseSettings
+
+
+# Known insecure default values that must be changed in production
+_INSECURE_SECRET_KEYS = {
+    "your-secret-key-change-this-in-production-min-32-chars",
+    "changeme",
+    "secret",
+    "development-secret",
+}
+_INSECURE_LICENSE_KEYS = {
+    "churnvision-enterprise-secret-2024",
+    "dev-license-key",
+}
+_INSECURE_DB_PASSWORDS = {
+    "postgres",
+    "password",
+    "changeme",
+}
+
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "ChurnVision Enterprise"
@@ -20,6 +40,10 @@ class Settings(BaseSettings):
     POSTGRES_SERVER: str = "db"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "churnvision"
+
+    # Database connection pooling
+    DB_POOL_SIZE: int = Field(default=20, description="Number of persistent DB connections")
+    DB_MAX_OVERFLOW: int = Field(default=40, description="Max additional connections under load")
 
     @computed_field
     @property
@@ -74,8 +98,52 @@ class Settings(BaseSettings):
         return self.ENVIRONMENT.lower() == "production"
 
     def model_post_init(self, __context):
-        if self.ENVIRONMENT == "production" and self.SECRET_KEY.startswith("your-secret-key-change-this"):
-            raise ValueError("SECRET_KEY must be set in production.")
+        """
+        Validate configuration on startup. In production, fail hard if insecure defaults are detected.
+        This prevents accidental deployment with development credentials.
+        """
+        is_prod = self.ENVIRONMENT.lower() == "production"
+        errors = []
+
+        # Validate SECRET_KEY
+        if self.SECRET_KEY in _INSECURE_SECRET_KEYS or len(self.SECRET_KEY) < 32:
+            if is_prod:
+                errors.append(
+                    "SECRET_KEY is insecure. Generate a new key with: "
+                    f"python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                )
+
+        # Validate LICENSE_SECRET_KEY
+        if self.LICENSE_SECRET_KEY in _INSECURE_LICENSE_KEYS:
+            if is_prod:
+                errors.append(
+                    "LICENSE_SECRET_KEY is using a default value. "
+                    "Set a unique LICENSE_SECRET_KEY in your environment."
+                )
+
+        # Validate database credentials
+        if self.POSTGRES_PASSWORD in _INSECURE_DB_PASSWORDS:
+            if is_prod:
+                errors.append(
+                    "POSTGRES_PASSWORD is insecure. "
+                    "Set a strong password in your environment."
+                )
+
+        # Validate LICENSE_KEY
+        if self.LICENSE_KEY in _INSECURE_LICENSE_KEYS:
+            if is_prod:
+                errors.append(
+                    "LICENSE_KEY must be provided via environment or license file in production."
+                )
+
+        # In production, DEBUG must be disabled
+        if is_prod and self.DEBUG:
+            errors.append("DEBUG must be False in production.")
+
+        # Fail hard with all errors at once for easier debugging
+        if errors:
+            error_msg = "Production configuration errors:\n" + "\n".join(f"  - {e}" for e in errors)
+            raise ValueError(error_msg)
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod

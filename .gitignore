@@ -108,6 +108,8 @@ specs/*/tasks.md.bak
 .specify/cache/
 churnvision_data/
 model_artifacts/
+backups/
+*.sql.gz
 
 # Configuration files with secrets
 local_config.py

@@ -26,7 +26,7 @@ services:
       - "3000:4001"
     environment:
       - VITE_API_URL=http://localhost:8000
-    command: sh -c "rm -rf node_modules && bun install && bun run dev --host"
+    command: sh -c "rm -f bun.lock package-lock.json && bun install && bun run dev --host"
     depends_on:
       - backend
 

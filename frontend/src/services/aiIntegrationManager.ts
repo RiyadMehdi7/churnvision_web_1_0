@@ -101,21 +101,21 @@ class AIIntegrationManager {
     try {
       const thresholds = getCurrentThresholds();
       const reasoning = await reasoningService.getEmployeeReasoning(employee.hr_code);
-      
+
       const insight: AIInsight = {
         id: `individual-diagnosis-${employee.hr_code}-${Date.now()}`,
         type: 'risk-diagnosis',
         title: `Risk Analysis: ${employee.full_name}`,
-        summary: `${(employee.churnProbability * 100).toFixed(1)}% churn risk with ${(reasoning.confidence_level * 100).toFixed(0)}% confidence`,
+        summary: `${(employee.churnProbability * 100).toFixed(1)}% churn risk${reasoning ? ` with ${(reasoning.confidence_level * 100).toFixed(0)}% confidence` : ''}`,
         data: {
           employee,
           reasoning,
-          riskFactors: reasoning.ml_contributors?.slice(0, 5) || [],
-          businessRuleAlerts: reasoning.heuristic_alerts || [],
-          stage: reasoning.stage,
-          recommendations: this.parseRecommendations(reasoning.recommendations || '')
+          riskFactors: reasoning?.ml_contributors?.slice(0, 5) || [],
+          businessRuleAlerts: reasoning?.heuristic_alerts || [],
+          stage: reasoning?.stage || 'Unknown',
+          recommendations: this.parseRecommendations(reasoning?.recommendations || '')
         },
-        confidence: reasoning.confidence_level || 0.7,
+        confidence: reasoning?.confidence_level || 0.7,
         timestamp: new Date(),
         relevantEmployees: [employee.hr_code],
         priority: employee.churnProbability > thresholds.highRisk ? 'high' : employee.churnProbability > thresholds.mediumRisk ? 'medium' : 'low',
@@ -139,7 +139,7 @@ class AIIntegrationManager {
       const thresholds = getCurrentThresholds();
       const reasoning = await reasoningService.getEmployeeReasoning(employee.hr_code);
       const riskLevel = employee.churnProbability > thresholds.highRisk ? 'high' : employee.churnProbability > thresholds.mediumRisk ? 'medium' : 'low';
-      
+
       const insight: AIInsight = {
         id: `retention-plan-${employee.hr_code}-${Date.now()}`,
         type: 'retention-plan',
@@ -153,7 +153,7 @@ class AIIntegrationManager {
           interventions: this.generateInterventions(employee, reasoning),
           milestones: this.generateMilestones(employee, reasoning)
         },
-        confidence: reasoning.confidence_level || 0.7,
+        confidence: reasoning?.confidence_level || 0.7,
         timestamp: new Date(),
         relevantEmployees: [employee.hr_code],
         priority: riskLevel === 'high' ? 'high' : 'medium',
@@ -335,7 +335,7 @@ class AIIntegrationManager {
     return actions;
   }
 
-  private generateIndividualActionItems(employee: Employee, reasoning: ChurnReasoning): ActionItem[] {
+  private generateIndividualActionItems(employee: Employee, reasoning: ChurnReasoning | null): ActionItem[] {
     const actions: ActionItem[] = [];
 
     const thresholds = getCurrentThresholds();
@@ -350,7 +350,7 @@ class AIIntegrationManager {
       });
     }
 
-    if (reasoning.ml_contributors?.some(c => c.feature.includes('engagement'))) {
+    if (reasoning?.ml_contributors?.some(c => c.feature.includes('engagement'))) {
       actions.push({
         id: 'engagement-plan',
         title: 'Create Engagement Improvement Plan',
@@ -364,7 +364,7 @@ class AIIntegrationManager {
     return actions;
   }
 
-  private generateRetentionActionItems(_: Employee, __: ChurnReasoning): ActionItem[] {
+  private generateRetentionActionItems(_: Employee, __: ChurnReasoning | null): ActionItem[] {
     return [
       {
         id: 'retention-plan',
@@ -407,14 +407,14 @@ class AIIntegrationManager {
     return recommendations.split('.').filter(r => r.trim().length > 10).slice(0, 3);
   }
 
-  private calculateSuccessProbability(employee: Employee, reasoning: ChurnReasoning): number {
+  private calculateSuccessProbability(employee: Employee, reasoning: ChurnReasoning | null): number {
     const baseSuccess = 0.6;
-    const confidenceBonus = (reasoning.confidence_level || 0.7) * 0.2;
+    const confidenceBonus = (reasoning?.confidence_level || 0.7) * 0.2;
     const riskPenalty = (employee.churnProbability || 0.5) * 0.3;
     return Math.max(0.3, Math.min(0.9, baseSuccess + confidenceBonus - riskPenalty)) * 100;
   }
 
-  private generateTimeline(_: Employee, __: ChurnReasoning): any {
+  private generateTimeline(_: Employee, __: ChurnReasoning | null): any {
     return {
       immediate: '0-7 days',
       shortTerm: '1-4 weeks',
@@ -422,7 +422,7 @@ class AIIntegrationManager {
     };
   }
 
-  private generateInterventions(_: Employee, __: ChurnReasoning): any[] {
+  private generateInterventions(_: Employee, __: ChurnReasoning | null): any[] {
     return [
       { type: 'meeting', priority: 'high', description: 'Manager 1:1 discussion' },
       { type: 'development', priority: 'medium', description: 'Career development planning' },
@@ -430,7 +430,7 @@ class AIIntegrationManager {
     ];
   }
 
-  private generateMilestones(_: Employee, __: ChurnReasoning): any[] {
+  private generateMilestones(_: Employee, __: ChurnReasoning | null): any[] {
     return [
       { week: 1, goal: 'Initial intervention completed' },
       { week: 4, goal: 'Progress assessment' },

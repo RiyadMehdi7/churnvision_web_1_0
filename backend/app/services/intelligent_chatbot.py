@@ -208,8 +208,10 @@ class IntelligentChatbotService:
         return result.scalar_one_or_none()
 
     async def _get_churn_reasoning(self, hr_code: str) -> Optional[ChurnReasoning]:
-        """Fetch churn reasoning data"""
-        query = select(ChurnReasoning).where(ChurnReasoning.hr_code == hr_code)
+        """Fetch churn reasoning data (most recent if multiple exist)"""
+        query = select(ChurnReasoning).where(
+            ChurnReasoning.hr_code == hr_code
+        ).order_by(desc(ChurnReasoning.updated_at)).limit(1)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 

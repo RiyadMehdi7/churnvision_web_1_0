@@ -1,3 +1,3 @@
 # ChurnVision Backend
 
-Backend API for ChurnVision Enterprise.
+FastAPI backend for ChurnVision Enterprise.

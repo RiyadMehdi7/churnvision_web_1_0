@@ -6,7 +6,7 @@ from typing import Optional, Any, Dict, List
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select, func, and_, insert
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
@@ -109,10 +109,28 @@ async def _hydrate_hr_data_from_active_dataset(db: AsyncSession) -> Optional[str
 
     df = df.rename(columns=rename_map)
     df["status"] = df.get("status", "Active").fillna("Active")
-    df["report_date"] = df.get("report_date") if "report_date" in df.columns else datetime.utcnow().date()
+
+    # Helper to parse date strings to date objects
+    def parse_date(val):
+        if pd.isnull(val) or val is None or val == '':
+            return None
+        if isinstance(val, datetime):
+            return val.date()
+        if hasattr(val, 'date'):  # datetime-like
+            return val.date()
+        try:
+            return datetime.strptime(str(val), '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            return None
 
     records: List[dict] = []
     for _, row in df.iterrows():
+        report_date_val = row.get("report_date") if "report_date" in df.columns else None
+        report_date = parse_date(report_date_val) or datetime.utcnow().date()
+
+        termination_date_val = row.get("termination_date") if "termination_date" in df.columns else None
+        termination_date = parse_date(termination_date_val)
+
         records.append({
             "hr_code": str(row.get("hr_code")),
             "dataset_id": dataset_id,
@@ -120,16 +138,21 @@ async def _hydrate_hr_data_from_active_dataset(db: AsyncSession) -> Optional[str
             "structure_name": row.get("structure_name"),
             "position": row.get("position"),
             "status": row.get("status", "Active"),
-            "manager_id": row.get("manager_id"),
-            "tenure": float(row.get("tenure")) if pd.notnull(row.get("tenure")) else None,
+            "manager_id": str(row.get("manager_id")) if pd.notnull(row.get("manager_id")) else None,
+            "tenure": float(row.get("tenure")) if pd.notnull(row.get("tenure")) else 0,
             "employee_cost": float(row.get("employee_cost")) if pd.notnull(row.get("employee_cost")) else None,
-            "report_date": row.get("report_date"),
-            "termination_date": row.get("termination_date") if pd.notnull(row.get("termination_date")) else None,
+            "report_date": report_date,
+            "termination_date": termination_date,
             "additional_data": row.get("additional_data") if isinstance(row.get("additional_data"), dict) else None,
         })
 
     if records:
-        await db.execute(insert(HRDataInput), records)
+        # Use PostgreSQL INSERT ... ON CONFLICT DO NOTHING to handle duplicates gracefully
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        stmt = pg_insert(HRDataInput).values(records).on_conflict_do_nothing(
+            index_elements=['hr_code', 'dataset_id']
+        )
+        await db.execute(stmt)
         await db.commit()
 
     return dataset_id

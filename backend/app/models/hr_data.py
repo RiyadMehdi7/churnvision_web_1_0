@@ -8,12 +8,12 @@ class HRDataInput(Base):
     __tablename__ = "hr_data_input"
 
     hr_code = Column(String, primary_key=True)
-    dataset_id = Column(String, ForeignKey("datasets.dataset_id", ondelete="CASCADE"), nullable=False)
+    dataset_id = Column(String, ForeignKey("datasets.dataset_id", ondelete="CASCADE"), primary_key=True)
     full_name = Column(String, nullable=False)
     structure_name = Column(String, nullable=False)
     position = Column(String, nullable=False)
     status = Column(String, nullable=False)
-    manager_id = Column(String, nullable=False)
+    manager_id = Column(String, nullable=True)
     tenure = Column(Numeric, nullable=False)
     employee_cost = Column(Numeric(10, 2), nullable=True)
     report_date = Column(Date, nullable=False)
@@ -50,7 +50,7 @@ class EmployeeSnapshot(Base):
     structure_name = Column(String, nullable=False)
     position = Column(String, nullable=False)
     status = Column(String, nullable=False)
-    manager_id = Column(String, nullable=False)
+    manager_id = Column(String, nullable=True)
     tenure = Column(Numeric, nullable=False)
     employee_cost = Column(Numeric(10, 2), nullable=True)
     report_date = Column(Date, nullable=False)

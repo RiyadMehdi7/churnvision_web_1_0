@@ -1,0 +1,501 @@
+hr_code,full_name,structure_name,position,status,manager_id,tenure,termination_date,employee_cost
+HR000001,Dorothy Hill,IT Operations,IT Specialist,Active,EMP000486,1,,97490.91
+EMP000002,Deborah Moore,Research & Development,ML Engineer,Active,E000166,0,,82766.81
+HR000003,Carolyn Wilson,Finance & Accounting,Financial Analyst,Terminated,EMP000007,8,2025-01-26,103540.18
+CV000004,Christine Martinez,Research & Development,Research Engineer,Active,CV000463,0,,79377.04
+EMP000005,George Hall,Human Resources,HR Business Partner,Active,E000228,5,,68728.9
+HR000006,Maria Perez,Research & Development,Research Scientist,Active,EMP000095,0,,80320.29
+EMP000007,Melissa Sanchez,Finance & Accounting,CFO,Active,,4,,446245.57
+CV000008,Patrick Martinez,Marketing,Digital Marketing Manager,Active,EMP000007,2,,172615.12
+HR000009,Dorothy Jones,Product Management,Product Manager,Active,EMP000007,8,,203283.96
+CV000010,Stephen Hernandez,Marketing,Marketing Analyst,Active,CV000008,2,,93780.89
+EMP000011,Patricia Mitchell,Executive Management,Vice President,Active,,2,,255385.72
+CV000012,Jonathan Lopez,Marketing,Digital Marketing Manager,Active,CV000008,1,,178677.01
+EMP000013,Brian Thompson,Finance & Accounting,Bookkeeper,Terminated,CV000012,0,2025-01-24,61012.27
+HR000014,George Hall,Customer Support,Escalation Specialist,Terminated,EMP000011,2,2024-02-21,87629.88
+CV000015,Gary Jackson,Customer Support,Technical Support Agent,Terminated,HR000009,1,2024-11-04,48474.23
+E000016,Debra Young,Research & Development,R&D Director,Terminated,,9,2025-04-21,392964.25
+E000017,Paul Anderson,Human Resources,HR Manager,Terminated,EMP000011,0,2024-05-25,181976.28
+EMP000018,Dennis Campbell,Finance & Accounting,Bookkeeper,Active,EMP000007,1,,62070.08
+CV000019,Kimberly Thompson,Engineering,Staff Engineer,Active,CV000008,10,,148882.72
+E000020,Brandon Rodriguez,IT Operations,Network Engineer,Active,CV000012,8,,102089.61
+HR000021,Donna Torres,Product Management,Associate Product Manager,Active,EMP000011,21,,196696.33
+CV000022,Donald Martinez,Marketing,Content Manager,Active,CV000012,7,,184229.39
+EMP000023,Elizabeth Green,Engineering,Staff Engineer,Active,HR000009,3,,143304.48
+E000024,Samantha Nelson,Marketing,Marketing Specialist,Active,EMP000011,7,,110111.88
+CV000025,Brenda Torres,Customer Support,Escalation Specialist,Active,CV000022,9,,119514.11
+E000026,Joseph Cook,Customer Support,Support Team Lead,Active,HR000021,3,,170396.98
+EMP000027,Paul Garcia,Marketing,Digital Marketing Manager,Terminated,CV000022,0,2024-01-31,175423.78
+CV000028,James Wilson,Finance & Accounting,Accountant,Active,EMP000007,0,,58599.65
+HR000029,Jacob Jones,IT Operations,IT Specialist,Active,HR000021,0,,68096.05
+HR000030,William King,Executive Management,Director,Active,,4,,445109.86
+HR000031,Helen Baker,Finance & Accounting,Senior Accountant,Active,EMP000007,0,,128860.05
+E000032,Katherine Garcia,IT Operations,Security Analyst,Active,EMP000007,4,,85317.06
+EMP000033,Eric Hill,Human Resources,Recruiter,Active,EMP000011,6,,58637.89
+EMP000034,George Cook,Marketing,Content Manager,Active,CV000008,2,,165816.34
+CV000035,Justin Jones,Sales,Sales Manager,Active,CV000022,1,,199752.76
+HR000036,Rachel Sanchez,Engineering,Engineering Manager,Terminated,CV000012,3,2025-05-08,157619.02
+EMP000037,Stephanie Nguyen,Engineering,Tech Lead,Active,EMP000007,5,,204052.35
+HR000038,Christine Mitchell,Customer Support,Support Specialist,Terminated,E000026,0,2025-03-12,65340.52
+EMP000039,Sarah Mitchell,Product Management,VP of Product,Terminated,,10,2023-12-04,284832.04
+EMP000040,Cynthia Allen,Marketing,Marketing Specialist,Active,CV000008,3,,83931.95
+CV000041,Jack Allen,Sales,Sales Representative,Terminated,CV000035,9,2024-01-31,59640.82
+EMP000042,Kenneth Thomas,Research & Development,R&D Director,Terminated,,1,2024-01-13,496035.98
+EMP000043,Mark Phillips,Human Resources,HR Specialist,Terminated,CV000012,15,2024-08-22,103520.62
+HR000044,Betty Jackson,Executive Management,General Manager,Active,EMP000011,6,,167690.16
+E000045,James Cook,Research & Development,Research Scientist,Active,EMP000007,1,,92380.07
+EMP000046,Anthony King,IT Operations,IT Specialist,Active,EMP000037,3,,99768.15
+HR000047,Eric Clark,Marketing,Brand Manager,Active,EMP000034,18,,166746.88
+HR000048,Andrew Taylor,Marketing,Brand Manager,Active,CV000008,6,,170088.27
+EMP000049,Christopher Miller,Customer Support,Support Team Lead,Active,EMP000011,3,,174453.79
+E000050,Gregory Martin,Executive Management,Director,Active,,1,,390294.1
+EMP000051,Angela Brown,Product Management,Product Owner,Active,E000026,8,,78823.82
+E000052,Michael Parker,IT Operations,Network Engineer,Active,HR000009,1,,87889.72
+CV000053,John Jones,IT Operations,IT Manager,Terminated,CV000035,2,2024-04-24,196870.62
+CV000054,Amy Johnson,Research & Development,R&D Director,Active,,2,,581491.83
+HR000055,Robert Flores,Executive Management,Executive Assistant,Active,EMP000011,1,,55330.05
+EMP000056,Timothy Turner,Marketing,Brand Manager,Active,EMP000034,3,,201295.47
+E000057,Nicole Anderson,Sales,Sales Manager,Active,E000026,0,,167060.26
+E000058,Dennis Anderson,Executive Management,Chief of Staff,Active,HR000044,2,,139391.83
+HR000059,Alexander Hall,Marketing,Marketing Analyst,Terminated,EMP000049,4,2025-10-06,81151.88
+E000060,John King,Finance & Accounting,Accountant,Active,EMP000007,2,,66585.45
+CV000061,John Martinez,Executive Management,CEO,Active,,12,,598205.02
+HR000062,Kevin Martin,Marketing,Content Manager,Active,EMP000034,18,,213945.46
+CV000063,Sandra Nelson,Executive Management,Vice President,Active,,2,,300113.57
+HR000064,Daniel Hill,Marketing,Marketing Analyst,Terminated,CV000012,1,2025-01-09,95731.73
+CV000065,Alexander Nelson,Marketing,Brand Manager,Active,CV000012,0,,178522.33
+HR000066,Edward Young,Research & Development,ML Engineer,Active,CV000061,3,,84493.25
+EMP000067,Jeffrey Jones,Sales,Sales Manager,Active,E000057,0,,137330.75
+HR000068,Nicole Flores,Finance & Accounting,CFO,Active,,0,,391249.3
+EMP000069,Richard Perez,IT Operations,Network Engineer,Active,CV000054,2,,97983.66
+HR000070,Pamela Scott,Finance & Accounting,Senior Accountant,Active,CV000061,0,,98943.28
+CV000071,John Wilson,Customer Support,Customer Success Manager,Terminated,EMP000049,18,2024-05-24,182134.17
+HR000072,George Stewart,Research & Development,ML Engineer,Active,CV000054,1,,79781.45
+CV000073,David Nelson,Marketing,Marketing Analyst,Active,EMP000056,2,,77851.21
+HR000074,Jacob Martin,Engineering,Staff Engineer,Active,HR000068,11,,149809.29
+E000075,Dennis Lewis,Customer Support,Technical Support Agent,Terminated,EMP000049,17,2024-04-02,100511.38
+EMP000076,Janet Murphy,Engineering,Software Engineer,Active,EMP000037,2,,79373.22
+E000077,Jessica Clark,Customer Support,Technical Support Agent,Active,E000026,4,,74958.05
+HR000078,Kimberly Harris,Finance & Accounting,Bookkeeper,Terminated,HR000068,4,2024-12-28,56808.01
+HR000079,Jack Walker,Product Management,Product Owner,Active,HR000021,0,,51061.1
+CV000080,Joshua Mitchell,Finance & Accounting,Financial Analyst,Active,EMP000007,1,,86700.19
+HR000081,Maria King,Marketing,Marketing Specialist,Active,CV000022,3,,79787.53
+CV000082,Matthew Parker,Sales,Account Executive,Active,E000057,0,,52207.5
+E000083,Gregory Johnson,IT Operations,DevOps Engineer,Active,EMP000049,3,,100992.23
+E000084,Andrew Johnson,Research & Development,Research Scientist,Terminated,CV000061,0,2025-05-05,93947.53
+E000085,Angela Johnson,Sales,Regional Sales Director,Active,,12,,533822.4
+EMP000086,Sharon Morris,Research & Development,ML Engineer,Active,CV000054,3,,79873.61
+E000087,Brenda Adams,Executive Management,Executive Assistant,Active,HR000044,1,,57503.59
+HR000088,Christopher King,IT Operations,System Administrator,Active,HR000062,8,,81838.49
+CV000089,Samuel Young,Product Management,Product Owner,Active,HR000009,11,,85135.82
+E000090,Angela Martin,Customer Support,Escalation Specialist,Active,E000026,0,,68838.32
+CV000091,Mark Thompson,IT Operations,IT Manager,Active,EMP000037,10,,215488.5
+CV000092,Benjamin Nguyen,Executive Management,Executive Assistant,Active,HR000044,0,,55009.55
+HR000093,Christopher Rodriguez,IT Operations,DevOps Engineer,Terminated,CV000091,2,2024-12-27,97476.24
+CV000094,Samantha Brown,Sales,Regional Sales Director,Active,,1,,395173.83
+EMP000095,Thomas Flores,Research & Development,R&D Director,Active,,2,,474066.17
+E000096,Maria Parker,Human Resources,Recruiter,Active,E000026,0,,59672.06
+CV000097,Sarah Miller,Research & Development,Principal Scientist,Active,EMP000095,4,,139409.13
+HR000098,Kevin Morris,Finance & Accounting,Financial Analyst,Active,EMP000007,6,,103185.43
+EMP000099,Patrick Johnson,Executive Management,Executive Assistant,Terminated,CV000063,0,2025-10-14,58010.81
+EMP000100,Michael Hall,Engineering,Staff Engineer,Active,CV000022,2,,109867.6
+EMP000101,Rebecca Nelson,Engineering,Engineering Manager,Active,EMP000037,3,,187287.63
+HR000102,Betty Hill,IT Operations,DevOps Engineer,Terminated,CV000091,8,2024-07-12,103307.57
+E000103,Carol Thomas,Sales,Sales Representative,Terminated,E000057,5,2025-08-21,78273.44
+E000104,Ryan Jackson,Product Management,Product Analyst,Active,EMP000037,0,,91224.21
+E000105,Catherine Davis,Engineering,Software Engineer,Active,EMP000101,0,,84415.96
+HR000106,Nancy Davis,Research & Development,Research Engineer,Active,HR000068,16,,109270.12
+HR000107,Thomas Hall,Sales,Account Executive,Terminated,E000085,0,2025-11-03,54653.5
+HR000108,Amy Davis,Research & Development,Research Engineer,Active,HR000062,0,,74427.14
+EMP000109,Shirley King,Executive Management,Director,Active,,2,,476389.03
+E000110,Samuel Cook,Customer Support,Escalation Specialist,Active,EMP000049,9,,119916.15
+CV000111,Linda Allen,IT Operations,Security Analyst,Active,CV000091,5,,83582.77
+HR000112,Richard Sanchez,Research & Development,Research Scientist,Active,EMP000095,4,,73728.22
+HR000113,Carol White,Sales,Account Executive,Active,EMP000067,9,,79823.84
+CV000114,Kevin Thompson,Product Management,Associate Product Manager,Active,HR000009,3,,141917.04
+EMP000115,Steven Flores,IT Operations,Network Engineer,Active,HR000044,0,,71467.69
+CV000116,Cynthia Nelson,Executive Management,Executive Assistant,Active,E000050,0,,55607.29
+HR000117,Frank Nguyen,Customer Support,Technical Support Agent,Active,EMP000049,0,,57123.22
+E000118,Stephanie Perez,Product Management,Product Analyst,Active,CV000114,8,,97286.61
+E000119,Matthew Wilson,Executive Management,CEO,Active,,1,,520284.02
+CV000120,Dennis Thompson,Human Resources,Talent Acquisition Lead,Active,EMP000056,4,,193250.04
+HR000121,Eric Miller,Sales,Regional Sales Director,Terminated,,0,2025-03-21,399975.6
+HR000122,Frank Turner,Product Management,Senior Product Manager,Active,CV000114,7,,197934.12
+EMP000123,Ashley Allen,Product Management,VP of Product,Active,,5,,324898.05
+HR000124,Jack Taylor,IT Operations,Security Analyst,Active,CV000091,10,,110500.81
+EMP000125,Andrew Lewis,Customer Support,Support Specialist,Terminated,EMP000049,1,2025-03-16,82263.0
+E000126,Cynthia Rivera,Customer Support,Support Specialist,Terminated,E000057,0,2024-04-25,66525.66
+E000127,Alexander Lee,Human Resources,Recruiter,Terminated,CV000120,15,2024-12-28,98843.35
+CV000128,Donna Wilson,Executive Management,Executive Assistant,Active,HR000030,3,,67910.68
+E000129,Samuel Flores,Executive Management,Vice President,Active,,15,,341117.09
+EMP000130,Eric Evans,Marketing,Marketing Analyst,Active,HR000044,8,,85444.46
+CV000131,Charles Roberts,Human Resources,HR Business Partner,Active,CV000091,0,,58406.7
+HR000132,Jack Baker,Customer Support,Support Specialist,Active,EMP000049,3,,74115.92
+EMP000133,Rebecca Harris,Finance & Accounting,CFO,Active,,2,,451641.08
+CV000134,Frank Edwards,Engineering,Tech Lead,Active,EMP000037,13,,207341.96
+HR000135,Stephanie Evans,Sales,Regional Sales Director,Terminated,,0,2024-02-22,536688.48
+EMP000136,Debra Stewart,Marketing,Marketing Specialist,Active,EMP000056,4,,79137.61
+EMP000137,Margaret Mitchell,Marketing,Content Manager,Active,EMP000034,2,,171462.41
+HR000138,Katherine Scott,Engineering,Tech Lead,Active,EMP000101,5,,153826.11
+CV000139,Andrew Flores,Engineering,Senior Software Engineer,Active,EMP000101,1,,125136.7
+CV000140,James Lee,IT Operations,Network Engineer,Active,CV000091,6,,89990.46
+EMP000141,Amanda Roberts,Product Management,Product Analyst,Active,HR000030,4,,90604.99
+EMP000142,John Edwards,Human Resources,CHRO,Active,,0,,451283.62
+EMP000143,Anna Morris,Human Resources,Talent Acquisition Lead,Active,E000129,5,,166461.21
+HR000144,Melissa Allen,Sales,Business Development Rep,Terminated,CV000094,1,2025-06-22,68065.06
+E000145,Jack Campbell,Finance & Accounting,Financial Analyst,Active,EMP000007,0,,71952.5
+E000146,Kathleen Murphy,Finance & Accounting,Accountant,Active,EMP000137,0,,47064.5
+CV000147,Timothy Adams,Research & Development,ML Engineer,Active,CV000054,4,,80520.94
+E000148,Nicole Smith,Human Resources,Recruiter,Active,CV000120,2,,59210.79
+HR000149,Raymond Anderson,Research & Development,ML Engineer,Active,CV000054,6,,94142.64
+EMP000150,Thomas Green,Human Resources,HR Specialist,Active,E000119,11,,89721.27
+E000151,Barbara Wilson,Finance & Accounting,Bookkeeper,Active,EMP000133,24,,126041.85
+CV000152,Patrick Baker,Marketing,Brand Manager,Active,CV000008,4,,163025.54
+EMP000153,Scott Miller,Customer Support,Support Team Lead,Active,E000026,11,,221138.59
+EMP000154,Shirley Clark,Marketing,Marketing Specialist,Active,EMP000056,5,,104942.21
+EMP000155,Sarah Taylor,Finance & Accounting,Senior Accountant,Active,HR000068,12,,141934.78
+CV000156,Timothy Adams,IT Operations,IT Manager,Terminated,CV000091,8,2024-06-02,156002.35
+CV000157,Helen Moore,Research & Development,Data Scientist,Active,EMP000095,2,,85609.19
+EMP000158,Raymond Davis,IT Operations,IT Specialist,Active,CV000091,7,,91797.79
+CV000159,Timothy Green,Sales,Sales Representative,Terminated,EMP000067,8,2024-11-04,76551.61
+HR000160,Carolyn Hill,Sales,Account Executive,Terminated,CV000094,5,2025-10-29,60923.87
+EMP000161,Gregory Williams,Marketing,Content Manager,Active,EMP000056,5,,153335.46
+E000162,David Scott,Product Management,VP of Product,Active,,8,,328854.43
+E000163,Scott Gonzalez,Finance & Accounting,Controller,Active,EMP000007,4,,61231.55
+EMP000164,Rachel Lewis,Research & Development,Principal Scientist,Active,EMP000143,3,,116244.37
+E000165,Jessica Taylor,Engineering,Staff Engineer,Active,CV000134,5,,142903.06
+E000166,Andrew Garcia,Research & Development,R&D Director,Active,,6,,501741.79
+HR000167,Margaret Morris,Executive Management,General Manager,Active,E000050,1,,198110.18
+EMP000168,Donald Parker,Executive Management,General Manager,Active,E000119,0,,194413.17
+HR000169,Melissa Flores,Marketing,Brand Manager,Terminated,CV000022,11,2025-04-19,206098.08
+EMP000170,Eric Phillips,Research & Development,Research Engineer,Active,HR000167,14,,97330.42
+E000171,Dorothy Hall,Sales,Sales Representative,Terminated,EMP000067,5,2024-03-15,58309.24
+HR000172,Nancy Young,Research & Development,Data Scientist,Active,EMP000095,2,,81961.12
+HR000173,Richard Campbell,Product Management,Senior Product Manager,Terminated,E000162,4,2024-07-09,156574.89
+CV000174,Amy Martin,Product Management,Associate Product Manager,Active,HR000021,9,,151287.0
+HR000175,Jeffrey Mitchell,Marketing,Digital Marketing Manager,Active,CV000008,2,,200470.52
+CV000176,Jerry Jackson,Marketing,Digital Marketing Manager,Active,EMP000067,5,,193931.77
+E000177,Charles Green,Marketing,Brand Manager,Active,CV000022,4,,199996.15
+E000178,Emily Stewart,Finance & Accounting,Financial Analyst,Terminated,EMP000007,6,2025-04-06,93759.89
+HR000179,Anthony Hernandez,Research & Development,Research Scientist,Active,EMP000095,0,,79195.57
+EMP000180,Samuel Cook,Research & Development,ML Engineer,Active,E000166,1,,81270.0
+CV000181,Raymond Thompson,Marketing,Brand Manager,Active,CV000022,3,,205165.42
+E000182,Shirley Green,Human Resources,HR Manager,Active,EMP000142,11,,172995.33
+E000183,Joshua Smith,Sales,Sales Analyst,Active,CV000035,8,,100883.69
+HR000184,Jerry Ramirez,Product Management,Associate Product Manager,Active,EMP000123,1,,157669.51
+E000185,Alexander Mitchell,Research & Development,Research Engineer,Terminated,E000166,1,2024-06-06,85418.11
+HR000186,Betty Edwards,Engineering,Senior Software Engineer,Terminated,HR000138,0,2025-11-13,115490.44
+CV000187,Jonathan Johnson,Customer Support,Support Specialist,Terminated,E000026,1,2025-01-17,79902.58
+HR000188,Cynthia Hall,Sales,Sales Manager,Terminated,E000085,0,2024-08-08,140226.15
+HR000189,Steven Evans,Research & Development,Research Scientist,Terminated,CV000094,0,2025-08-28,72468.87
+E000190,Deborah Baker,Product Management,Product Owner,Terminated,HR000021,0,2024-02-18,59894.49
+EMP000191,George Stewart,Sales,Business Development Rep,Terminated,E000057,1,2025-03-29,59384.04
+EMP000192,Justin Turner,Finance & Accounting,CFO,Active,,4,,381341.16
+E000193,Maria Green,Sales,Sales Representative,Active,E000085,2,,59342.74
+CV000194,Janet Gonzalez,Sales,Business Development Rep,Active,E000085,2,,55911.52
+E000195,Larry Lopez,Human Resources,HR Manager,Active,EMP000142,1,,193173.12
+EMP000196,Cynthia Smith,Human Resources,Talent Acquisition Lead,Active,E000195,6,,192976.61
+HR000197,Betty King,Finance & Accounting,Bookkeeper,Active,EMP000007,0,,53196.09
+E000198,Robert Gonzalez,Engineering,Staff Engineer,Active,HR000138,1,,125442.46
+EMP000199,George Anderson,Executive Management,CEO,Terminated,,0,2024-02-17,402184.52
+EMP000200,Brenda Mitchell,Research & Development,ML Engineer,Terminated,E000166,7,2025-01-25,94824.2
+E000201,Eric Miller,Engineering,Engineering Manager,Active,EMP000101,1,,145789.02
+CV000202,Rachel Nelson,Research & Development,Research Scientist,Active,CV000054,0,,77046.72
+E000203,Dorothy Scott,Marketing,Digital Marketing Manager,Active,HR000062,2,,193363.81
+HR000204,Laura Lewis,Research & Development,Research Scientist,Terminated,EMP000095,6,2025-04-19,103668.36
+HR000205,Patricia Roberts,Product Management,Associate Product Manager,Active,HR000184,3,,177936.84
+HR000206,Steven Phillips,Product Management,Product Manager,Active,E000162,4,,155773.13
+E000207,Rachel Hall,Executive Management,Director,Active,,4,,541100.49
+EMP000208,Sharon Clark,Engineering,Senior Software Engineer,Terminated,HR000138,6,2024-06-14,155983.13
+EMP000209,Anna Torres,Customer Support,Customer Success Manager,Active,EMP000168,3,,139361.17
+CV000210,Jason Jackson,Research & Development,Data Scientist,Terminated,EMP000095,0,2024-10-20,82143.22
+EMP000211,Dennis Rodriguez,Finance & Accounting,Bookkeeper,Active,HR000068,1,,58717.25
+E000212,Raymond Clark,Research & Development,ML Engineer,Active,EMP000095,2,,87099.27
+HR000213,Helen Martinez,Finance & Accounting,Accountant,Active,EMP000007,12,,82310.93
+E000214,Mary Perez,Engineering,Tech Lead,Active,EMP000101,2,,147721.66
+EMP000215,Helen Campbell,Customer Support,Support Specialist,Active,E000026,2,,87428.13
+CV000216,Katherine Smith,Engineering,Staff Engineer,Terminated,EMP000037,5,2024-02-07,150208.91
+E000217,Timothy Allen,Engineering,Tech Lead,Active,HR000138,3,,144244.09
+E000218,Amy Sanchez,Customer Support,Support Specialist,Active,EMP000153,2,,88164.58
+HR000219,Patricia Scott,Product Management,Senior Product Manager,Active,CV000174,0,,175985.22
+HR000220,Ashley Torres,Customer Support,Support Team Lead,Active,EMP000049,17,,209480.94
+EMP000221,Joshua Hall,Human Resources,Recruiter,Active,E000195,2,,67037.01
+E000222,Kenneth Parker,Customer Support,Support Specialist,Active,EMP000209,7,,100243.05
+EMP000223,Jerry Gonzalez,Engineering,Senior Software Engineer,Active,E000201,1,,125564.07
+HR000224,Barbara Hall,Finance & Accounting,Senior Accountant,Active,EMP000192,3,,135169.13
+HR000225,Matthew Anderson,Sales,Regional Sales Director,Active,,7,,428174.88
+CV000226,Daniel Cook,Finance & Accounting,Bookkeeper,Active,EMP000192,3,,60600.27
+HR000227,Stephanie Flores,Executive Management,Executive Assistant,Active,HR000030,3,,67430.61
+E000228,Catherine Williams,Human Resources,Talent Acquisition Lead,Active,E000182,3,,141734.57
+HR000229,Lisa Ramirez,Product Management,Associate Product Manager,Active,HR000219,12,,227816.17
+HR000230,Rebecca Lee,Finance & Accounting,Accountant,Terminated,EMP000192,0,2025-01-05,59252.69
+CV000231,David Davis,Finance & Accounting,CFO,Active,,2,,451117.11
+EMP000232,Jennifer Roberts,Customer Support,Customer Success Manager,Active,CV000063,4,,151782.52
+CV000233,Michelle Martin,Finance & Accounting,Financial Analyst,Active,CV000231,4,,75887.56
+HR000234,Scott Stewart,Finance & Accounting,Senior Accountant,Active,CV000231,1,,118237.17
+E000235,Helen Green,Human Resources,Recruiter,Active,E000228,0,,58065.54
+HR000236,Michael Miller,Research & Development,Data Scientist,Active,E000166,0,,84827.74
+HR000237,Catherine Nguyen,Marketing,Marketing Specialist,Terminated,CV000022,0,2024-08-07,76057.08
+EMP000238,Frank Collins,Product Management,Product Owner,Active,HR000021,3,,66564.47
+HR000239,Janet Hall,Executive Management,CEO,Active,,1,,431839.83
+CV000240,Shirley Campbell,Finance & Accounting,Controller,Terminated,HR000068,8,2025-11-08,75793.05
+EMP000241,Jack Edwards,IT Operations,Security Analyst,Active,CV000091,25,,133215.82
+EMP000242,Michelle Allen,Human Resources,HR Manager,Active,E000195,7,,165423.52
+E000243,Matthew Perez,Marketing,CMO,Active,,3,,366236.57
+E000244,Rebecca Cook,Sales,Sales Analyst,Active,E000057,1,,77415.01
+E000245,Elizabeth Martinez,Product Management,Product Manager,Active,HR000206,2,,171900.09
+HR000246,Carolyn Williams,Product Management,Product Analyst,Terminated,EMP000133,0,2025-01-27,76147.51
+E000247,George Turner,Sales,Account Executive,Active,CV000094,12,,74149.27
+EMP000248,Karen Roberts,Engineering,QA Engineer,Active,E000214,5,,95564.29
+E000249,Joshua Cook,Sales,Business Development Rep,Active,HR000047,9,,80859.55
+EMP000250,Kenneth Gonzalez,IT Operations,DevOps Engineer,Terminated,CV000091,1,2025-08-07,80371.77
+CV000251,Anthony Wright,Marketing,Marketing Analyst,Active,HR000062,1,,87913.72
+CV000252,Thomas Johnson,Finance & Accounting,CFO,Terminated,,0,2023-12-12,371529.9
+CV000253,Michelle Perez,IT Operations,IT Manager,Active,E000195,7,,157328.39
+E000254,Ryan Martin,Finance & Accounting,Controller,Active,EMP000133,1,,64169.51
+E000255,Cynthia Young,Sales,Sales Representative,Terminated,EMP000067,3,2025-08-15,60833.48
+E000256,Joshua Wright,Finance & Accounting,Controller,Active,EMP000192,4,,57782.42
+CV000257,Frank Nguyen,Research & Development,Research Engineer,Active,E000166,4,,94561.6
+CV000258,Justin Hill,Finance & Accounting,Financial Analyst,Active,HR000030,4,,82861.4
+E000259,Amy Adams,Sales,Sales Representative,Active,EMP000007,1,,58393.19
+CV000260,Helen Torres,Finance & Accounting,Senior Accountant,Active,EMP000133,1,,111742.94
+E000261,Barbara Nguyen,Sales,Sales Analyst,Terminated,EMP000067,21,2024-05-08,117302.96
+HR000262,Andrew Collins,Sales,Account Executive,Active,CV000174,2,,62864.94
+CV000263,Jacob Rodriguez,IT Operations,Security Analyst,Terminated,CV000091,2,2024-07-22,96896.81
+CV000264,David Rodriguez,Research & Development,Research Engineer,Active,EMP000095,11,,124707.92
+EMP000265,Amanda Anderson,Customer Support,Support Team Lead,Active,HR000220,4,,199899.78
+E000266,Larry Walker,Marketing,Marketing Specialist,Active,E000214,4,,81095.8
+EMP000267,Shirley Garcia,Human Resources,HR Business Partner,Active,EMP000034,0,,59833.72
+E000268,Anna Roberts,Sales,Regional Sales Director,Active,,3,,503427.66
+E000269,Donna Hernandez,Sales,Business Development Rep,Active,CV000035,12,,95525.64
+E000270,Andrew Young,Engineering,Senior Software Engineer,Active,CV000134,3,,117111.87
+HR000271,Jack Davis,Executive Management,Vice President,Active,,12,,384608.56
+CV000272,Nancy Phillips,Human Resources,HR Specialist,Active,E000057,2,,72689.71
+EMP000273,Ashley Nelson,Finance & Accounting,CFO,Active,,5,,543198.85
+CV000274,Charles Robinson,Research & Development,Research Engineer,Active,EMP000095,1,,90565.14
+E000275,Kimberly Martinez,Human Resources,Talent Acquisition Lead,Terminated,CV000120,0,2024-09-16,161417.44
+E000276,Emily Moore,Engineering,Tech Lead,Active,EMP000232,5,,195532.11
+EMP000277,Kenneth Scott,Sales,Business Development Rep,Terminated,HR000225,0,2025-05-19,53224.98
+EMP000278,Brandon Garcia,Sales,Sales Analyst,Active,HR000225,5,,109369.26
+E000279,Timothy Nelson,Executive Management,Vice President,Active,,11,,319804.74
+E000280,Rachel Morris,Marketing,Digital Marketing Manager,Active,CV000152,0,,184397.42
+EMP000281,Nancy Lewis,Engineering,Staff Engineer,Terminated,EMP000101,19,2024-02-13,148793.98
+EMP000282,Carolyn Taylor,Engineering,Software Engineer,Terminated,E000276,0,2024-02-16,72517.89
+EMP000283,Raymond Harris,Product Management,Senior Product Manager,Active,E000245,6,,190080.23
+EMP000284,James Harris,Finance & Accounting,Accountant,Terminated,EMP000192,4,2024-02-09,65658.7
+CV000285,Anna Edwards,Marketing,Marketing Specialist,Terminated,E000243,9,2023-12-21,100886.92
+HR000286,Benjamin Hall,Marketing,Brand Manager,Terminated,EMP000056,0,2024-04-04,181472.69
+EMP000287,Deborah Jones,Human Resources,CHRO,Active,,1,,561130.45
+HR000288,Janet Williams,Research & Development,Research Scientist,Terminated,E000217,1,2024-04-18,83501.29
+E000289,Robert Mitchell,Customer Support,Support Team Lead,Active,EMP000232,5,,206473.53
+CV000290,Ryan Flores,Customer Support,Escalation Specialist,Terminated,EMP000209,0,2025-05-09,68425.39
+E000291,Catherine Baker,Research & Development,ML Engineer,Terminated,CV000054,0,2025-08-01,81376.54
+CV000292,Dennis Clark,Customer Support,Customer Success Manager,Active,EMP000049,4,,204306.58
+HR000293,John Stewart,Finance & Accounting,Accountant,Active,EMP000133,0,,46782.82
+CV000294,Christopher Green,Product Management,Associate Product Manager,Active,HR000206,2,,146175.44
+HR000295,Benjamin Evans,Product Management,Product Owner,Active,HR000044,2,,54068.9
+HR000296,Heather Green,IT Operations,DevOps Engineer,Active,EMP000196,0,,69476.52
+HR000297,Michael Adams,Marketing,Digital Marketing Manager,Active,EMP000192,1,,175180.12
+E000298,John Young,Human Resources,HR Specialist,Terminated,E000228,0,2024-01-09,78344.63
+HR000299,Jerry Davis,Marketing,Content Manager,Terminated,HR000062,0,2024-09-12,190892.04
+EMP000300,Brandon Robinson,Customer Support,Support Team Lead,Terminated,HR000220,2,2025-07-25,148421.81
+HR000301,Paul Rodriguez,Engineering,Staff Engineer,Active,EMP000242,3,,115988.13
+HR000302,David Clark,Human Resources,Talent Acquisition Lead,Active,CV000120,9,,180540.2
+EMP000303,Kenneth Ramirez,Executive Management,Vice President,Active,,11,,301864.43
+HR000304,Janet Roberts,Human Resources,HR Specialist,Active,EMP000142,2,,93868.78
+HR000305,Stephen Carter,Sales,Business Development Rep,Active,HR000225,6,,68053.45
+HR000306,Pamela Mitchell,Executive Management,Director,Active,,18,,428351.36
+HR000307,Samantha Robinson,Sales,Business Development Rep,Active,E000085,0,,51658.12
+EMP000308,Brandon Stewart,Marketing,CMO,Active,,13,,610384.18
+HR000309,Timothy White,Finance & Accounting,Bookkeeper,Active,HR000225,0,,57963.45
+E000310,Samuel Walker,Executive Management,CEO,Active,,1,,409349.34
+EMP000311,Emily Brown,Engineering,Tech Lead,Active,E000201,2,,171812.69
+CV000312,Ryan Garcia,Engineering,Staff Engineer,Terminated,E000201,11,2025-07-04,160892.41
+EMP000313,Anthony King,Sales,Sales Manager,Active,E000085,2,,200950.12
+CV000314,Mark Parker,Human Resources,CHRO,Active,,2,,519254.94
+EMP000315,Cynthia Martin,Executive Management,Vice President,Active,,11,,391633.05
+HR000316,Brian Jackson,Finance & Accounting,Senior Accountant,Active,HR000068,4,,126375.57
+CV000317,Donald Davis,Sales,Sales Manager,Active,CV000035,4,,165404.16
+E000318,Jonathan Martin,Engineering,Software Engineer,Active,E000214,2,,74359.18
+HR000319,Kathleen Morris,Product Management,Associate Product Manager,Active,EMP000143,5,,196493.83
+HR000320,Joshua Johnson,Research & Development,Principal Scientist,Active,E000166,9,,120689.16
+EMP000321,Betty Johnson,Engineering,QA Engineer,Active,EMP000168,9,,119415.85
+EMP000322,Stephanie Martinez,Research & Development,ML Engineer,Active,EMP000095,2,,78396.37
+CV000323,Patrick Stewart,Finance & Accounting,CFO,Active,,24,,496735.41
+CV000324,Justin Hill,Engineering,Senior Software Engineer,Active,HR000030,1,,136487.89
+EMP000325,James Clark,Product Management,Product Analyst,Active,HR000068,0,,82037.49
+CV000326,Emma Martin,Finance & Accounting,Bookkeeper,Active,EMP000133,6,,72518.63
+E000327,Samuel Nelson,Product Management,Product Analyst,Active,HR000205,0,,84343.58
+EMP000328,Pamela Ramirez,Product Management,VP of Product,Active,,5,,389984.71
+EMP000329,Lisa Nguyen,Sales,Account Executive,Active,CV000094,1,,50966.58
+E000330,Donna King,Engineering,QA Engineer,Active,CV000134,1,,90696.74
+HR000331,Emily Baker,Marketing,Marketing Specialist,Active,EMP000137,3,,75921.3
+EMP000332,Anthony Martinez,Human Resources,Recruiter,Active,EMP000287,8,,80894.81
+E000333,Cynthia Murphy,Engineering,Software Engineer,Active,E000214,8,,106160.1
+HR000334,Alexander Martin,Sales,Business Development Rep,Terminated,E000085,8,2025-05-02,77694.03
+E000335,Jason Hall,Engineering,Software Engineer,Terminated,EMP000037,0,2025-08-03,77937.42
+EMP000336,William Martin,Sales,Sales Representative,Active,CV000065,7,,72489.4
+EMP000337,Christopher Edwards,Product Management,Associate Product Manager,Active,EMP000101,2,,168686.64
+CV000338,Alexander Gonzalez,Product Management,Senior Product Manager,Active,CV000174,11,,226467.38
+EMP000339,Rachel Nguyen,Customer Support,Support Team Lead,Terminated,E000177,5,2025-01-15,197005.2
+CV000340,Jessica King,Customer Support,Support Team Lead,Active,EMP000232,7,,189365.48
+EMP000341,Cynthia Hill,Product Management,VP of Product,Active,,18,,376069.79
+CV000342,Debra White,Customer Support,Support Specialist,Terminated,EMP000049,25,2024-10-24,130237.58
+E000343,Jack Cook,Customer Support,Support Specialist,Active,CV000174,2,,74804.25
+EMP000344,Maria Turner,Research & Development,ML Engineer,Terminated,EMP000095,3,2024-08-24,85252.3
+E000345,Steven Young,Finance & Accounting,Senior Accountant,Active,EMP000007,4,,106559.02
+CV000346,Joshua Flores,Executive Management,Director,Active,,7,,499742.36
+EMP000347,Andrew Nelson,Finance & Accounting,Controller,Active,EMP000007,3,,68944.26
+HR000348,Laura Lee,Research & Development,Research Engineer,Active,EMP000133,3,,86397.16
+CV000349,Sharon Rodriguez,Product Management,VP of Product,Active,,2,,341384.33
+E000350,Brenda Edwards,Customer Support,Escalation Specialist,Active,EMP000232,0,,82731.35
+CV000351,Linda Johnson,Executive Management,Director,Active,,0,,552388.36
+EMP000352,Jason Thompson,Marketing,Brand Manager,Active,E000280,2,,152977.94
+EMP000353,Jessica Perez,Customer Support,Support Specialist,Active,CV000292,3,,89457.3
+E000354,Deborah Torres,Research & Development,ML Engineer,Active,EMP000095,4,,80468.31
+CV000355,Brandon Martin,Marketing,Brand Manager,Active,E000243,1,,200958.4
+HR000356,Brandon Mitchell,Engineering,Engineering Manager,Active,EMP000311,9,,168783.87
+HR000357,Elizabeth Adams,Product Management,Associate Product Manager,Active,E000245,8,,186722.9
+CV000358,Benjamin Rivera,Human Resources,Recruiter,Active,E000195,4,,71945.96
+HR000359,Eric Gonzalez,Marketing,Brand Manager,Active,CV000176,0,,177971.46
+HR000360,Emily Evans,Product Management,VP of Product,Terminated,,0,2025-07-02,285419.47
+E000361,Donald Phillips,Product Management,Product Analyst,Active,HR000068,3,,88108.33
+CV000362,Samuel Edwards,Sales,Business Development Rep,Active,CV000094,3,,66811.13
+E000363,Christine Nelson,Engineering,Staff Engineer,Active,EMP000311,14,,142603.77
+HR000364,Barbara Thomas,Executive Management,Director,Active,,7,,572971.29
+E000365,Margaret Martinez,Engineering,Senior Software Engineer,Active,E000026,1,,115425.99
+EMP000366,Kathleen Baker,IT Operations,DevOps Engineer,Active,CV000323,10,,109629.39
+EMP000367,Frank Murphy,IT Operations,DevOps Engineer,Active,CV000091,4,,102228.66
+CV000368,Kimberly Martin,Engineering,Senior Software Engineer,Active,E000214,1,,105429.06
+E000369,Paul Collins,Engineering,Staff Engineer,Active,CV000349,3,,139830.12
+HR000370,Brian Clark,Executive Management,CEO,Terminated,,8,2025-10-10,487120.01
+HR000371,Katherine Rodriguez,Sales,Regional Sales Director,Active,,1,,496063.43
+E000372,Dorothy Lewis,Finance & Accounting,CFO,Active,,0,,498255.1
+HR000373,David Clark,Marketing,Content Manager,Active,CV000008,2,,192936.81
+HR000374,Ryan Gonzalez,Product Management,VP of Product,Active,,9,,357096.7
+HR000375,George Hernandez,Executive Management,Director,Active,,0,,543339.83
+E000376,Matthew Collins,Product Management,Product Owner,Active,CV000174,6,,67211.05
+EMP000377,Edward Lopez,Research & Development,Data Scientist,Active,CV000054,0,,72064.57
+E000378,Sarah Collins,Marketing,CMO,Active,,2,,449722.73
+EMP000379,Richard Scott,Sales,Sales Representative,Active,HR000371,2,,67103.9
+E000380,Steven Allen,Executive Management,Chief of Staff,Terminated,HR000225,1,2025-06-02,113979.95
+E000381,Nicholas Young,Marketing,Brand Manager,Active,EMP000034,0,,167129.67
+HR000382,Sharon Jackson,Product Management,Associate Product Manager,Terminated,E000162,8,2024-07-17,193015.56
+E000383,Linda Gonzalez,Customer Support,Support Specialist,Terminated,CV000181,1,2024-09-06,74378.44
+E000384,Cynthia Young,Engineering,Engineering Manager,Active,CV000065,10,,154023.54
+EMP000385,Justin Smith,Human Resources,HR Business Partner,Active,EMP000142,0,,49923.15
+E000386,Melissa Nguyen,Engineering,Tech Lead,Active,E000276,0,,188148.95
+E000387,Kevin Williams,Executive Management,Chief of Staff,Active,E000119,1,,131007.47
+HR000388,Jack Jones,Human Resources,HR Business Partner,Terminated,EMP000315,2,2025-05-03,53155.65
+E000389,Heather Sanchez,Product Management,VP of Product,Active,,6,,284939.07
+EMP000390,Brian Nelson,Engineering,Tech Lead,Active,HR000356,3,,199416.65
+EMP000391,Melissa Flores,Customer Support,Support Team Lead,Active,HR000184,4,,172677.48
+E000392,Cynthia Ramirez,Engineering,Staff Engineer,Active,HR000138,1,,129262.5
+EMP000393,Stephen Jones,Sales,Sales Analyst,Active,HR000371,0,,67834.53
+CV000394,Jack Nelson,Finance & Accounting,Senior Accountant,Active,CV000231,7,,119337.38
+CV000395,Helen Phillips,Product Management,Product Owner,Active,E000389,17,,103869.56
+E000396,James Sanchez,Engineering,Software Engineer,Terminated,HR000375,0,2024-03-11,85754.19
+CV000397,Michelle Garcia,Customer Support,Technical Support Agent,Active,CV000022,0,,45317.7
+CV000398,David Martin,Finance & Accounting,Senior Accountant,Active,E000372,3,,107105.65
+CV000399,Jeffrey Nguyen,IT Operations,Network Engineer,Active,CV000091,1,,79910.9
+EMP000400,Jennifer Young,Research & Development,Research Engineer,Active,HR000375,3,,101906.11
+CV000401,Jason Torres,Marketing,Marketing Analyst,Active,CV000181,0,,77514.12
+CV000402,Charles Jackson,IT Operations,IT Specialist,Active,E000279,2,,75519.48
+CV000403,Andrew Campbell,Research & Development,Research Engineer,Active,HR000138,8,,109807.26
+EMP000404,Daniel Gonzalez,Customer Support,Escalation Specialist,Active,EMP000209,3,,102552.54
+HR000405,Brian Stewart,Product Management,Product Owner,Active,CV000114,5,,71436.38
+EMP000406,Kimberly Perez,Marketing,Marketing Specialist,Active,EMP000391,7,,110187.84
+EMP000407,Jeffrey Phillips,Finance & Accounting,Accountant,Terminated,E000085,18,2024-02-26,112332.6
+E000408,George Hernandez,Product Management,VP of Product,Active,,2,,364906.37
+CV000409,Sarah Davis,IT Operations,IT Specialist,Terminated,E000372,17,2024-11-16,116851.08
+CV000410,Samantha Nelson,IT Operations,Network Engineer,Active,CV000253,6,,103972.28
+HR000411,Shirley Turner,Marketing,Marketing Specialist,Active,CV000022,2,,92609.38
+E000412,Linda Sanchez,Sales,Business Development Rep,Active,EMP000232,12,,78114.0
+E000413,Amanda Smith,Product Management,Associate Product Manager,Active,EMP000337,4,,165450.56
+E000414,Heather Gonzalez,Product Management,Product Manager,Active,CV000114,0,,180756.91
+CV000415,David Allen,Human Resources,HR Manager,Active,EMP000287,3,,150244.19
+EMP000416,Patrick Brown,Marketing,Digital Marketing Manager,Active,EMP000034,4,,142177.09
+HR000417,Carol Thomas,Executive Management,Executive Assistant,Active,E000195,6,,78560.88
+CV000418,Shirley Mitchell,IT Operations,System Administrator,Terminated,CV000091,1,2024-09-23,64121.59
+CV000419,David Brown,Research & Development,Data Scientist,Active,E000166,3,,83255.81
+CV000420,Laura Hall,Finance & Accounting,CFO,Active,,18,,442743.77
+CV000421,Alexander Allen,Human Resources,HR Specialist,Active,EMP000287,5,,78032.55
+HR000422,Joseph White,Executive Management,General Manager,Terminated,EMP000242,0,2025-11-04,156002.71
+E000423,Justin Clark,Sales,Sales Manager,Terminated,E000057,10,2024-07-28,206650.38
+CV000424,Carol Turner,Research & Development,Research Engineer,Active,E000166,8,,94323.22
+CV000425,Karen Collins,Marketing,Marketing Specialist,Active,HR000175,8,,99920.89
+EMP000426,Katherine Garcia,Customer Support,Support Specialist,Active,EMP000049,4,,98591.24
+HR000427,Brandon Wright,Executive Management,Director,Active,,15,,575792.26
+EMP000428,Paul Turner,IT Operations,Network Engineer,Active,CV000253,8,,107809.26
+HR000429,Patricia Perez,Research & Development,Data Scientist,Active,CV000054,2,,80960.07
+E000430,Heather Garcia,Customer Support,Customer Success Manager,Terminated,EMP000161,15,2025-10-04,176982.22
+CV000431,Susan Lee,Customer Support,Support Team Lead,Active,HR000047,11,,218084.98
+EMP000432,Jessica Moore,Sales,Sales Manager,Active,E000085,3,,170834.46
+E000433,Brenda Nguyen,Engineering,Senior Software Engineer,Terminated,E000276,7,2025-07-10,120272.42
+HR000434,Donald Wright,Research & Development,Principal Scientist,Active,CV000231,3,,120415.35
+EMP000435,Michael Cook,Finance & Accounting,Financial Analyst,Terminated,EMP000192,4,2024-06-04,89120.51
+E000436,Barbara Sanchez,Engineering,Senior Software Engineer,Active,EMP000311,6,,155508.42
+EMP000437,Samantha Taylor,Finance & Accounting,Financial Analyst,Active,EMP000273,1,,78714.94
+EMP000438,Mary Morris,Sales,Business Development Rep,Active,E000268,0,,58929.8
+HR000439,Raymond Lewis,Engineering,Tech Lead,Terminated,EMP000390,17,2024-11-18,210388.56
+HR000440,Mary Anderson,Sales,Sales Manager,Active,EMP000242,5,,157997.8
+CV000441,Gary White,Sales,Sales Manager,Active,EMP000432,3,,181146.17
+HR000442,Stephen Gonzalez,Executive Management,CEO,Terminated,,5,2025-09-27,379491.56
+EMP000443,Pamela Edwards,IT Operations,Security Analyst,Terminated,CV000253,6,2024-09-21,102721.95
+HR000444,Sharon Edwards,Research & Development,ML Engineer,Active,CV000054,0,,79867.24
+CV000445,Paul Murphy,Research & Development,Principal Scientist,Active,E000166,2,,106778.0
+E000446,Donald Gonzalez,Customer Support,Customer Success Manager,Active,E000026,1,,139522.82
+EMP000447,Ashley Miller,Finance & Accounting,Senior Accountant,Active,EMP000192,15,,179449.05
+EMP000448,Emma Davis,Engineering,Software Engineer,Terminated,EMP000390,12,2024-09-06,118760.0
+EMP000449,Helen Green,Research & Development,Research Scientist,Terminated,EMP000315,0,2024-03-29,66566.09
+HR000450,Deborah Robinson,Research & Development,Principal Scientist,Active,HR000356,4,,145908.25
+CV000451,Richard Smith,Executive Management,CEO,Active,,0,,398403.64
+E000452,Janet Flores,Finance & Accounting,Senior Accountant,Active,CV000323,1,,100816.15
+EMP000453,Emma Stewart,Human Resources,Recruiter,Terminated,CV000120,0,2025-04-03,51858.01
+E000454,Amanda Gonzalez,IT Operations,IT Manager,Active,CV000253,11,,187684.44
+CV000455,Helen Martin,Research & Development,ML Engineer,Active,CV000054,0,,88675.74
+EMP000456,Donald Walker,Marketing,CMO,Terminated,,2,2025-11-22,561122.33
+E000457,Patricia Scott,Engineering,Senior Software Engineer,Terminated,EMP000037,1,2025-04-22,123244.69
+HR000458,Kevin Edwards,Human Resources,Recruiter,Active,HR000021,0,,61857.63
+CV000459,Katherine Turner,Engineering,Tech Lead,Active,EMP000143,13,,174242.38
+HR000460,Joseph Martinez,Customer Support,Technical Support Agent,Terminated,EMP000391,1,2025-10-16,54741.5
+EMP000461,Karen Lee,IT Operations,System Administrator,Terminated,E000454,4,2024-08-08,55769.76
+CV000462,Nicholas Harris,Human Resources,HR Manager,Active,CV000415,3,,159813.22
+CV000463,Emily Nguyen,Research & Development,R&D Director,Active,,12,,391166.7
+E000464,Joshua Ramirez,Research & Development,Principal Scientist,Terminated,CV000054,0,2024-06-19,106453.82
+HR000465,Justin Williams,Finance & Accounting,Bookkeeper,Active,E000372,4,,63759.84
+EMP000466,Katherine Jones,Marketing,Marketing Specialist,Active,CV000065,1,,83903.09
+HR000467,William White,Sales,Sales Analyst,Active,CV000441,1,,76770.53
+EMP000468,Mary Roberts,Product Management,Product Owner,Active,CV000338,8,,77606.27
+CV000469,Katherine Allen,Customer Support,Support Team Lead,Active,CV000340,1,,147637.92
+HR000470,Barbara Lee,IT Operations,IT Specialist,Terminated,E000454,7,2025-07-13,91558.72
+E000471,Catherine Smith,Finance & Accounting,CFO,Active,,8,,472223.98
+CV000472,Emma Johnson,Executive Management,Director,Active,,12,,609847.98
+EMP000473,Margaret Sanchez,Engineering,QA Engineer,Active,EMP000242,2,,79764.35
+E000474,Patricia Lopez,IT Operations,System Administrator,Terminated,E000454,12,2025-10-05,76379.3
+E000475,Charles Lee,Research & Development,Research Engineer,Terminated,CV000054,0,2025-05-06,81093.59
+EMP000476,Carolyn Nelson,Finance & Accounting,Senior Accountant,Active,E000372,4,,134950.37
+CV000477,Jeffrey Jones,Research & Development,Principal Scientist,Active,HR000357,8,,156377.32
+CV000478,Rachel Parker,Product Management,Product Analyst,Active,EMP000341,4,,82733.67
+E000479,Christine Lopez,Executive Management,Director,Active,,2,,416706.56
+E000480,Frank Campbell,IT Operations,IT Specialist,Active,CV000091,2,,74684.36
+HR000481,Laura Hernandez,Product Management,Senior Product Manager,Active,E000389,3,,142396.69
+HR000482,Jennifer Smith,Product Management,Product Manager,Terminated,CV000294,6,2024-05-20,187558.46
+EMP000483,Sarah Walker,Product Management,Senior Product Manager,Active,EMP000337,0,,137036.06
+EMP000484,Karen Lewis,Marketing,Content Manager,Terminated,CV000355,1,2024-02-21,178821.98
+EMP000485,Rachel Martin,Finance & Accounting,Accountant,Terminated,EMP000192,4,2024-09-27,58937.23
+EMP000486,Kevin Evans,IT Operations,IT Manager,Active,EMP000142,5,,201465.7
+HR000487,Angela Miller,Marketing,Digital Marketing Manager,Active,CV000176,4,,152014.73
+CV000488,Ronald Adams,Marketing,Marketing Specialist,Terminated,HR000302,2,2025-04-23,71815.59
+CV000489,Heather Hill,Finance & Accounting,Accountant,Active,CV000231,6,,81939.6
+CV000490,Kevin Lopez,Marketing,CMO,Active,,3,,508643.96
+CV000491,Nicholas Nguyen,Sales,Account Executive,Terminated,E000268,0,2024-11-14,47481.12
+E000492,Betty Martinez,Research & Development,Data Scientist,Active,CV000351,5,,96639.89
+EMP000493,Paul Lee,Sales,Sales Analyst,Terminated,EMP000192,7,2024-05-29,105689.82
+EMP000494,Gregory Hall,IT Operations,Security Analyst,Active,CV000091,10,,95935.8
+E000495,Michael Green,Customer Support,Technical Support Agent,Active,HR000175,0,,55976.94
+EMP000496,Patrick Gonzalez,IT Operations,IT Specialist,Terminated,CV000253,0,2024-07-28,73560.59
+E000497,Stephanie Harris,Customer Support,Support Team Lead,Active,HR000374,2,,186466.14
+CV000498,Stephen Campbell,Customer Support,Customer Success Manager,Terminated,E000289,2,2025-07-16,154049.19
+E000499,Christopher Murphy,IT Operations,System Administrator,Terminated,EMP000486,0,2024-07-19,59506.91
+E000500,Edward Stewart,Sales,Sales Representative,Active,CV000094,2,,54147.0

@@ -20,7 +20,7 @@ class ReasoningService {
   /**
    * Get or compute reasoning for a specific employee
    */
-  async getEmployeeReasoning(hrCode: string): Promise<ChurnReasoning> {
+  async getEmployeeReasoning(hrCode: string): Promise<ChurnReasoning | null> {
     try {
       // Use the intelligent-chat/analyze-risk endpoint
       const response = await api.post('/intelligent-chat/analyze-risk', null, {
@@ -31,24 +31,30 @@ class ReasoningService {
         return response.data.context.reasoning as ChurnReasoning;
       }
 
-      // Fallback if structure doesn't match exactly but we have analysis
-      if (response.data && response.data.analysis) {
-        // Construct a partial ChurnReasoning object from the text analysis if needed
-        // For now, throw if structured data is missing
-        throw new Error('Structured reasoning data not found in response');
+      // If no reasoning data exists yet (model not trained or no predictions), return null
+      // This is a valid state - reasoning data is generated after model training
+      if (response.data && response.data.context && !response.data.context.reasoning) {
+        return null;
       }
 
-      throw new Error('Failed to get employee reasoning');
+      // Fallback if we have analysis text but no structured reasoning
+      if (response.data && response.data.analysis) {
+        // Return null instead of throwing - reasoning will be available after training
+        return null;
+      }
+
+      return null;
     } catch (error: any) {
-      console.error('Error getting employee reasoning:', error);
-      throw new Error(error.message || 'Failed to get employee reasoning');
+      // Log but don't throw - this allows the UI to gracefully handle missing reasoning
+      console.warn('Reasoning data not available for employee:', hrCode, error.message);
+      return null;
     }
   }
 
   /**
    * Force refresh reasoning for a specific employee
    */
-  async refreshEmployeeReasoning(hrCode: string): Promise<ChurnReasoning> {
+  async refreshEmployeeReasoning(hrCode: string): Promise<ChurnReasoning | null> {
     // The analyze-risk endpoint performs a fresh analysis
     return this.getEmployeeReasoning(hrCode);
   }

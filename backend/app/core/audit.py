@@ -32,7 +32,7 @@ class AuditLog(Base):
     user_agent = Column(String)
     status_code = Column(Integer)
     duration_ms = Column(Integer)  # Request duration in milliseconds
-    log_metadata = Column(Text)  # JSON metadata (scores, counts, etc.) - renamed from 'metadata'
+    log_metadata = Column("metadata", Text)  # JSON metadata (scores, counts, etc.)
     error_message = Column(Text)  # Error details if failed
 
     __table_args__ = (

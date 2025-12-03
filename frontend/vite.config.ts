@@ -80,7 +80,7 @@ export default defineConfig({
       protocol: 'ws',
       host: 'localhost',
       port: 4001,
-      clientPort: 4001,
+      clientPort: 3000,
       overlay: true,
     },
     proxy: {

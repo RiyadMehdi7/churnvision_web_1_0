@@ -1163,6 +1163,54 @@ export function DataManagement(): React.ReactElement {
         navigate('/?refresh=true');
     };
 
+    // Auto-fix common issues in preview based on mapping (applied to full dataset during upload)
+    const autoFixPreview = (preview: DataPreview, mapping: ColumnMapping): { preview: DataPreview; warnings: string[] } => {
+        const warnings: string[] = [];
+        const headers = [...preview.headers];
+        const rows = preview.rows.map(r => [...r]);
+
+        const getIndex = (colName?: string) => (colName ? headers.indexOf(colName) : -1);
+
+        const deptIdx = getIndex(mapping.department);
+        const mgrIdx = getIndex(mapping.manager_id);
+        const costIdx = getIndex(mapping.cost);
+
+        // 1) manager_id: fill empties with UNKNOWN or last known per department
+        if (mgrIdx >= 0) {
+            const lastManagerByDept = new Map<string, string>();
+            for (let i = 0; i < rows.length; i++) {
+                const dept = deptIdx >= 0 ? String(rows[i][deptIdx] ?? '').trim() : '';
+                const curMgr = String(rows[i][mgrIdx] ?? '').trim();
+                if (curMgr) {
+                    if (dept) lastManagerByDept.set(dept, curMgr);
+                } else {
+                    const fallback = dept && lastManagerByDept.get(dept) ? lastManagerByDept.get(dept)! : 'UNKNOWN';
+                    rows[i][mgrIdx] = fallback;
+                }
+            }
+            warnings.push('Filled missing manager_id values with last known per department or UNKNOWN.');
+        }
+
+        // 2) cost: strip currency and normalize; set 0 for blanks
+        if (costIdx >= 0) {
+            for (let i = 0; i < rows.length; i++) {
+                const raw = rows[i][costIdx];
+                const normalized = normalizeNumericValue(String(raw ?? ''));
+                rows[i][costIdx] = normalized === null ? 0 : normalized;
+            }
+            warnings.push('Normalized employee_cost values and filled blanks with 0.');
+        }
+
+        return {
+            preview: {
+                headers,
+                rows,
+                totalRows: rows.length
+            },
+            warnings
+        };
+    };
+
     // Extracted upload logic to a separate function for reuse
     const uploadData = useCallback(async (): Promise<void> => {
         if (!selectedFile || !dataPreview || !isColumnMappingComplete()) {
@@ -1193,29 +1241,102 @@ export function DataManagement(): React.ReactElement {
             // --- Read file buffer --- START ---
             setProcessingStep('uploading'); // Indicate reading buffer as part of upload
             setUploadMessage('Reading file data...');
-            // If we have a fixedPreview, rebuild a CSV buffer from it; else use original file buffer
-            const fileBuffer = fixedPreview
-                ? (() => {
-                    const lines = [fixedPreview.headers.join(',')].concat(
-                        fixedPreview.rows.map(r => r.map(v => {
+            // If we have an auto-fixed preview, apply the fixes to the full dataset (not just the preview)
+            const buildUploadBuffer = async (): Promise<{ buffer: Uint8Array; filename: string; mimeType: string }> => {
+                const toCsvBuffer = (headers: string[], rows: string[][]): Uint8Array => {
+                    const lines = [headers.join(',')].concat(
+                        rows.map(r => r.map(v => {
                             const s = v == null ? '' : String(v);
                             return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
                         }).join(','))
                     );
-                    const csv = lines.join('\n');
-                    return new TextEncoder().encode(csv).buffer as ArrayBuffer;
-                })()
-                : await selectedFile.arrayBuffer();
-            const fileDataBuffer = new Uint8Array(fileBuffer); // Convert ArrayBuffer to Uint8Array
+                    return new TextEncoder().encode(lines.join('\n'));
+                };
+
+                const fallback = async () => {
+                    const originalBuffer = new Uint8Array(await selectedFile.arrayBuffer());
+                    return {
+                        buffer: originalBuffer,
+                        filename: selectedFile.name,
+                        mimeType: selectedFile.type || 'text/csv'
+                    };
+                };
+
+                if (!fixedPreview) {
+                    return fallback();
+                }
+
+                try {
+                    const lowerName = selectedFile.name.toLowerCase();
+
+                    if (lowerName.endsWith('.csv')) {
+                        const text = await selectedFile.text();
+                        const parsed = csvParse(text, { skipEmptyLines: false, dynamicTyping: false });
+                        const rawData = (parsed.data || []) as any[];
+                        if (!rawData || rawData.length === 0) {
+                            throw new Error('No data rows found in CSV.');
+                        }
+                        const headers = (rawData[0] || []).map((cell: any) => (cell ?? '').toString());
+                        const rows = rawData.slice(1).map((row: any[]) => row.map(cell => (cell ?? '').toString()));
+                        const { preview: fixedFull } = autoFixPreview({ headers, rows, totalRows: rows.length }, columnMapping);
+                        const buffer = toCsvBuffer(fixedFull.headers, fixedFull.rows);
+                        return {
+                            buffer,
+                            filename: `autofixed_${selectedFile.name.replace(/\.(csv|xlsx|xls)$/i, '')}.csv`,
+                            mimeType: 'text/csv'
+                        };
+                    }
+
+                    if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
+                        const workbook = new ExcelJS.Workbook();
+                        await workbook.xlsx.load(await selectedFile.arrayBuffer());
+                        const worksheet = workbook.getWorksheet(1);
+                        if (!worksheet) {
+                            throw new Error('No worksheet found in Excel file');
+                        }
+
+                        const headers: string[] = [];
+                        const rows: string[][] = [];
+
+                        const headerRow = worksheet.getRow(1);
+                        headerRow.eachCell((cell: any, colNumber: number) => {
+                            headers[colNumber - 1] = cell.text || `Column${colNumber}`;
+                        });
+
+                        worksheet.eachRow((row: any, rowNumber: number) => {
+                            if (rowNumber === 1) return; // Skip header
+                            const rowData: string[] = [];
+                            row.eachCell((cell: any, colNumber: number) => {
+                                rowData[colNumber - 1] = cell.text || '';
+                            });
+                            rows.push(rowData);
+                        });
+
+                        const { preview: fixedFull } = autoFixPreview({ headers, rows, totalRows: rows.length }, columnMapping);
+                        const buffer = toCsvBuffer(fixedFull.headers, fixedFull.rows);
+                        return {
+                            buffer,
+                            filename: `autofixed_${selectedFile.name.replace(/\.(csv|xlsx|xls)$/i, '')}.csv`,
+                            mimeType: 'text/csv'
+                        };
+                    }
+                } catch (fixError) {
+                    console.warn('Auto-fix failed on full dataset, using original file instead.', fixError);
+                }
+
+                return fallback();
+            };
+
+            const { buffer: fileDataBuffer, filename: uploadFilename, mimeType } = await buildUploadBuffer();
             const fileSize = fileDataBuffer.byteLength; // Use new buffer size if fixed
             setUploadProgress(10); // Show some progress after reading
             // --- Read file buffer --- END ---
 
             setUploadMessage('Sending file to backend...');
             logger.info('Sending file data via IPC...', {
-                filename: fixedPreview ? `autofixed_${selectedFile.name.replace(/\.(csv|xlsx|xls)$/i, '')}.csv` : selectedFile.name,
+                filename: uploadFilename,
                 size: fileSize, // Use file size
-                type: selectedFile.type,
+                type: mimeType,
                 datasetName: currentDatasetName.trim(),
                 mappings: JSON.stringify(backendMappings)
             }, 'DataManagement');
@@ -1223,11 +1344,9 @@ export function DataManagement(): React.ReactElement {
             // Upload file via FastAPI
             const formData = new FormData();
             const blob = new Blob([fileDataBuffer], {
-                type: fixedPreview ? 'text/csv' : selectedFile.type
+                type: mimeType
             });
-            const filename = fixedPreview
-                ? `autofixed_${selectedFile.name.replace(/\.(csv|xlsx|xls)$/i, '')}.csv`
-                : selectedFile.name;
+            const filename = uploadFilename;
 
             formData.append('file', blob, filename);
             formData.append('mappings', JSON.stringify(backendMappings));
@@ -1267,6 +1386,8 @@ export function DataManagement(): React.ReactElement {
                 if (activeProject?.id) {
                     startGlobalPolling(activeProject.id);
                 }
+                setFixedPreview(null);
+                setAutoFixWarnings([]);
             } else {
                 setProcessingStep('complete');
                 setUploadStatus('success');
@@ -1275,6 +1396,8 @@ export function DataManagement(): React.ReactElement {
                 setShowMappingUI(false); // Hide mapping
                 setDataPreview(null); // Clear preview
                 setValidationResults(null);
+                setFixedPreview(null);
+                setAutoFixWarnings([]);
                 // Optionally navigate or reset further state
                 // navigateToHomeWithRefresh(); // Commented out to stay on page
             }
@@ -1296,7 +1419,7 @@ export function DataManagement(): React.ReactElement {
             setGeneralError(errorMessage); // Also show general error if applicable
         }
         // Add activeProject to dependencies if needed, though projectId is captured
-    }, [selectedFile, dataPreview, columnMapping, isColumnMappingComplete, fetchDatasets, startGlobalPolling, activeProject, fixedPreview]); // Removed getElectronApi from dependencies
+    }, [selectedFile, dataPreview, columnMapping, isColumnMappingComplete, fetchDatasets, startGlobalPolling, activeProject, fixedPreview, autoFixPreview]); // Removed getElectronApi from dependencies
 
     // Run DB Import using current mapping
     const handleRunDbImport = useCallback(async () => {
@@ -1992,12 +2115,12 @@ export function DataManagement(): React.ReactElement {
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
-                className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-green-300 dark:border-green-700 border-l-4 border-l-green-500 dark:border-l-green-400 mb-6"
+                className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-lg border border-green-300 dark:border-emerald-800 border-l-4 border-l-green-500 dark:border-l-emerald-500 mb-6"
             >
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-green-100 dark:bg-green-600/20 rounded-lg">
-                            <Database className="w-5 h-5 text-green-700 dark:text-green-300" />
+                        <div className="p-2 bg-green-100 dark:bg-emerald-900/40 rounded-lg">
+                            <Database className="w-5 h-5 text-green-700 dark:text-emerald-400" />
                         </div>
                         <div>
                             <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-50">Active Dataset</h2>
@@ -2028,17 +2151,17 @@ export function DataManagement(): React.ReactElement {
                 </div>
                 {/* Active Dataset Stats Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div className="border border-gray-200 dark:border-gray-600 p-3 rounded-lg bg-gray-50 dark:bg-gray-700/60">
-                        <span className="text-xs uppercase text-gray-500 dark:text-gray-400">Type</span>
-                        <p className="font-medium text-gray-800 dark:text-gray-100">{activeDataset?.type || 'N/A'}</p>
+                    <div className="border border-gray-200 dark:border-slate-700 p-3 rounded-lg bg-gray-50 dark:bg-slate-800/80">
+                        <span className="text-xs uppercase text-gray-500 dark:text-slate-400">Type</span>
+                        <p className="font-medium text-gray-800 dark:text-slate-100">{activeDataset?.type || 'N/A'}</p>
                     </div>
-                    <div className="border border-gray-200 dark:border-gray-600 p-3 rounded-lg bg-gray-50 dark:bg-gray-700/60">
-                        <span className="text-xs uppercase text-gray-500 dark:text-gray-400">Uploaded</span>
-                        <p className="font-medium text-gray-800 dark:text-gray-100">{activeDataset ? formatDate(activeDataset.uploadedAt) : 'N/A'}</p>
+                    <div className="border border-gray-200 dark:border-slate-700 p-3 rounded-lg bg-gray-50 dark:bg-slate-800/80">
+                        <span className="text-xs uppercase text-gray-500 dark:text-slate-400">Uploaded</span>
+                        <p className="font-medium text-gray-800 dark:text-slate-100">{activeDataset ? formatDate(activeDataset.uploadedAt) : 'N/A'}</p>
                     </div>
-                    <div className="border border-gray-200 dark:border-gray-600 p-3 rounded-lg bg-gray-50 dark:bg-gray-700/60">
-                        <span className="text-xs uppercase text-gray-500 dark:text-gray-400">Records</span>
-                        <p className="font-medium text-gray-800 dark:text-gray-100">{activeDataset?.rowCount?.toLocaleString() || 'N/A'}</p>
+                    <div className="border border-gray-200 dark:border-slate-700 p-3 rounded-lg bg-gray-50 dark:bg-slate-800/80">
+                        <span className="text-xs uppercase text-gray-500 dark:text-slate-400">Records</span>
+                        <p className="font-medium text-gray-800 dark:text-slate-100">{activeDataset?.rowCount?.toLocaleString() || 'N/A'}</p>
                     </div>
                 </div>
                 {/* Read status from global store for TrainingStatusDisplay - check if trainingStatus exists */}
@@ -2215,58 +2338,6 @@ export function DataManagement(): React.ReactElement {
             totalRows: preview.totalRows
         };
     };
-
-    // Auto-fix common issues in preview based on mapping
-    const autoFixPreview = useCallback((preview: DataPreview, mapping: ColumnMapping): { preview: DataPreview; warnings: string[] } => {
-        const warnings: string[] = [];
-        const headers = [...preview.headers];
-        const rows = preview.rows.map(r => [...r]);
-
-        const getIndex = (colName?: string) => (colName ? headers.indexOf(colName) : -1);
-
-        const deptIdx = getIndex(mapping.department);
-        const mgrIdx = getIndex(mapping.manager_id);
-        const costIdx = getIndex(mapping.cost);
-
-        // 1) manager_id: fill empties with UNKNOWN or last known per department
-        if (mgrIdx >= 0) {
-            const lastManagerByDept = new Map<string, string>();
-            for (let i = 0; i < rows.length; i++) {
-                const dept = deptIdx >= 0 ? String(rows[i][deptIdx] ?? '').trim() : '';
-                const curMgr = String(rows[i][mgrIdx] ?? '').trim();
-                if (curMgr) {
-                    if (dept) lastManagerByDept.set(dept, curMgr);
-                } else {
-                    const fallback = dept && lastManagerByDept.get(dept) ? lastManagerByDept.get(dept)! : 'UNKNOWN';
-                    rows[i][mgrIdx] = fallback;
-                }
-            }
-            warnings.push('Filled missing manager_id values with last known per department or UNKNOWN.');
-        }
-
-        // 2) cost: strip currency and normalize; set 0 for blanks
-        if (costIdx >= 0) {
-            for (let i = 0; i < rows.length; i++) {
-                const raw = rows[i][costIdx];
-                if (raw === undefined || raw === null || String(raw).trim() === '') {
-                    rows[i][costIdx] = '0';
-                    continue;
-                }
-                let s = String(raw).trim();
-                // Replace thousands separators and keep decimal
-                s = s.replace(/[^0-9,.-]/g, '');
-                // If there are both comma and dot, assume comma is thousands sep
-                if (s.includes(',') && s.includes('.')) s = s.replace(/,/g, '');
-                // If only comma, treat as decimal separator
-                else if (s.includes(',') && !s.includes('.')) s = s.replace(',', '.');
-                const num = Number(s);
-                rows[i][costIdx] = Number.isFinite(num) ? String(num) : '0';
-            }
-            warnings.push('Normalized cost values and set missing to 0.');
-        }
-
-        return { preview: { headers, rows, totalRows: preview.totalRows }, warnings };
-    }, []);
 
     // Helper component for displaying column diagnosis
     const DataDiagnosisDialog: React.FC<{
@@ -2469,27 +2540,27 @@ export function DataManagement(): React.ReactElement {
 
         let statusColor = 'gray';
         let statusIcon = <Loader2 className="w-4 h-4 animate-spin" />;
-        let bgColor = 'bg-gray-50 dark:bg-gray-700/50'; // Default background
-        let borderColor = 'border-gray-200 dark:border-gray-600';
-        let textColor = 'text-gray-700 dark:text-gray-300';
+        let bgColor = 'bg-gray-50 dark:bg-slate-800/80'; // Darker background for dark mode
+        let borderColor = 'border-gray-200 dark:border-slate-600';
+        let textColor = 'text-gray-700 dark:text-slate-200';
 
         if (trainingStatus.status === 'in_progress' || trainingStatus.status === 'queued') {
             statusColor = 'blue';
             statusIcon = <Loader2 className="w-4 h-4 animate-spin" />;
-            bgColor = 'bg-blue-50 dark:bg-blue-900/30';
-            borderColor = 'border-blue-300 dark:border-blue-700/50';
+            bgColor = 'bg-blue-50 dark:bg-blue-950/50';
+            borderColor = 'border-blue-300 dark:border-blue-800';
             textColor = 'text-blue-700 dark:text-blue-300';
         } else if (trainingStatus.status === 'complete') {
             statusColor = 'green';
             statusIcon = <Check className="w-4 h-4" />;
-            bgColor = 'bg-green-50 dark:bg-green-900/30';
-            borderColor = 'border-green-300 dark:border-green-700/50';
-            textColor = 'text-green-700 dark:text-green-300';
+            bgColor = 'bg-green-50 dark:bg-emerald-950/50';
+            borderColor = 'border-green-300 dark:border-emerald-800';
+            textColor = 'text-green-700 dark:text-emerald-300';
         } else if (trainingStatus.status === 'error') {
             statusColor = 'red';
             statusIcon = <X className="w-4 h-4" />;
-            bgColor = 'bg-red-50 dark:bg-red-900/30';
-            borderColor = 'border-red-300 dark:border-red-700/50';
+            bgColor = 'bg-red-50 dark:bg-red-950/50';
+            borderColor = 'border-red-300 dark:border-red-800';
             textColor = 'text-red-700 dark:text-red-300';
         }
 
@@ -3260,7 +3331,7 @@ export function DataManagement(): React.ReactElement {
                                         initial={{ opacity: 0, x: -20 }}
                                         animate={{ opacity: 1, x: 0 }}
                                         transition={{ duration: 0.5, delay: 0.1 }}
-                                        className="bg-white dark:bg-gray-800/70 p-6 rounded-xl shadow-lg border border-gray-200/80 dark:border-gray-700/50 flex-1 overflow-hidden flex flex-col"
+                                        className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-lg border border-gray-200/80 dark:border-slate-700 flex-1 overflow-hidden flex flex-col"
                                     >
                                         <div className="flex items-center justify-between mb-5">
                                             <div className="flex items-center gap-3">
@@ -3312,10 +3383,10 @@ export function DataManagement(): React.ReactElement {
                                                         <div
                                                             key={dataset.id}
                                                             className={`p-4 rounded-lg border transition-all duration-200 shadow-sm ${dataset.active
-                                                                ? 'bg-green-50 dark:bg-green-900/30 border-green-400 dark:border-green-600'
+                                                                ? 'bg-green-50 dark:bg-emerald-950/50 border-green-400 dark:border-emerald-700'
                                                                 : selectedDataset === dataset.id
-                                                                    ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 dark:border-blue-600'
-                                                                    : 'bg-white dark:bg-gray-700/50 border-gray-200 dark:border-gray-600/70 hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-md'
+                                                                    ? 'bg-blue-50 dark:bg-blue-950/50 border-blue-400 dark:border-blue-700'
+                                                                    : 'bg-white dark:bg-slate-800/80 border-gray-200 dark:border-slate-600 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md'
                                                                 }`}
                                                         >
                                                             <div className="flex items-start justify-between">

@@ -257,21 +257,31 @@ class ChatbotService {
       return []; // Return empty if no session ID provided
     }
 
+    // Backend expects integer conversation IDs, not client-generated UUIDs
+    // If sessionId is a UUID (contains dashes), use cached messages instead
+    if (sessionId.includes('-')) {
+      return this.getCachedMessages(sessionId).map(msg => ({
+        id: msg.id,
+        sessionId: sessionId,
+        message: msg.text,
+        role: msg.sender === 'user' ? 'user' as const : 'assistant' as const,
+        timestamp: msg.timestamp
+      }));
+    }
+
     try {
-      // Fetching chat history via API
-      // Note: Backend endpoint might need adjustment to match frontend expectations
+      // Fetching chat history via API for numeric conversation IDs
       const response = await api.get(`/chatbot/conversations/${sessionId}`);
       const conversation = response.data;
 
       // Map backend messages to frontend ChatMessage format
-      // Assuming backend returns a conversation object with a 'messages' array
       if (conversation && Array.isArray(conversation.messages)) {
         return conversation.messages.map((msg: any) => ({
           id: msg.id,
-          text: msg.content,
-          sender: msg.role === 'user' ? 'user' : 'bot',
+          sessionId: sessionId,
+          message: msg.content,
+          role: msg.role === 'user' ? 'user' as const : 'assistant' as const,
           timestamp: new Date(msg.created_at),
-          // Add other fields if needed
         }));
       }
 

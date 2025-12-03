@@ -11,6 +11,7 @@ from app.api.v1 import (
     license as license_routes,
     projects,
     playground,
+    reasoning,
     settings,
 )
 from app.core.license import get_current_license, require_license_tier
@@ -36,6 +37,7 @@ protected_router.include_router(
 )
 protected_router.include_router(settings.router, prefix="/settings", tags=["settings"])
 protected_router.include_router(projects.router, tags=["projects"])
+protected_router.include_router(reasoning.router, prefix="/reasoning", tags=["reasoning"])
 
 # Expose license routes without the dependency so activation/status endpoints stay reachable
 api_router = APIRouter()

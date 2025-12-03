@@ -44,15 +44,25 @@ class LicenseValidator:
     PROD_LICENSE_PATH = Path("/etc/churnvision/license.key")
     DEV_LICENSE_PATH = Path("./license.key")
 
-    # Environment
-    IS_DEV_MODE = os.getenv("ENVIRONMENT", "development") == "development"
+    @classmethod
+    def _is_dev_mode(cls) -> bool:
+        """
+        Determine if we are running in development.
+
+        Uses the app settings (preferred) and falls back to ENVIRONMENT env var so
+        local/dev containers that may not export ENVIRONMENT still get dev behavior.
+        """
+        try:
+            return settings.ENVIRONMENT.lower() == "development" or settings.DEBUG
+        except Exception:
+            return os.getenv("ENVIRONMENT", "development") == "development"
 
     @classmethod
     def get_license_path(cls) -> Path:
         """Get the appropriate license file path based on environment"""
         if cls.CUSTOM_LICENSE_PATH:
             return Path(cls.CUSTOM_LICENSE_PATH)
-        if cls.IS_DEV_MODE:
+        if cls._is_dev_mode():
             return cls.DEV_LICENSE_PATH
         return cls.PROD_LICENSE_PATH
 
@@ -164,9 +174,9 @@ class LicenseValidator:
         license_key = cls.load_license()
 
         # In dev mode, allow running without a signed key or with the placeholder dev key
-        if cls.IS_DEV_MODE and (not license_key or license_key.strip() == "dev-license-key"):
+        if cls._is_dev_mode() and (not license_key or license_key.strip() == "dev-license-key"):
             return LicenseInfo(
-                company_name="Development Mode",
+                company_name="Development Admin",
                 license_type="enterprise",
                 max_employees=999999,
                 issued_at=datetime.utcnow(),

@@ -5,10 +5,10 @@ from enum import Enum
 
 
 class ChurnRiskLevel(str, Enum):
+    """Standard risk levels - 3 levels only for consistency"""
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
-    CRITICAL = "critical"
 
 
 class EmployeeChurnFeatures(BaseModel):

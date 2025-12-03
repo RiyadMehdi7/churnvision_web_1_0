@@ -9,7 +9,7 @@ export const UNAUTHORIZED_EVENT = 'churnvision:unauthorized';
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  withCredentials: true, // Enable cookies for session management
+  withCredentials: false, // Use bearer token auth; avoid CORS credential restrictions
 });
 
 // Request logging (dev only)

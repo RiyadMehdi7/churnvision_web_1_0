@@ -150,7 +150,7 @@ class EmployeeService {
       console.log('Successfully fetched employee data via API for project:', projectId, { count: responseRows.length });
       if (!responseRows || responseRows.length === 0) {
         console.warn('No employee data received from the backend for project:', projectId);
-        this.saveToCache(projectId, []);
+        this.clearCache(projectId);
         return [];
       }
 
@@ -204,7 +204,7 @@ class EmployeeService {
         return normalizedEmployees;
       } else {
         console.warn(`No employees found in the API response for project ${projectId}`);
-        this.saveToCache(projectId, []); // Cache the empty result
+        this.clearCache(projectId);
         return [];
       }
     } catch (error) {
@@ -216,6 +216,11 @@ class EmployeeService {
 
   // Save employee data to cache
   private saveToCache(projectId: string | null, employees: ApiEmployee[]): void {
+    if (!employees || employees.length === 0) {
+      console.log('Skipping cache save for empty employee list.');
+      return;
+    }
+
     try {
       const cacheData = {
         timestamp: Date.now(),
@@ -226,6 +231,15 @@ class EmployeeService {
       console.log(`Saved employees to cache with key: ${getEmployeesCacheKey(projectId)}`);
     } catch (error) {
       console.error('Error saving employees to cache:', error);
+    }
+  }
+
+  // Clear cached data for a project (used when we get empty responses)
+  private clearCache(projectId: string | null): void {
+    try {
+      localStorage.removeItem(getEmployeesCacheKey(projectId));
+    } catch (error) {
+      console.error('Error clearing employees cache:', error);
     }
   }
 
@@ -241,13 +255,18 @@ class EmployeeService {
       }
 
       const { timestamp, data } = JSON.parse(cachedData);
+      const isEmpty = !data || (Array.isArray(data) && data.length === 0);
 
       // Check if cache is expired
       if (Date.now() - timestamp > CACHE_EXPIRY_TIME && !this.isOfflineMode) {
         return null;
       }
 
-      return data;
+      if (isEmpty && !this.isOfflineMode) {
+        return null;
+      }
+
+      return data as ApiEmployee[] || null;
     } catch (error) {
       console.error('Error retrieving employees from cache:', error);
       return null;

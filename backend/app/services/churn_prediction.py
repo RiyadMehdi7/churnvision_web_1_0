@@ -136,12 +136,10 @@ class ChurnPredictionService:
         return feature_array_scaled
 
     def _determine_risk_level(self, probability: float) -> ChurnRiskLevel:
-        """Determine risk level based on churn probability"""
-        if probability >= 0.75:
-            return ChurnRiskLevel.CRITICAL
-        elif probability >= 0.5:
+        """Determine risk level based on churn probability (3 levels: Low, Medium, High)"""
+        if probability >= 0.60:
             return ChurnRiskLevel.HIGH
-        elif probability >= 0.25:
+        elif probability >= 0.30:
             return ChurnRiskLevel.MEDIUM
         else:
             return ChurnRiskLevel.LOW

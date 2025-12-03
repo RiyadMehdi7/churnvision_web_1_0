@@ -25,6 +25,11 @@ const FEATURE_ACCESS: Record<LicenseTier, string[]> = {
     enterprise: ['home', 'data-management', 'settings', 'ai-assistant', 'playground']
 };
 
+// Dev override: always grant enterprise in development to unlock all pages
+const DEV_MODE =
+    (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.MODE === 'development') ||
+    process.env.NODE_ENV === 'development';
+
 // --- Context Setup ---
 interface LicenseContextType {
     licenseStatus: string;
@@ -99,6 +104,11 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
     // Load cached license tier on mount
     useEffect(() => {
         const cachedTier = localStorage.getItem('licenseTier') as LicenseTier;
+        if (DEV_MODE) {
+            setLicenseTierState('enterprise');
+            localStorage.setItem('licenseTier', 'enterprise');
+            return;
+        }
         if (cachedTier && ['starter', 'pro', 'enterprise'].includes(cachedTier)) {
             setLicenseTierState(cachedTier);
         }
@@ -118,6 +128,18 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
         let isMounted = true;
 
         const fetchInitialData = async () => {
+            // Short-circuit in dev: grant enterprise tier and active status
+            if (DEV_MODE) {
+                setCurrentLicenseState({
+                    status: 'ACTIVE',
+                    data: { tier: 'enterprise', expires_at: null, is_licensed: true }
+                });
+                setLicenseTierState('enterprise');
+                localStorage.setItem('licenseTier', 'enterprise');
+                setIsLoading(false);
+                return;
+            }
+
             if (!isMounted) return;
             setIsLoading(true);
             setError(null);

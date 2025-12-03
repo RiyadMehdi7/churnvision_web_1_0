@@ -30,7 +30,7 @@ class EmployeeRecord(BaseModel):
     tenure: Optional[float] = None
     employee_cost: Optional[float] = None
     resign_proba: Optional[float] = None
-    shap_values: Optional[Dict[str, float]] = None
+    shap_values: Optional[Dict[str, Any]] = None
     additional_data: Optional[Dict[str, Any]] = None
     termination_date: Optional[str] = None
     reasoning_churn_risk: Optional[float] = None
@@ -162,7 +162,7 @@ async def _hydrate_hr_data_from_active_dataset(db: AsyncSession) -> Optional[str
 async def read_employees(
     db: AsyncSession = Depends(get_db),
     skip: int = 0,
-    limit: int = 10000,
+    limit: Optional[int] = None,
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """
@@ -207,9 +207,11 @@ async def read_employees(
             )
             .outerjoin(ChurnReasoning, ChurnReasoning.hr_code == HRDataInput.hr_code)
             .where(HRDataInput.dataset_id == dataset_id)
-            .offset(skip)
-            .limit(limit)
         )
+        if skip:
+            query = query.offset(skip)
+        if limit and limit > 0:
+            query = query.limit(limit)
         result = await db.execute(query)
 
         employees: List[EmployeeRecord] = []

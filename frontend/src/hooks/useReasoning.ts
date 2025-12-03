@@ -133,7 +133,9 @@ export function useBatchReasoning() {
 
         try {
           const reasoning = await reasoningService.getEmployeeReasoning(hrCode);
-          reasoningData.push(reasoning);
+          if (reasoning !== null) {
+            reasoningData.push(reasoning);
+          }
         } catch (error) {
           // Skip failed items
           console.error(`Failed to get reasoning for ${hrCode}:`, error);

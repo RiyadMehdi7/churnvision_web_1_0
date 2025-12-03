@@ -45,6 +45,25 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None,
 )
 
+# CORS origins configuration (defined early for use in exception handler)
+is_dev_env = settings.DEBUG or settings.ENVIRONMENT.lower() == "development"
+cors_origins = (
+    ["http://localhost:3000", "http://localhost:4001", "http://127.0.0.1:3000", "http://127.0.0.1:4001"]
+    if is_dev_env
+    else (settings.ALLOWED_ORIGINS or ["http://localhost:3000", "http://localhost:4001"])
+)
+
+
+def get_cors_headers(request: Request) -> dict:
+    """Get CORS headers based on request origin."""
+    origin = request.headers.get("origin", "")
+    if origin in cors_origins:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+        }
+    return {}
+
 
 # Global exception handler - catches all unhandled exceptions
 @app.exception_handler(Exception)
@@ -63,6 +82,9 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         f"Traceback: {traceback.format_exc()}"
     )
 
+    # Get CORS headers for the response
+    headers = get_cors_headers(request)
+
     # In production, don't expose internal error details
     if settings.ENVIRONMENT.lower() == "production":
         return JSONResponse(
@@ -73,6 +95,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
                 timestamp=datetime.utcnow().isoformat(),
                 path=request.url.path,
             ).model_dump(),
+            headers=headers,
         )
 
     # In development, include full error details
@@ -84,13 +107,15 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
             timestamp=datetime.utcnow().isoformat(),
             path=request.url.path,
         ).model_dump(),
+        headers=headers,
     )
 
 
 # CORS Middleware (env-driven)
+# When credentials are needed, we must specify exact origins (not "*")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS or ["http://localhost:4001", "http://localhost:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

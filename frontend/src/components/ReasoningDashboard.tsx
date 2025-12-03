@@ -75,8 +75,41 @@ const ScoreCard: React.FC<{
   );
 };
 
-const MLFactorsList: React.FC<{ contributors: MLContributor[] }> = ({ contributors }) => {
-  const topFactors = contributors
+const MLFactorsList: React.FC<{ contributors: MLContributor[] | string | Record<string, any> | null | undefined }> = ({ contributors }) => {
+  // Handle different data formats from backend
+  let normalizedContributors: MLContributor[] = [];
+
+  if (!contributors) {
+    normalizedContributors = [];
+  } else if (Array.isArray(contributors)) {
+    normalizedContributors = contributors;
+  } else if (typeof contributors === 'string') {
+    // Parse JSON string if needed
+    try {
+      const parsed = JSON.parse(contributors);
+      if (Array.isArray(parsed)) {
+        normalizedContributors = parsed;
+      } else if (typeof parsed === 'object') {
+        // Convert object format {feature: value} to array
+        normalizedContributors = Object.entries(parsed).map(([feature, value]) => ({
+          feature,
+          value: value,
+          importance: typeof value === 'number' ? value : 0.1
+        }));
+      }
+    } catch {
+      normalizedContributors = [];
+    }
+  } else if (typeof contributors === 'object') {
+    // Convert object format {feature: value} to array
+    normalizedContributors = Object.entries(contributors).map(([feature, value]) => ({
+      feature,
+      value: value,
+      importance: typeof value === 'number' ? value : 0.1
+    }));
+  }
+
+  const topFactors = normalizedContributors
     .sort((a, b) => Math.abs(b.importance) - Math.abs(a.importance))
     .slice(0, 8);
 
@@ -115,8 +148,26 @@ const MLFactorsList: React.FC<{ contributors: MLContributor[] }> = ({ contributo
   );
 };
 
-const BusinessRulesList: React.FC<{ alerts: HeuristicAlert[] }> = ({ alerts }) => {
-  if (alerts.length === 0) {
+const BusinessRulesList: React.FC<{ alerts: HeuristicAlert[] | string | null | undefined }> = ({ alerts }) => {
+  // Handle different data formats from backend
+  let normalizedAlerts: HeuristicAlert[] = [];
+
+  if (!alerts) {
+    normalizedAlerts = [];
+  } else if (Array.isArray(alerts)) {
+    normalizedAlerts = alerts;
+  } else if (typeof alerts === 'string') {
+    try {
+      const parsed = JSON.parse(alerts);
+      if (Array.isArray(parsed)) {
+        normalizedAlerts = parsed;
+      }
+    } catch {
+      normalizedAlerts = [];
+    }
+  }
+
+  if (normalizedAlerts.length === 0) {
     return (
       <div className="text-center py-4">
         <CheckCircle className="w-6 h-6 mx-auto mb-2 text-green-500" />
@@ -127,7 +178,7 @@ const BusinessRulesList: React.FC<{ alerts: HeuristicAlert[] }> = ({ alerts }) =
 
   return (
     <div className="space-y-2">
-      {alerts.map((alert, index) => (
+      {normalizedAlerts.map((alert, index) => (
         <div key={index} className="p-3 bg-orange-50 border border-orange-200 rounded">
           <div className="flex items-start justify-between">
             <div className="flex-1">
@@ -202,10 +253,22 @@ export const ReasoningDashboard: React.FC<ReasoningDashboardProps> = ({
     );
   }
 
+  // Ensure heuristic_alerts and ml_contributors are arrays (may come as JSON strings from old data)
+  const heuristicAlerts = Array.isArray(reasoning.heuristic_alerts)
+    ? reasoning.heuristic_alerts
+    : (typeof reasoning.heuristic_alerts === 'string'
+        ? (() => { try { return JSON.parse(reasoning.heuristic_alerts); } catch { return []; } })()
+        : []);
+  const mlContributors = Array.isArray(reasoning.ml_contributors)
+    ? reasoning.ml_contributors
+    : (typeof reasoning.ml_contributors === 'string'
+        ? (() => { try { return JSON.parse(reasoning.ml_contributors); } catch { return []; } })()
+        : []);
+
   // Check if business rules are actually used and calculate total impact
-  const hasBusinessRuleAlerts = reasoning.heuristic_alerts && reasoning.heuristic_alerts.length > 0;
-  const totalRuleImpact = hasBusinessRuleAlerts 
-    ? reasoning.heuristic_alerts.reduce((sum, alert) => sum + alert.impact, 0)
+  const hasBusinessRuleAlerts = heuristicAlerts && heuristicAlerts.length > 0;
+  const totalRuleImpact = hasBusinessRuleAlerts
+    ? heuristicAlerts.reduce((sum: number, alert: any) => sum + (alert.impact || 0), 0)
     : 0;
   const businessRulesNotUsed = !hasBusinessRuleAlerts && totalRuleImpact === 0;
 
@@ -219,7 +282,9 @@ export const ReasoningDashboard: React.FC<ReasoningDashboardProps> = ({
             <span className="truncate">Risk Analysis: {employeeName}</span>
           </h1>
           <p className="text-xs sm:text-sm text-gray-600 mt-1">
-            Updated: {new Date(reasoning.updated_at).toLocaleDateString()} {new Date(reasoning.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            Updated: {reasoning.updated_at ? (
+              `${new Date(reasoning.updated_at).toLocaleDateString()} ${new Date(reasoning.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            ) : 'Recently'}
           </p>
         </div>
         {onClose && (
@@ -247,7 +312,7 @@ export const ReasoningDashboard: React.FC<ReasoningDashboardProps> = ({
         <ScoreCard
           label="Business Rules"
           score={totalRuleImpact}
-          description={businessRulesNotUsed ? "No rules triggered" : `${reasoning.heuristic_alerts.length} rule${reasoning.heuristic_alerts.length === 1 ? '' : 's'} triggered`}
+          description={businessRulesNotUsed ? "No rules triggered" : `${heuristicAlerts.length} rule${heuristicAlerts.length === 1 ? '' : 's'} triggered`}
           showNotUsed={businessRulesNotUsed}
         />
       </div>
@@ -259,9 +324,9 @@ export const ReasoningDashboard: React.FC<ReasoningDashboardProps> = ({
             <Users className="w-4 h-4 text-purple-600 flex-shrink-0" />
             <span className="font-medium text-purple-900">Behavioral Stage</span>
           </div>
-          <p className="text-purple-800 font-semibold text-sm sm:text-base">{reasoning.stage}</p>
+          <p className="text-purple-800 font-semibold text-sm sm:text-base">{reasoning.stage || 'Unknown'}</p>
           <p className="text-xs text-purple-600 mt-1">
-            Stage risk: {Math.round(reasoning.stage_score * 100)}%
+            Stage risk: {reasoning.stage_score != null ? Math.round(reasoning.stage_score * 100) : 0}%
           </p>
         </div>
         <div className="p-3 bg-blue-50 border border-blue-200 rounded">
@@ -269,7 +334,13 @@ export const ReasoningDashboard: React.FC<ReasoningDashboardProps> = ({
             <BarChart3 className="w-4 h-4 text-blue-600 flex-shrink-0" />
             <span className="font-medium text-blue-900">Confidence</span>
           </div>
-          <p className="text-blue-800 font-semibold text-sm sm:text-base">{Math.round(reasoning.confidence_level * 100)}%</p>
+          <p className="text-blue-800 font-semibold text-sm sm:text-base">
+            {reasoning.confidence_level != null
+              ? (reasoning.confidence_level > 1
+                  ? Math.round(reasoning.confidence_level)
+                  : Math.round(reasoning.confidence_level * 100))
+              : 70}%
+          </p>
           <p className="text-xs text-blue-600 mt-1">
             Model confidence level
           </p>
@@ -334,11 +405,11 @@ export const ReasoningDashboard: React.FC<ReasoningDashboardProps> = ({
       {/* Responsive ML Factors and Business Rules Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
         <SimpleCard title="Top ML Risk Factors">
-          <MLFactorsList contributors={reasoning.ml_contributors} />
+          <MLFactorsList contributors={mlContributors} />
         </SimpleCard>
 
         <SimpleCard title="Business Rule Alerts">
-          <BusinessRulesList alerts={reasoning.heuristic_alerts} />
+          <BusinessRulesList alerts={heuristicAlerts} />
         </SimpleCard>
       </div>
 

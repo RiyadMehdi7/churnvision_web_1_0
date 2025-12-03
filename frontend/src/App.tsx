@@ -560,7 +560,7 @@ export const App: React.FC = (): React.ReactElement => {
       return;
     }
 
-    const minVisibleMs = 900;
+    const minVisibleMs = 13000; // ~13 seconds for full animation
     const startTime = performance.now();
     let hasCompleted = false;
 
@@ -575,13 +575,8 @@ export const App: React.FC = (): React.ReactElement => {
       window.setTimeout(() => setShowLaunchAnimation(false), remaining);
     };
 
-    if (document.readyState === 'complete') {
-      requestAnimationFrame(hideOverlay);
-    } else {
-      window.addEventListener('load', hideOverlay, { once: true });
-    }
-
-    const fallbackTimeout = window.setTimeout(hideOverlay, 2400);
+    // Don't hide on load - wait for the full animation
+    const fallbackTimeout = window.setTimeout(hideOverlay, 15000);
 
     return () => {
       window.removeEventListener('load', hideOverlay);

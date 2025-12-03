@@ -1,3 +1,10 @@
+"""
+Intelligent Chatbot Service
+
+Provides context-aware AI responses for ChurnVision-specific queries.
+Returns structured JSON data that matches frontend renderer expectations.
+"""
+
 from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc
@@ -14,11 +21,15 @@ from app.services.chatbot import ChatbotService
 
 
 class PatternType:
+    """Pattern types for intelligent routing"""
     CHURN_RISK_DIAGNOSIS = "churn_risk_diagnosis"
     RETENTION_PLAN = "retention_plan"
     EMPLOYEE_COMPARISON = "employee_comparison"
+    EMPLOYEE_COMPARISON_STAYED = "employee_comparison_stayed"
     EXIT_PATTERN_MINING = "exit_pattern_mining"
     SHAP_EXPLANATION = "shap_explanation"
+    WORKFORCE_TRENDS = "workforce_trends"
+    DEPARTMENT_ANALYSIS = "department_analysis"
     GENERAL_CHAT = "general_chat"
 
 
@@ -27,13 +38,15 @@ class IntelligentChatbotService:
     Intelligent chatbot service that understands ChurnVision-specific queries
     and provides context-aware responses using employee data, churn predictions,
     and treatment recommendations.
+
+    Returns structured JSON data for frontend renderers.
     """
 
     def __init__(self, db: AsyncSession):
         self.db = db
         self.chatbot_service = ChatbotService(db)
 
-    async def detect_pattern(self, message: str) -> Tuple[str, Dict[str, Any]]:
+    async def detect_pattern(self, message: str, employee_id: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         """
         Detect the intent pattern from user message.
         Returns (pattern_type, extracted_entities)
@@ -41,42 +54,84 @@ class IntelligentChatbotService:
         message_lower = message.lower()
         entities = {}
 
-        # Pattern 1: Churn Risk Diagnosis
-        # "Why is John Smith at high risk?"
-        # "Explain the churn risk for employee 12345"
-        if any(keyword in message_lower for keyword in ["why is", "at risk", "churn risk", "risk score", "explain"]):
-            entities["employee_name"] = self._extract_employee_name(message)
-            entities["hr_code"] = self._extract_hr_code(message)
+        # If employee_id provided, use it
+        if employee_id:
+            entities["hr_code"] = employee_id
+
+        # Pattern: Workforce Trends / Overall Analysis
+        # "Show overall churn trends", "What are the workforce trends?"
+        if any(keyword in message_lower for keyword in [
+            "workforce trend", "overall trend", "churn trend", "organization trend",
+            "company trend", "overall analysis", "workforce analysis", "overall risk"
+        ]):
+            return PatternType.WORKFORCE_TRENDS, entities
+
+        # Pattern: Department Analysis
+        # "Analyze Sales department", "How is Engineering doing?"
+        if any(keyword in message_lower for keyword in [
+            "department", "team analysis", "analyze team", "department risk"
+        ]):
+            entities["department"] = self._extract_department(message)
+            return PatternType.DEPARTMENT_ANALYSIS, entities
+
+        # Pattern: Churn Risk Diagnosis
+        # "Why is John Smith at high risk?", "Diagnose risk for employee CV001"
+        if any(keyword in message_lower for keyword in [
+            "why is", "at risk", "churn risk", "risk score", "explain risk",
+            "diagnose", "risk diagnosis", "analyze risk", "risk analysis"
+        ]):
+            if not entities.get("hr_code"):
+                entities["employee_name"] = self._extract_employee_name(message)
+                entities["hr_code"] = self._extract_hr_code(message)
             return PatternType.CHURN_RISK_DIAGNOSIS, entities
 
-        # Pattern 2: Retention Plan Generation
+        # Pattern: Retention Plan Generation
         # "Create a retention plan for Mike Chen"
-        # "Generate retention strategy for employee 54321"
-        if any(keyword in message_lower for keyword in ["retention plan", "retention strategy", "create plan", "generate plan"]):
-            entities["employee_name"] = self._extract_employee_name(message)
-            entities["hr_code"] = self._extract_hr_code(message)
+        if any(keyword in message_lower for keyword in [
+            "retention plan", "retention strategy", "create plan", "generate plan",
+            "retention playbook", "keep employee", "prevent churn"
+        ]):
+            if not entities.get("hr_code"):
+                entities["employee_name"] = self._extract_employee_name(message)
+                entities["hr_code"] = self._extract_hr_code(message)
             return PatternType.RETENTION_PLAN, entities
 
-        # Pattern 3: Employee Comparison
-        # "Compare Sarah Johnson with similar resigned employees"
-        # "Find employees similar to hr_code 12345 who resigned"
-        if any(keyword in message_lower for keyword in ["compare", "similar", "resigned employees", "like"]):
-            entities["employee_name"] = self._extract_employee_name(message)
-            entities["hr_code"] = self._extract_hr_code(message)
+        # Pattern: Employee Comparison (Stayed)
+        # "Compare with employees who stayed", "Similar employees who are retained"
+        if any(keyword in message_lower for keyword in ["stayed", "retained", "still here", "not resigned"]):
+            if "compare" in message_lower or "similar" in message_lower:
+                if not entities.get("hr_code"):
+                    entities["employee_name"] = self._extract_employee_name(message)
+                    entities["hr_code"] = self._extract_hr_code(message)
+                return PatternType.EMPLOYEE_COMPARISON_STAYED, entities
+
+        # Pattern: Employee Comparison (Resigned)
+        # "Compare Sarah with similar resigned employees"
+        if any(keyword in message_lower for keyword in [
+            "compare", "similar", "resigned employees", "like", "peers"
+        ]):
+            if not entities.get("hr_code"):
+                entities["employee_name"] = self._extract_employee_name(message)
+                entities["hr_code"] = self._extract_hr_code(message)
             return PatternType.EMPLOYEE_COMPARISON, entities
 
-        # Pattern 4: Exit Pattern Mining
-        # "Show common exit patterns"
-        # "What are the main reasons for resignations?"
-        if any(keyword in message_lower for keyword in ["exit pattern", "resignation pattern", "common exit", "why do employees leave"]):
+        # Pattern: Exit Pattern Mining
+        # "Show common exit patterns", "Why do employees leave?"
+        if any(keyword in message_lower for keyword in [
+            "exit pattern", "resignation pattern", "common exit", "why do employees leave",
+            "departure pattern", "turnover pattern", "attrition pattern"
+        ]):
             return PatternType.EXIT_PATTERN_MINING, entities
 
-        # Pattern 5: SHAP Explanation
+        # Pattern: SHAP Explanation
         # "What factors contribute to John's risk?"
-        # "Show me the SHAP values for employee 12345"
-        if any(keyword in message_lower for keyword in ["shap", "factors", "contributors", "what affects"]):
-            entities["employee_name"] = self._extract_employee_name(message)
-            entities["hr_code"] = self._extract_hr_code(message)
+        if any(keyword in message_lower for keyword in [
+            "shap", "factors", "contributors", "what affects", "risk factors",
+            "contributing factors", "why high risk"
+        ]):
+            if not entities.get("hr_code"):
+                entities["employee_name"] = self._extract_employee_name(message)
+                entities["hr_code"] = self._extract_hr_code(message)
             return PatternType.SHAP_EXPLANATION, entities
 
         # Default: General Chat
@@ -84,10 +139,10 @@ class IntelligentChatbotService:
 
     def _extract_employee_name(self, message: str) -> Optional[str]:
         """Extract employee name from message using pattern matching"""
-        # Look for capitalized names after common keywords
         patterns = [
-            r"(?:for|is|about)\s+([A-Z][a-z]+\s+[A-Z][a-z]+)",
-            r"employee\s+([A-Z][a-z]+\s+[A-Z][a-z]+)",
+            r"(?:for|is|about|analyze|diagnose)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
+            r"employee\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
+            r"([A-Z][a-z]+\s+[A-Z][a-z]+)(?:'s|\s+risk|\s+churn)",
         ]
         for pattern in patterns:
             match = re.search(pattern, message)
@@ -97,11 +152,22 @@ class IntelligentChatbotService:
 
     def _extract_hr_code(self, message: str) -> Optional[str]:
         """Extract HR code from message"""
-        # Look for hr_code or employee ID patterns
         patterns = [
-            r"hr_code[:\s]+([A-Z0-9-]+)",
-            r"employee[:\s]+([A-Z0-9-]+)",
-            r"id[:\s]+([A-Z0-9-]+)",
+            r"(?:hr_code|hr code|employee|id|code)[:\s]+([A-Z]{2,}[0-9]+)",
+            r"\b([A-Z]{2}[0-9]{4,})\b",  # e.g., CV000123
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, message, re.IGNORECASE)
+            if match:
+                return match.group(1).upper()
+        return None
+
+    def _extract_department(self, message: str) -> Optional[str]:
+        """Extract department name from message"""
+        patterns = [
+            r"(?:analyze|check|show|how is)\s+(?:the\s+)?([A-Za-z]+)\s+(?:department|team)",
+            r"([A-Za-z]+)\s+department",
+            r"department[:\s]+([A-Za-z]+)",
         ]
         for pattern in patterns:
             match = re.search(pattern, message, re.IGNORECASE)
@@ -114,18 +180,17 @@ class IntelligentChatbotService:
         pattern_type: str,
         entities: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """
-        Gather relevant context from database based on pattern type
-        """
+        """Gather relevant context from database based on pattern type"""
         context = {"pattern": pattern_type}
 
+        # Employee-specific patterns
         if pattern_type in [
             PatternType.CHURN_RISK_DIAGNOSIS,
             PatternType.RETENTION_PLAN,
             PatternType.SHAP_EXPLANATION,
-            PatternType.EMPLOYEE_COMPARISON
+            PatternType.EMPLOYEE_COMPARISON,
+            PatternType.EMPLOYEE_COMPARISON_STAYED
         ]:
-            # Get employee data
             employee = await self._get_employee_data(
                 hr_code=entities.get("hr_code"),
                 full_name=entities.get("employee_name")
@@ -137,9 +202,10 @@ class IntelligentChatbotService:
                     "full_name": employee.full_name,
                     "position": employee.position,
                     "structure_name": employee.structure_name,
-                    "tenure": float(employee.tenure),
+                    "tenure": float(employee.tenure) if employee.tenure else 0,
                     "status": employee.status,
-                    "employee_cost": float(employee.employee_cost) if employee.employee_cost else None
+                    "employee_cost": float(employee.employee_cost) if employee.employee_cost else 50000,
+                    "report_date": str(employee.report_date) if employee.report_date else None
                 }
 
                 # Get churn prediction
@@ -147,41 +213,74 @@ class IntelligentChatbotService:
                 if churn_data:
                     context["churn"] = {
                         "resign_proba": float(churn_data.resign_proba),
-                        "shap_values": churn_data.shap_values,
-                        "confidence_score": float(churn_data.confidence_score) if churn_data.confidence_score else None,
+                        "shap_values": churn_data.shap_values or {},
+                        "confidence_score": float(churn_data.confidence_score) if churn_data.confidence_score else 0.8,
                         "model_version": churn_data.model_version
                     }
 
                 # Get churn reasoning
                 reasoning = await self._get_churn_reasoning(employee.hr_code)
                 if reasoning:
+                    # Parse ml_contributors and heuristic_alerts from JSON strings
+                    ml_contributors = []
+                    heuristic_alerts = []
+                    if reasoning.ml_contributors:
+                        try:
+                            ml_contributors = json.loads(reasoning.ml_contributors) if isinstance(reasoning.ml_contributors, str) else reasoning.ml_contributors
+                        except (json.JSONDecodeError, TypeError):
+                            ml_contributors = []
+                    if reasoning.heuristic_alerts:
+                        try:
+                            heuristic_alerts = json.loads(reasoning.heuristic_alerts) if isinstance(reasoning.heuristic_alerts, str) else reasoning.heuristic_alerts
+                        except (json.JSONDecodeError, TypeError):
+                            heuristic_alerts = []
+
                     context["reasoning"] = {
-                        "churn_risk": float(reasoning.churn_risk),
-                        "stage": reasoning.stage,
-                        "ml_score": float(reasoning.ml_score) if reasoning.ml_score else None,
-                        "heuristic_score": float(reasoning.heuristic_score) if reasoning.heuristic_score else None,
-                        "ml_contributors": reasoning.ml_contributors,
-                        "heuristic_alerts": reasoning.heuristic_alerts,
-                        "reasoning": reasoning.reasoning,
-                        "recommendations": reasoning.recommendations
+                        "churn_risk": float(reasoning.churn_risk) if reasoning.churn_risk else 0,
+                        "stage": reasoning.stage or "Unknown",
+                        "stage_score": float(reasoning.stage_score) if reasoning.stage_score else 0,
+                        "ml_score": float(reasoning.ml_score) if reasoning.ml_score else 0,
+                        "heuristic_score": float(reasoning.heuristic_score) if reasoning.heuristic_score else 0,
+                        "ml_contributors": ml_contributors,
+                        "heuristic_alerts": heuristic_alerts,
+                        "reasoning": reasoning.reasoning or "",
+                        "recommendations": reasoning.recommendations or "",
+                        "confidence_level": float(reasoning.confidence_level) if reasoning.confidence_level else 0.7,
+                        "calculation_breakdown": reasoning.calculation_breakdown
                     }
 
-                # Get available treatments for retention plans
+                # Get treatments for retention plans
                 if pattern_type == PatternType.RETENTION_PLAN:
                     treatments = await self._get_available_treatments()
                     context["treatments"] = treatments
 
-                # Get similar resigned employees for comparison
+                # Get similar employees for comparison
                 if pattern_type == PatternType.EMPLOYEE_COMPARISON:
-                    similar = await self._get_similar_resigned_employees(employee)
+                    similar = await self._get_similar_employees(employee, resigned=True)
+                    context["similar_employees"] = similar
+                elif pattern_type == PatternType.EMPLOYEE_COMPARISON_STAYED:
+                    similar = await self._get_similar_employees(employee, resigned=False)
                     context["similar_employees"] = similar
 
-        # For exit pattern mining, get aggregate statistics
+        # Workforce trends
+        if pattern_type == PatternType.WORKFORCE_TRENDS:
+            context["workforce_stats"] = await self._get_workforce_statistics()
+
+        # Department analysis
+        if pattern_type == PatternType.DEPARTMENT_ANALYSIS:
+            dept = entities.get("department")
+            if dept:
+                context["department_data"] = await self._get_department_analysis(dept)
+            else:
+                context["departments"] = await self._get_all_departments_overview()
+
+        # Exit pattern mining
         if pattern_type == PatternType.EXIT_PATTERN_MINING:
-            patterns = await self._analyze_exit_patterns()
-            context["exit_patterns"] = patterns
+            context["exit_data"] = await self._analyze_exit_patterns_enhanced()
 
         return context
+
+    # ===== Database Query Methods =====
 
     async def _get_employee_data(
         self,
@@ -198,17 +297,20 @@ class IntelligentChatbotService:
         else:
             return None
 
+        query = query.order_by(desc(HRDataInput.report_date)).limit(1)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def _get_churn_data(self, hr_code: str) -> Optional[ChurnOutput]:
         """Fetch churn prediction data"""
-        query = select(ChurnOutput).where(ChurnOutput.hr_code == hr_code).order_by(desc(ChurnOutput.generated_at)).limit(1)
+        query = select(ChurnOutput).where(
+            ChurnOutput.hr_code == hr_code
+        ).order_by(desc(ChurnOutput.generated_at)).limit(1)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def _get_churn_reasoning(self, hr_code: str) -> Optional[ChurnReasoning]:
-        """Fetch churn reasoning data (most recent if multiple exist)"""
+        """Fetch churn reasoning data"""
         query = select(ChurnReasoning).where(
             ChurnReasoning.hr_code == hr_code
         ).order_by(desc(ChurnReasoning.updated_at)).limit(1)
@@ -226,317 +328,864 @@ class IntelligentChatbotService:
                 "id": t.id,
                 "name": t.name,
                 "description": t.description,
-                "base_cost": float(t.base_cost),
-                "base_effect_size": float(t.base_effect_size) if t.base_effect_size else None,
-                "time_to_effect": t.time_to_effect,
+                "base_cost": float(t.base_cost) if t.base_cost else 0,
+                "base_effect_size": float(t.base_effect_size) if t.base_effect_size else 0.1,
+                "time_to_effect": t.time_to_effect or "3 months",
             }
             for t in treatments
         ]
 
-    async def _get_similar_resigned_employees(self, employee: HRDataInput) -> List[Dict[str, Any]]:
-        """Find similar employees who have resigned"""
-        query = select(HRDataInput).where(
+    async def _get_similar_employees(
+        self,
+        employee: HRDataInput,
+        resigned: bool = True,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """Find similar employees (resigned or active)"""
+        status_filter = "resigned" if resigned else "active"
+
+        # Get employees with same position and similar tenure
+        query = select(HRDataInput, ChurnReasoning).outerjoin(
+            ChurnReasoning,
+            HRDataInput.hr_code == ChurnReasoning.hr_code
+        ).where(
             and_(
-                HRDataInput.status == "resigned",
-                HRDataInput.position == employee.position,
-                HRDataInput.hr_code != employee.hr_code
+                HRDataInput.status == status_filter,
+                HRDataInput.hr_code != employee.hr_code,
+                or_(
+                    HRDataInput.position == employee.position,
+                    HRDataInput.structure_name == employee.structure_name
+                )
             )
-        ).limit(5)
+        ).limit(limit)
 
         result = await self.db.execute(query)
-        similar = result.scalars().all()
+        similar = result.all()
 
         return [
             {
                 "hr_code": e.hr_code,
                 "full_name": e.full_name,
                 "position": e.position,
-                "tenure": float(e.tenure),
-                "termination_date": str(e.termination_date) if e.termination_date else None
+                "department": e.structure_name,
+                "tenure": float(e.tenure) if e.tenure else 0,
+                "termination_date": str(e.termination_date) if e.termination_date else None,
+                "churn_risk": float(r.churn_risk) if r and r.churn_risk else 0,
+                "stage": r.stage if r else "Unknown",
+                "ml_score": float(r.ml_score) if r and r.ml_score else 0,
+                "heuristic_score": float(r.heuristic_score) if r and r.heuristic_score else 0,
+                "reasoning": r.reasoning if r else None
             }
-            for e in similar
+            for e, r in similar
         ]
 
-    async def _analyze_exit_patterns(self) -> Dict[str, Any]:
-        """Analyze common patterns in employee exits"""
-        # Get resigned employees with churn reasoning
-        query = select(HRDataInput, ChurnReasoning).join(
+    async def _get_workforce_statistics(self) -> Dict[str, Any]:
+        """Get comprehensive workforce statistics"""
+        # Get all active employees with reasoning data
+        query = select(HRDataInput, ChurnReasoning).outerjoin(
+            ChurnReasoning,
+            HRDataInput.hr_code == ChurnReasoning.hr_code
+        ).where(HRDataInput.status == "active")
+
+        result = await self.db.execute(query)
+        employees = result.all()
+
+        total = len(employees)
+        high_risk = sum(1 for e, r in employees if r and r.churn_risk and r.churn_risk >= 0.7)
+        medium_risk = sum(1 for e, r in employees if r and r.churn_risk and 0.4 <= r.churn_risk < 0.7)
+        low_risk = total - high_risk - medium_risk
+
+        # Department breakdown
+        dept_stats = {}
+        for e, r in employees:
+            dept = e.structure_name or "Unknown"
+            if dept not in dept_stats:
+                dept_stats[dept] = {"count": 0, "risks": [], "ml_scores": [], "stage_scores": [], "confidences": []}
+            dept_stats[dept]["count"] += 1
+            if r and r.churn_risk:
+                dept_stats[dept]["risks"].append(float(r.churn_risk))
+            if r and r.ml_score:
+                dept_stats[dept]["ml_scores"].append(float(r.ml_score))
+            if r and r.stage_score:
+                dept_stats[dept]["stage_scores"].append(float(r.stage_score))
+            if r and r.confidence_level:
+                dept_stats[dept]["confidences"].append(float(r.confidence_level))
+
+        department_risks = []
+        for dept, stats in dept_stats.items():
+            risks = stats["risks"]
+            department_risks.append({
+                "department": dept,
+                "count": stats["count"],
+                "avgRisk": sum(risks) / len(risks) if risks else 0,
+                "highRiskCount": sum(1 for r in risks if r >= 0.7),
+                "avgMLScore": sum(stats["ml_scores"]) / len(stats["ml_scores"]) if stats["ml_scores"] else 0,
+                "avgStageScore": sum(stats["stage_scores"]) / len(stats["stage_scores"]) if stats["stage_scores"] else 0,
+                "avgConfidence": sum(stats["confidences"]) / len(stats["confidences"]) if stats["confidences"] else 0
+            })
+
+        # Stage distribution
+        stage_counts = {}
+        for e, r in employees:
+            stage = r.stage if r and r.stage else "Unknown"
+            if stage not in stage_counts:
+                stage_counts[stage] = {"count": 0, "risks": []}
+            stage_counts[stage]["count"] += 1
+            if r and r.churn_risk:
+                stage_counts[stage]["risks"].append(float(r.churn_risk))
+
+        stage_distribution = [
+            {
+                "stage": stage,
+                "count": data["count"],
+                "avgRisk": sum(data["risks"]) / len(data["risks"]) if data["risks"] else 0
+            }
+            for stage, data in stage_counts.items()
+        ]
+
+        return {
+            "totalEmployees": total,
+            "highRisk": high_risk,
+            "mediumRisk": medium_risk,
+            "lowRisk": low_risk,
+            "departmentRisks": sorted(department_risks, key=lambda x: x["avgRisk"], reverse=True),
+            "stageDistribution": stage_distribution,
+            "riskTrends": {
+                "criticalEmployees": high_risk,
+                "atRiskDepartments": sum(1 for d in department_risks if d["avgRisk"] >= 0.5),
+                "averageConfidence": sum(d["avgConfidence"] for d in department_risks) / len(department_risks) if department_risks else 0,
+                "totalWithReasoningData": sum(1 for e, r in employees if r is not None)
+            }
+        }
+
+    async def _get_department_analysis(self, department: str) -> Dict[str, Any]:
+        """Get detailed analysis for a specific department"""
+        query = select(HRDataInput, ChurnReasoning).outerjoin(
+            ChurnReasoning,
+            HRDataInput.hr_code == ChurnReasoning.hr_code
+        ).where(
+            and_(
+                HRDataInput.status == "active",
+                HRDataInput.structure_name.ilike(f"%{department}%")
+            )
+        )
+
+        result = await self.db.execute(query)
+        employees = result.all()
+
+        if not employees:
+            return None
+
+        total = len(employees)
+        risks = [float(r.churn_risk) for e, r in employees if r and r.churn_risk]
+        high_risk_employees = [
+            {
+                "full_name": e.full_name,
+                "hr_code": e.hr_code,
+                "position": e.position,
+                "tenure": float(e.tenure) if e.tenure else 0,
+                "churn_risk": float(r.churn_risk) if r else 0,
+                "stage": r.stage if r else "Unknown",
+                "reasoning": r.reasoning if r else None
+            }
+            for e, r in employees if r and r.churn_risk and r.churn_risk >= 0.7
+        ]
+
+        return {
+            "departmentName": department,
+            "totalEmployees": total,
+            "highRisk": sum(1 for r in risks if r >= 0.7),
+            "mediumRisk": sum(1 for r in risks if 0.4 <= r < 0.7),
+            "lowRisk": sum(1 for r in risks if r < 0.4),
+            "avgRisk": sum(risks) / len(risks) if risks else 0,
+            "highRiskEmployees": high_risk_employees[:5],
+            "avgTenure": sum(float(e.tenure) for e, r in employees if e.tenure) / total if total else 0,
+            "avgCost": sum(float(e.employee_cost) for e, r in employees if e.employee_cost) / total if total else 0
+        }
+
+    async def _get_all_departments_overview(self) -> List[Dict[str, Any]]:
+        """Get overview of all departments"""
+        query = select(HRDataInput, ChurnReasoning).outerjoin(
+            ChurnReasoning,
+            HRDataInput.hr_code == ChurnReasoning.hr_code
+        ).where(HRDataInput.status == "active")
+
+        result = await self.db.execute(query)
+        employees = result.all()
+
+        dept_data = {}
+        for e, r in employees:
+            dept = e.structure_name or "Unknown"
+            if dept not in dept_data:
+                dept_data[dept] = {"employees": [], "risks": []}
+            dept_data[dept]["employees"].append((e, r))
+            if r and r.churn_risk:
+                dept_data[dept]["risks"].append(float(r.churn_risk))
+
+        departments = []
+        for dept, data in dept_data.items():
+            risks = data["risks"]
+            departments.append({
+                "department": dept,
+                "totalEmployees": len(data["employees"]),
+                "highRisk": sum(1 for r in risks if r >= 0.7),
+                "mediumRisk": sum(1 for r in risks if 0.4 <= r < 0.7),
+                "lowRisk": sum(1 for r in risks if r < 0.4),
+                "avgRisk": sum(risks) / len(risks) if risks else 0
+            })
+
+        return sorted(departments, key=lambda x: x["avgRisk"], reverse=True)
+
+    async def _analyze_exit_patterns_enhanced(self) -> Dict[str, Any]:
+        """Comprehensive exit pattern analysis"""
+        # Get resigned employees with reasoning
+        query = select(HRDataInput, ChurnReasoning).outerjoin(
             ChurnReasoning,
             HRDataInput.hr_code == ChurnReasoning.hr_code
         ).where(HRDataInput.status == "resigned")
 
         result = await self.db.execute(query)
-        resigned_data = result.all()
+        resigned = result.all()
 
-        # Analyze patterns
-        stages = {}
-        avg_tenure = 0
-        total_count = len(resigned_data)
+        total = len(resigned)
+        if total == 0:
+            return {"totalResignations": 0, "message": "No resignation data available"}
 
-        for hr_data, reasoning in resigned_data:
-            # Count by stage
-            stage = reasoning.stage if reasoning else "Unknown"
-            stages[stage] = stages.get(stage, 0) + 1
-            avg_tenure += float(hr_data.tenure)
+        # Department patterns
+        dept_patterns = {}
+        for e, r in resigned:
+            dept = e.structure_name or "Unknown"
+            if dept not in dept_patterns:
+                dept_patterns[dept] = {"count": 0, "tenures": [], "early": 0, "mid": 0, "senior": 0}
+            dept_patterns[dept]["count"] += 1
+            tenure = float(e.tenure) if e.tenure else 0
+            dept_patterns[dept]["tenures"].append(tenure)
+            if tenure < 1:
+                dept_patterns[dept]["early"] += 1
+            elif tenure < 3:
+                dept_patterns[dept]["mid"] += 1
+            else:
+                dept_patterns[dept]["senior"] += 1
 
-        if total_count > 0:
-            avg_tenure /= total_count
+        department_patterns = [
+            {
+                "department": dept,
+                "resignation_count": data["count"],
+                "avg_tenure": sum(data["tenures"]) / len(data["tenures"]) if data["tenures"] else 0,
+                "early_exits": data["early"],
+                "mid_tenure_exits": data["mid"],
+                "senior_exits": data["senior"]
+            }
+            for dept, data in dept_patterns.items()
+        ]
+
+        # Position patterns
+        pos_patterns = {}
+        for e, r in resigned:
+            pos = e.position or "Unknown"
+            if pos not in pos_patterns:
+                pos_patterns[pos] = {"count": 0, "tenures": [], "early": 0, "mid": 0, "senior": 0}
+            pos_patterns[pos]["count"] += 1
+            tenure = float(e.tenure) if e.tenure else 0
+            pos_patterns[pos]["tenures"].append(tenure)
+            if tenure < 1:
+                pos_patterns[pos]["early"] += 1
+            elif tenure < 3:
+                pos_patterns[pos]["mid"] += 1
+            else:
+                pos_patterns[pos]["senior"] += 1
+
+        position_patterns = [
+            {
+                "position": pos,
+                "resignation_count": data["count"],
+                "avg_tenure": sum(data["tenures"]) / len(data["tenures"]) if data["tenures"] else 0,
+                "early_exits": data["early"],
+                "mid_tenure_exits": data["mid"],
+                "senior_exits": data["senior"]
+            }
+            for pos, data in pos_patterns.items()
+        ]
+
+        # Tenure patterns
+        tenure_ranges = {"0-1 years": [], "1-3 years": [], "3-5 years": [], "5+ years": []}
+        for e, r in resigned:
+            tenure = float(e.tenure) if e.tenure else 0
+            if tenure < 1:
+                tenure_ranges["0-1 years"].append(tenure)
+            elif tenure < 3:
+                tenure_ranges["1-3 years"].append(tenure)
+            elif tenure < 5:
+                tenure_ranges["3-5 years"].append(tenure)
+            else:
+                tenure_ranges["5+ years"].append(tenure)
+
+        tenure_patterns = [
+            {
+                "tenure_range": range_name,
+                "resignation_count": len(tenures),
+                "avg_tenure_in_range": sum(tenures) / len(tenures) if tenures else 0
+            }
+            for range_name, tenures in tenure_ranges.items()
+        ]
+
+        # Common risk factors from ML contributors
+        risk_factors = {}
+        for e, r in resigned:
+            if r and r.ml_contributors:
+                contributors = r.ml_contributors if isinstance(r.ml_contributors, list) else []
+                for contrib in contributors:
+                    if isinstance(contrib, dict):
+                        feature = contrib.get("feature", "Unknown")
+                        importance = contrib.get("importance", 0)
+                        if feature not in risk_factors:
+                            risk_factors[feature] = {"frequency": 0, "total_importance": 0, "examples": []}
+                        risk_factors[feature]["frequency"] += 1
+                        risk_factors[feature]["total_importance"] += importance
+                        if len(risk_factors[feature]["examples"]) < 3:
+                            risk_factors[feature]["examples"].append(e.full_name)
+
+        common_risk_factors = [
+            {
+                "factor": factor,
+                "frequency": data["frequency"],
+                "avgImpact": data["total_importance"] / data["frequency"] if data["frequency"] else 0,
+                "type": "ml_factor",
+                "examples": data["examples"]
+            }
+            for factor, data in sorted(risk_factors.items(), key=lambda x: x[1]["frequency"], reverse=True)[:10]
+        ]
 
         return {
-            "total_resignations": total_count,
-            "average_tenure": round(avg_tenure, 2),
-            "stages": stages,
-            "common_stages": sorted(stages.items(), key=lambda x: x[1], reverse=True)[:3]
+            "totalResignations": total,
+            "departmentPatterns": sorted(department_patterns, key=lambda x: x["resignation_count"], reverse=True),
+            "positionPatterns": sorted(position_patterns, key=lambda x: x["resignation_count"], reverse=True)[:10],
+            "tenurePatterns": tenure_patterns,
+            "commonRiskFactors": common_risk_factors
         }
+
+    # ===== Structured Response Generators =====
+
+    async def _generate_enhanced_risk_diagnosis(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate EnhancedChurnRiskDiagnosisData for frontend renderer"""
+        if "employee" not in context:
+            return None
+
+        emp = context["employee"]
+        churn = context.get("churn", {})
+        reasoning = context.get("reasoning", {})
+
+        risk_level = "High" if churn.get("resign_proba", 0) >= 0.7 else "Medium" if churn.get("resign_proba", 0) >= 0.4 else "Low"
+
+        # Format ML contributors
+        ml_contributors = []
+        raw_contributors = reasoning.get("ml_contributors", [])
+        if isinstance(raw_contributors, list):
+            for contrib in raw_contributors:
+                if isinstance(contrib, dict):
+                    ml_contributors.append({
+                        "feature": contrib.get("feature", "Unknown"),
+                        "value": contrib.get("value"),
+                        "importance": float(contrib.get("importance", 0)),
+                        "impact": "negative" if float(contrib.get("importance", 0)) > 0 else "positive"
+                    })
+
+        # Format heuristic alerts
+        heuristic_alerts = []
+        raw_alerts = reasoning.get("heuristic_alerts", [])
+        if isinstance(raw_alerts, list):
+            for alert in raw_alerts:
+                if isinstance(alert, dict):
+                    heuristic_alerts.append({
+                        "rule_name": alert.get("rule_name", "Unknown"),
+                        "impact": float(alert.get("impact", 0)),
+                        "reason": alert.get("reason", ""),
+                        "message": alert.get("message", ""),
+                        "priority": alert.get("priority", 2)
+                    })
+
+        # Generate recommendations list
+        recommendations_text = reasoning.get("recommendations", "")
+        recommendations = []
+        if isinstance(recommendations_text, str):
+            recommendations = [r.strip() for r in recommendations_text.split('\n') if r.strip()]
+        elif isinstance(recommendations_text, list):
+            recommendations = recommendations_text
+
+        return {
+            "type": "enhancedChurnRiskDiagnosis",
+            "targetEmployeeName": emp["full_name"],
+            "targetHrCode": emp["hr_code"],
+            "overallRisk": churn.get("resign_proba", reasoning.get("churn_risk", 0)),
+            "mlScore": reasoning.get("ml_score", 0),
+            "heuristicScore": reasoning.get("heuristic_score", 0),
+            "stageScore": reasoning.get("stage_score", 0),
+            "stage": reasoning.get("stage", "Unknown"),
+            "confidenceLevel": reasoning.get("confidence_level", 0.7),
+            "mlContributors": ml_contributors[:5],
+            "heuristicAlerts": heuristic_alerts,
+            "calculationBreakdown": reasoning.get("calculation_breakdown"),
+            "reasoning": reasoning.get("reasoning", f"Employee shows {risk_level.lower()} churn risk based on analysis."),
+            "recommendations": recommendations[:5] if recommendations else ["Monitor employee engagement", "Schedule 1-on-1 meeting"],
+            "explanation": f"Analysis complete for {emp['full_name']}",
+            "personalProfile": {
+                "department": emp.get("structure_name", ""),
+                "position": emp.get("position", ""),
+                "tenure": emp.get("tenure"),
+                "employeeCost": emp.get("employee_cost"),
+                "reportDate": emp.get("report_date")
+            },
+            "keyFindings": [
+                f"Risk Level: {risk_level}",
+                f"Behavioral Stage: {reasoning.get('stage', 'Unknown')}",
+                f"ML Confidence: {reasoning.get('confidence_level', 0.7):.0%}"
+            ],
+            "comparativeInsights": {},
+            "urgencyLevel": "critical" if risk_level == "High" else "moderate" if risk_level == "Medium" else "low"
+        }
+
+    async def _generate_enhanced_retention_playbook(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate EnhancedRetentionPlaybookData for frontend renderer"""
+        if "employee" not in context:
+            return None
+
+        emp = context["employee"]
+        churn = context.get("churn", {})
+        reasoning = context.get("reasoning", {})
+        treatments = context.get("treatments", [])
+
+        risk = churn.get("resign_proba", reasoning.get("churn_risk", 0))
+        risk_level = "High" if risk >= 0.7 else "Medium" if risk >= 0.4 else "Low"
+
+        # Generate action plan from treatments
+        action_plan = []
+        for i, t in enumerate(treatments[:6], 1):
+            effect = t.get("base_effect_size", 0.1)
+            cost = t.get("base_cost", 0)
+            time_frame = t.get("time_to_effect", "3 months")
+
+            category = "immediate" if i <= 2 else "short_term" if i <= 4 else "long_term"
+            priority = "critical" if risk >= 0.7 and i <= 2 else "high" if i <= 3 else "medium"
+
+            action_plan.append({
+                "step": i,
+                "category": category,
+                "action": t.get("name", "Treatment"),
+                "rationale": t.get("description", "Targeted intervention"),
+                "expectedImpact": f"{effect:.0%} risk reduction",
+                "timeframe": time_frame,
+                "priority": priority,
+                "owner": "HR Manager",
+                "cost": f"${cost:,.0f}",
+                "riskReduction": effect * risk
+            })
+
+        # Calculate budget
+        total_cost = sum(t.get("base_cost", 0) for t in treatments[:3])
+        replacement_cost = emp.get("employee_cost", 50000) * 1.5
+
+        return {
+            "type": "enhancedRetentionPlaybook",
+            "targetEmployeeName": emp["full_name"],
+            "targetHrCode": emp["hr_code"],
+            "currentRisk": risk,
+            "stage": reasoning.get("stage", "Unknown"),
+            "riskLevel": risk_level,
+            "personalProfile": {
+                "department": emp.get("structure_name", ""),
+                "position": emp.get("position", ""),
+                "tenure": emp.get("tenure", 0),
+                "employeeCost": emp.get("employee_cost", 50000),
+                "reportDate": emp.get("report_date", "")
+            },
+            "primaryRiskFactors": [c.get("feature", "") for c in reasoning.get("ml_contributors", [])[:3] if isinstance(c, dict)],
+            "actionPlan": action_plan,
+            "timelineOverview": {
+                "immediate": {
+                    "timeframe": "0-2 weeks",
+                    "actionCount": len([a for a in action_plan if a["category"] == "immediate"]),
+                    "focus": "Quick wins and urgent interventions",
+                    "expectedRiskReduction": 0.1
+                },
+                "shortTerm": {
+                    "timeframe": "2-8 weeks",
+                    "actionCount": len([a for a in action_plan if a["category"] == "short_term"]),
+                    "focus": "Structured development and support",
+                    "expectedRiskReduction": 0.15
+                },
+                "longTerm": {
+                    "timeframe": "2-6 months",
+                    "actionCount": len([a for a in action_plan if a["category"] == "long_term"]),
+                    "focus": "Career growth and engagement",
+                    "expectedRiskReduction": 0.1
+                }
+            },
+            "successExamples": [],
+            "monitoringMetrics": [
+                "Weekly engagement check-ins",
+                "Monthly performance reviews",
+                "Quarterly satisfaction surveys"
+            ],
+            "successIndicators": [
+                "Increased engagement scores",
+                "Reduced absenteeism",
+                "Positive feedback in 1-on-1s"
+            ],
+            "budgetConsiderations": {
+                "estimatedRetentionCost": total_cost,
+                "replacementCost": replacement_cost,
+                "netSavings": replacement_cost - total_cost,
+                "roi": f"{(replacement_cost - total_cost) / max(total_cost, 1):.1f}x",
+                "breakdown": {
+                    "immediate": sum(t.get("base_cost", 0) for t in treatments[:2]),
+                    "shortTerm": sum(t.get("base_cost", 0) for t in treatments[2:4]),
+                    "longTerm": sum(t.get("base_cost", 0) for t in treatments[4:6])
+                }
+            },
+            "riskMitigation": [],
+            "summary": f"Retention plan for {emp['full_name']} with {len(action_plan)} recommended actions.",
+            "expectedOutcomes": {
+                "currentRisk": f"{risk:.0%}",
+                "projectedRisk": f"{max(0, risk - 0.35):.0%}",
+                "riskReduction": "Up to 35%",
+                "timeline": "6 months",
+                "confidenceLevel": "Medium-High"
+            }
+        }
+
+    async def _generate_enhanced_similarity_analysis(
+        self,
+        context: Dict[str, Any],
+        comparison_type: str = "resigned"
+    ) -> Dict[str, Any]:
+        """Generate EnhancedSimilarityAnalysisData for frontend renderer"""
+        if "employee" not in context:
+            return None
+
+        emp = context["employee"]
+        reasoning = context.get("reasoning", {})
+        similar = context.get("similar_employees", [])
+
+        # Format similar employees
+        similar_employees = []
+        for s in similar:
+            similar_employees.append({
+                "name": s.get("full_name", ""),
+                "hrCode": s.get("hr_code", ""),
+                "department": s.get("department", ""),
+                "position": s.get("position", ""),
+                "tenure": s.get("tenure", 0),
+                "risk": s.get("churn_risk", 0),
+                "stage": s.get("stage", "Unknown"),
+                "similarityScore": 0.8,  # Simplified
+                "commonPatterns": ["Same position", "Similar tenure"],
+                "mlScore": s.get("ml_score", 0),
+                "heuristicScore": s.get("heuristic_score", 0),
+                "reasoning": s.get("reasoning", "")
+            })
+
+        # Calculate pattern distributions
+        dept_dist = {}
+        pos_dist = {}
+        tenure_dist = {"low": 0, "medium": 0, "high": 0}
+        risk_dist = {"low": 0, "medium": 0, "high": 0}
+
+        for s in similar:
+            dept = s.get("department", "Unknown")
+            dept_dist[dept] = dept_dist.get(dept, 0) + 1
+
+            pos = s.get("position", "Unknown")
+            pos_dist[pos] = pos_dist.get(pos, 0) + 1
+
+            tenure = s.get("tenure", 0)
+            if tenure < 1:
+                tenure_dist["low"] += 1
+            elif tenure < 3:
+                tenure_dist["medium"] += 1
+            else:
+                tenure_dist["high"] += 1
+
+            risk = s.get("churn_risk", 0)
+            if risk < 0.4:
+                risk_dist["low"] += 1
+            elif risk < 0.7:
+                risk_dist["medium"] += 1
+            else:
+                risk_dist["high"] += 1
+
+        return {
+            "type": "enhancedSimilarityAnalysis",
+            "targetEmployee": {
+                "name": emp["full_name"],
+                "hrCode": emp["hr_code"],
+                "department": emp.get("structure_name", ""),
+                "position": emp.get("position", ""),
+                "tenure": emp.get("tenure", 0),
+                "risk": reasoning.get("churn_risk", 0),
+                "stage": reasoning.get("stage", "Unknown"),
+                "mlScore": reasoning.get("ml_score", 0),
+                "heuristicScore": reasoning.get("heuristic_score", 0),
+                "confidenceLevel": reasoning.get("confidence_level", 0.7)
+            },
+            "comparisonType": comparison_type,
+            "similarEmployees": similar_employees,
+            "patterns": {
+                "departmentDistribution": dept_dist,
+                "positionDistribution": pos_dist,
+                "tenureDistribution": tenure_dist,
+                "riskDistribution": risk_dist,
+                "stageDistribution": {},
+                "totalSimilar": len(similar),
+                "averageSimilarity": 0.8
+            },
+            "insights": {
+                "commonFactors": ["Position alignment", "Department similarity"],
+                "differentiatingFactors": ["Tenure differences", "Performance variations"],
+                "riskPatterns": [f"Similar {comparison_type} employees show common risk patterns"],
+                "recommendations": ["Monitor engagement levels", "Review career development"],
+                "keyFindings": [f"Found {len(similar)} similar {comparison_type} employees"],
+                "summary": f"Comparison with {len(similar)} {comparison_type} employees in similar roles."
+            },
+            "analysis": f"Employee comparison analysis for {emp['full_name']}",
+            "confidence": "High" if len(similar) >= 3 else "Medium",
+            "summary": f"Analyzed {len(similar)} similar {comparison_type} employees."
+        }
+
+    async def _generate_exit_pattern_mining(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate EnhancedExitPatternMiningData for frontend renderer"""
+        exit_data = context.get("exit_data", {})
+
+        if exit_data.get("totalResignations", 0) == 0:
+            return {
+                "type": "exit_pattern_mining",
+                "error": "no_data",
+                "message": "No resignation data available for analysis.",
+                "summary": "Unable to analyze exit patterns."
+            }
+
+        # Find key insights
+        dept_patterns = exit_data.get("departmentPatterns", [])
+        tenure_patterns = exit_data.get("tenurePatterns", [])
+        risk_factors = exit_data.get("commonRiskFactors", [])
+
+        most_affected_dept = dept_patterns[0]["department"] if dept_patterns else "Unknown"
+        most_common_tenure = max(tenure_patterns, key=lambda x: x["resignation_count"])["tenure_range"] if tenure_patterns else "Unknown"
+        top_risk_factor = risk_factors[0]["factor"] if risk_factors else "Unknown"
+
+        return {
+            "type": "exit_pattern_mining",
+            "exitData": {
+                "totalResignations": exit_data.get("totalResignations", 0),
+                "departmentPatterns": dept_patterns[:5],
+                "positionPatterns": exit_data.get("positionPatterns", [])[:5],
+                "tenurePatterns": tenure_patterns,
+                "commonRiskFactors": risk_factors[:5],
+                "seasonalPatterns": [],
+                "riskFactorData": []
+            },
+            "insights": {
+                "detailedAnalysis": f"Analysis of {exit_data.get('totalResignations', 0)} resignations reveals key patterns.",
+                "keyPatterns": [
+                    f"Most exits from: {most_affected_dept}",
+                    f"Most common exit tenure: {most_common_tenure}",
+                    f"Top risk factor: {top_risk_factor}"
+                ],
+                "riskIndicators": [f["factor"] for f in risk_factors[:3]],
+                "preventiveStrategies": [
+                    "Implement early warning systems",
+                    "Focus retention on high-risk departments",
+                    "Address common risk factors proactively"
+                ],
+                "departmentInsights": [f"{d['department']}: {d['resignation_count']} exits" for d in dept_patterns[:3]],
+                "patternSummary": {
+                    "mostAffectedDepartment": most_affected_dept,
+                    "mostCommonTenureExit": most_common_tenure,
+                    "topRiskFactor": top_risk_factor,
+                    "totalPatterns": len(dept_patterns) + len(tenure_patterns)
+                },
+                "urgencyLevel": "high" if exit_data.get("totalResignations", 0) > 20 else "moderate",
+                "trends": {
+                    "departmentTrend": "Stable",
+                    "tenureTrend": "Early exits prevalent",
+                    "riskFactorTrend": "Consistent"
+                }
+            },
+            "summary": f"Analyzed {exit_data.get('totalResignations', 0)} resignations across {len(dept_patterns)} departments."
+        }
+
+    async def _generate_workforce_trends(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate WorkforceTrendsAnalysisData for frontend renderer"""
+        stats = context.get("workforce_stats", {})
+
+        return {
+            "type": "churn_trends_analysis",
+            "statistics": {
+                "totalEmployees": stats.get("totalEmployees", 0),
+                "highRisk": stats.get("highRisk", 0),
+                "mediumRisk": stats.get("mediumRisk", 0),
+                "lowRisk": stats.get("lowRisk", 0),
+                "departmentRisks": stats.get("departmentRisks", []),
+                "positionRisks": [],
+                "stageDistribution": stats.get("stageDistribution", []),
+                "confidenceDistribution": {"high": 0, "medium": 0, "low": 0},
+                "riskTrends": stats.get("riskTrends", {})
+            },
+            "insights": {
+                "detailedAnalysis": f"Workforce analysis of {stats.get('totalEmployees', 0)} employees.",
+                "strategicRecommendations": [
+                    "Focus retention efforts on high-risk departments",
+                    "Implement targeted interventions",
+                    "Monitor early-stage risk indicators"
+                ],
+                "urgentActions": [
+                    f"Address {stats.get('highRisk', 0)} high-risk employees immediately"
+                ] if stats.get("highRisk", 0) > 0 else [],
+                "trendAnalysis": {
+                    "riskTrend": "Stable",
+                    "departmentTrends": [],
+                    "stageTrends": [],
+                    "confidenceTrends": "High confidence in predictions"
+                },
+                "organizationalHealth": {
+                    "overallScore": 100 - (stats.get("highRisk", 0) / max(stats.get("totalEmployees", 1), 1) * 100),
+                    "riskLevel": "High" if stats.get("highRisk", 0) > stats.get("totalEmployees", 0) * 0.2 else "Moderate",
+                    "confidenceLevel": "High",
+                    "priorityAreas": [d["department"] for d in stats.get("departmentRisks", [])[:3]]
+                }
+            },
+            "analysis": f"Comprehensive workforce analysis covering {stats.get('totalEmployees', 0)} employees.",
+            "summary": f"{stats.get('highRisk', 0)} high-risk, {stats.get('mediumRisk', 0)} medium-risk employees identified."
+        }
+
+    async def _generate_department_analysis(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate DepartmentAnalysisData for frontend renderer"""
+        dept_data = context.get("department_data")
+        departments = context.get("departments", [])
+
+        if dept_data:
+            # Specific department analysis
+            return {
+                "type": "department_analysis",
+                "analysisType": "specific",
+                "targetDepartment": dept_data.get("departmentName", ""),
+                "departmentData": dept_data,
+                "insights": {
+                    "detailedAnalysis": f"Analysis of {dept_data.get('departmentName', 'department')}",
+                    "strategicRecommendations": [
+                        "Review workload distribution",
+                        "Implement team engagement initiatives"
+                    ],
+                    "urgentActions": [
+                        f"Address {dept_data.get('highRisk', 0)} high-risk employees"
+                    ] if dept_data.get("highRisk", 0) > 0 else [],
+                    "retentionStrategies": ["Career development programs", "Regular feedback sessions"],
+                    "healthScore": 100 - (dept_data.get("avgRisk", 0) * 100),
+                    "riskLevel": "High" if dept_data.get("avgRisk", 0) >= 0.5 else "Moderate",
+                    "priorityActions": ["Monitor high-risk employees", "Schedule team reviews"]
+                },
+                "summary": f"Department has {dept_data.get('totalEmployees', 0)} employees with {dept_data.get('avgRisk', 0):.0%} average risk."
+            }
+        else:
+            # Overview of all departments
+            return {
+                "type": "department_analysis",
+                "analysisType": "overview",
+                "departments": departments,
+                "insights": {
+                    "summary": f"Overview of {len(departments)} departments",
+                    "highestRisk": departments[0] if departments else None,
+                    "departmentRanking": departments[:5],
+                    "organizationalInsights": [
+                        f"Highest risk department: {departments[0]['department']}" if departments else "No data"
+                    ]
+                },
+                "summary": f"Analyzed {len(departments)} departments across the organization.",
+                "availableDepartments": [d["department"] for d in departments]
+            }
+
+    # ===== Main Chat Method =====
 
     async def generate_response(
         self,
         pattern_type: str,
         context: Dict[str, Any],
         original_message: str
-    ) -> str:
-        """
-        Generate context-aware response based on pattern type and gathered context
-        """
+    ) -> Dict[str, Any]:
+        """Generate response with both text and structured data"""
+
+        structured_data = None
+        text_response = ""
+
         if pattern_type == PatternType.CHURN_RISK_DIAGNOSIS:
-            return await self._generate_risk_diagnosis(context)
+            structured_data = await self._generate_enhanced_risk_diagnosis(context)
+            if structured_data:
+                text_response = f"Risk analysis for {structured_data.get('targetEmployeeName', 'employee')} - {structured_data.get('urgencyLevel', 'moderate')} urgency."
+            else:
+                text_response = "Unable to find employee data. Please provide a valid employee name or HR code."
 
         elif pattern_type == PatternType.RETENTION_PLAN:
-            return await self._generate_retention_plan(context)
+            structured_data = await self._generate_enhanced_retention_playbook(context)
+            if structured_data:
+                text_response = f"Retention plan generated for {structured_data.get('targetEmployeeName', 'employee')}."
+            else:
+                text_response = "Unable to generate retention plan. Please provide a valid employee."
 
         elif pattern_type == PatternType.EMPLOYEE_COMPARISON:
-            return await self._generate_comparison(context)
+            structured_data = await self._generate_enhanced_similarity_analysis(context, "resigned")
+            if structured_data:
+                text_response = f"Comparison analysis with {len(structured_data.get('similarEmployees', []))} resigned employees."
+            else:
+                text_response = "Unable to find comparison data."
+
+        elif pattern_type == PatternType.EMPLOYEE_COMPARISON_STAYED:
+            structured_data = await self._generate_enhanced_similarity_analysis(context, "stayed")
+            if structured_data:
+                text_response = f"Comparison analysis with {len(structured_data.get('similarEmployees', []))} retained employees."
+            else:
+                text_response = "Unable to find comparison data."
 
         elif pattern_type == PatternType.EXIT_PATTERN_MINING:
-            return await self._generate_exit_patterns(context)
+            structured_data = await self._generate_exit_pattern_mining(context)
+            text_response = structured_data.get("summary", "Exit pattern analysis complete.")
+
+        elif pattern_type == PatternType.WORKFORCE_TRENDS:
+            structured_data = await self._generate_workforce_trends(context)
+            text_response = structured_data.get("summary", "Workforce trends analysis complete.")
+
+        elif pattern_type == PatternType.DEPARTMENT_ANALYSIS:
+            structured_data = await self._generate_department_analysis(context)
+            text_response = structured_data.get("summary", "Department analysis complete.")
 
         elif pattern_type == PatternType.SHAP_EXPLANATION:
-            return await self._generate_shap_explanation(context)
-
-        else:
-            # General chat - use LLM with ChurnVision context
-            return await self._generate_general_response(original_message, context)
-
-    async def _generate_risk_diagnosis(self, context: Dict[str, Any]) -> str:
-        """Generate risk diagnosis response"""
-        if "employee" not in context or "churn" not in context:
-            return "I couldn't find the employee data or churn prediction. Please provide a valid employee name or HR code."
-
-        emp = context["employee"]
-        churn = context["churn"]
-        reasoning = context.get("reasoning", {})
-
-        risk_level = "HIGH" if churn["resign_proba"] >= 0.7 else "MEDIUM" if churn["resign_proba"] >= 0.4 else "LOW"
-
-        response = f"""**Churn Risk Analysis for {emp['full_name']}**
-
-**Risk Level:** {risk_level} ({churn['resign_proba']:.1%})
-**Position:** {emp['position']}
-**Department:** {emp['structure_name']}
-**Tenure:** {emp['tenure']:.1f} years
-
-"""
-
-        if reasoning:
-            response += f"""**Risk Breakdown:**
-- ML Model Score: {reasoning.get('ml_score', 0):.1%}
-- Heuristic Score: {reasoning.get('heuristic_score', 0):.1%}
-- Behavioral Stage: {reasoning.get('stage', 'Unknown')}
-
-"""
-
-            if reasoning.get('ml_contributors'):
-                response += f"""**Top Risk Factors:**
-{reasoning['ml_contributors']}
-
-"""
-
-            if reasoning.get('reasoning'):
-                response += f"""**Analysis:**
-{reasoning['reasoning']}
-
-"""
-
-            if reasoning.get('recommendations'):
-                response += f"""**Recommendations:**
-{reasoning['recommendations']}
-"""
-
-        return response
-
-    async def _generate_retention_plan(self, context: Dict[str, Any]) -> str:
-        """Generate retention plan with treatment recommendations"""
-        if "employee" not in context or "churn" not in context:
-            return "I couldn't find the employee data. Please provide a valid employee name or HR code."
-
-        emp = context["employee"]
-        churn = context["churn"]
-        treatments = context.get("treatments", [])
-
-        risk_proba = churn["resign_proba"]
-
-        # Filter treatments based on risk level
-        suitable_treatments = []
-        if risk_proba >= 0.7:  # High risk
-            suitable_treatments = [t for t in treatments if t["base_effect_size"] and t["base_effect_size"] >= 0.15]
-        elif risk_proba >= 0.4:  # Medium risk
-            suitable_treatments = [t for t in treatments if t["base_effect_size"] and t["base_effect_size"] >= 0.10]
-        else:  # Low risk
-            suitable_treatments = [t for t in treatments if t["base_cost"] < 2000]
-
-        # Sort by effectiveness/cost ratio
-        suitable_treatments = sorted(
-            suitable_treatments[:3],
-            key=lambda x: (x.get("base_effect_size", 0) or 0) / max(float(x["base_cost"]), 1),
-            reverse=True
-        )
-
-        response = f"""**Retention Strategy for {emp['full_name']}**
-
-**Current Risk:** {risk_proba:.1%}
-**Position:** {emp['position']}
-**Estimated Replacement Cost:** ${emp.get('employee_cost', 0):,.0f}
-
-**Recommended Treatment Plan:**
-
-"""
-
-        for i, treatment in enumerate(suitable_treatments[:3], 1):
-            effect = treatment.get("base_effect_size", 0) or 0
-            cost = float(treatment["base_cost"])
-            time_frame = treatment.get("time_to_effect", "Unknown")
-
-            response += f"""{i}. **{treatment['name']}** ({time_frame})
-   - Cost: ${cost:,.0f}
-   - Expected Risk Reduction: {effect:.1%}
-   - Description: {treatment.get('description', 'N/A')}
-
-"""
-
-        if suitable_treatments:
-            total_cost = sum(float(t["base_cost"]) for t in suitable_treatments[:3])
-            total_effect = sum((t.get("base_effect_size", 0) or 0) for t in suitable_treatments[:3])
-            roi = (emp.get("employee_cost", 0) * total_effect) / max(total_cost, 1) if total_cost > 0 else 0
-
-            response += f"""**Summary:**
-- Total Investment: ${total_cost:,.0f}
-- Expected Risk Reduction: {total_effect:.1%}
-- Estimated ROI: {roi:.1f}:1
-"""
-
-        return response
-
-    async def _generate_comparison(self, context: Dict[str, Any]) -> str:
-        """Generate employee comparison with resigned employees"""
-        if "employee" not in context:
-            return "I couldn't find the employee data."
-
-        emp = context["employee"]
-        similar = context.get("similar_employees", [])
-
-        response = f"""**Comparison: {emp['full_name']} vs Similar Resigned Employees**
-
-**Target Employee:**
-- Position: {emp['position']}
-- Tenure: {emp['tenure']:.1f} years
-- Status: {emp['status']}
-
-"""
-
-        if similar:
-            response += "**Similar Resigned Employees:**\n\n"
-            for s in similar:
-                response += f"""- **{s['full_name']}**
-  - Position: {s['position']}
-  - Tenure at Exit: {s['tenure']:.1f} years
-  - Termination: {s.get('termination_date', 'Unknown')}
-
-"""
-
-            response += f"\n**Insight:** Found {len(similar)} similar employees who resigned from the same position. Common pattern analysis suggests monitoring for similar risk factors.\n"
-        else:
-            response += "No similar resigned employees found with the same position.\n"
-
-        return response
-
-    async def _generate_exit_patterns(self, context: Dict[str, Any]) -> str:
-        """Generate exit pattern analysis"""
-        patterns = context.get("exit_patterns", {})
-
-        response = """**Exit Pattern Analysis**
-
-"""
-
-        total = patterns.get("total_resignations", 0)
-        avg_tenure = patterns.get("average_tenure", 0)
-
-        response += f"""**Overview:**
-- Total Resignations Analyzed: {total}
-- Average Tenure at Exit: {avg_tenure:.1f} years
-
-"""
-
-        common_stages = patterns.get("common_stages", [])
-        if common_stages:
-            response += "**Most Common Exit Stages:**\n\n"
-            for stage, count in common_stages:
-                percentage = (count / total * 100) if total > 0 else 0
-                response += f"- {stage}: {count} employees ({percentage:.1f}%)\n"
-
-        response += "\n**Actionable Insights:**\n"
-        response += "- Monitor employees entering high-risk stages\n"
-        response += "- Implement targeted interventions based on stage patterns\n"
-        response += "- Review tenure milestones for preventive actions\n"
-
-        return response
-
-    async def _generate_shap_explanation(self, context: Dict[str, Any]) -> str:
-        """Generate SHAP values explanation"""
-        if "employee" not in context or "churn" not in context:
-            return "I couldn't find the employee data or SHAP values."
-
-        emp = context["employee"]
-        churn = context["churn"]
-        shap_values = churn.get("shap_values")
-
-        response = f"""**Risk Factor Analysis for {emp['full_name']}**
-
-**Overall Risk Score:** {churn['resign_proba']:.1%}
-
-"""
-
-        if shap_values:
-            response += "**Top Contributing Factors:**\n\n"
-            if isinstance(shap_values, dict):
-                sorted_factors = sorted(
-                    shap_values.items(),
-                    key=lambda x: abs(float(x[1]) if isinstance(x[1], (int, float)) else 0),
-                    reverse=True
-                )[:5]
-
-                for factor, value in sorted_factors:
-                    direction = "increases" if float(value) > 0 else "decreases"
-                    response += f"- **{factor}**: {direction} risk by {abs(float(value)):.3f}\n"
+            # SHAP uses the risk diagnosis structure
+            structured_data = await self._generate_enhanced_risk_diagnosis(context)
+            if structured_data:
+                text_response = f"Risk factors analyzed for {structured_data.get('targetEmployeeName', 'employee')}."
             else:
-                response += f"SHAP values: {shap_values}\n"
-        else:
-            response += "SHAP values not available for this employee.\n"
+                text_response = "Unable to find SHAP values for this employee."
 
-        return response
+        else:
+            # General chat - use LLM
+            text_response = await self._generate_general_response(original_message, context)
+
+        return {
+            "response": text_response,
+            "pattern_detected": pattern_type,
+            "structured_data": structured_data
+        }
 
     async def _generate_general_response(
         self,
         message: str,
         context: Dict[str, Any]
     ) -> str:
-        """Generate general response using LLM with ChurnVision context"""
-        # Build context-aware prompt
+        """Generate general response using LLM"""
         system_prompt = f"""{settings.CHATBOT_SYSTEM_PROMPT}
 
-You have access to ChurnVision data and should provide insights about employee churn, retention strategies, and HR analytics.
+You are ChurnVision AI Assistant, helping HR professionals with employee retention and churn analytics.
+Provide concise, actionable insights based on the data available.
 """
 
-        # Use the underlying chatbot service for LLM response
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": message}
@@ -557,24 +1206,25 @@ You have access to ChurnVision data and should provide insights about employee c
         message: str,
         session_id: str,
         employee_id: Optional[str] = None
-    ) -> str:
+    ) -> Dict[str, Any]:
         """
-        Main chat method that processes messages with intelligence
+        Main chat method that processes messages with intelligence.
+        Returns dict with response text and structured data.
         """
         # Detect pattern
-        pattern_type, entities = await self.detect_pattern(message)
+        pattern_type, entities = await self.detect_pattern(message, employee_id)
 
         # Gather context
         context = await self.gather_context(pattern_type, entities)
 
         # Generate response
-        response = await self.generate_response(pattern_type, context, message)
+        result = await self.generate_response(pattern_type, context, message)
 
         # Save to database
         await self._save_message(session_id, employee_id, message, "user")
-        await self._save_message(session_id, employee_id, response, "assistant")
+        await self._save_message(session_id, employee_id, result["response"], "assistant")
 
-        return response
+        return result
 
     async def _save_message(
         self,

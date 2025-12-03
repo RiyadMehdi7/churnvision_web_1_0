@@ -170,11 +170,11 @@ const EmployeeRow = memo(({
         w-full p-3 rounded-lg text-left
         transition-all duration-300
         ${isSelected
-          ? 'bg-gradient-to-r from-emerald-50 to-transparent dark:from-emerald-900/30 dark:to-transparent border-emerald-200 dark:border-emerald-800'
-          : 'hover:bg-gray-50 dark:hover:bg-gray-800 border-transparent'
+          ? 'bg-gradient-to-r from-emerald-50 to-transparent dark:from-emerald-900/30 dark:to-transparent border-emerald-200 dark:border-emerald-700'
+          : 'hover:bg-gray-50 dark:hover:bg-slate-700 border-transparent'
         }
         border relative group overflow-hidden
-        dark:bg-gray-800 dark:text-gray-100
+        dark:bg-slate-800 dark:text-slate-100
       `}
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
@@ -509,7 +509,7 @@ const ChatMessageComponent = memo<{ message: ExtendedChatMessage; isContinuation
       <div
         className={`relative max-w-[85%] ${
           isBot
-            ? 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm'
+            ? 'bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 shadow-sm'
             : 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md'
         } rounded-2xl overflow-hidden transition-shadow ${message.isOptimistic ? 'opacity-80' : ''}`}
       >
@@ -722,7 +722,7 @@ export function AIAssistant(): React.ReactElement {
   
   // Declare selectedEmployees first before using it in hooks
   const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([]);
-  
+
   // Add reasoning hooks for enhanced AI responses
   const { 
     fetchBatchReasoning, 
@@ -730,12 +730,18 @@ export function AIAssistant(): React.ReactElement {
 
   // --- Global Data Cache ---
   const { aiAssistantEmployees, fetchAIAssistantData, isLoadingAIAssistantData, trainingStatus } = useGlobalDataCache();
+
+  // Normalize employee lists to strip null/undefined entries
+  const safeEmployees = useMemo(
+    () => (aiAssistantEmployees || []).filter((e): e is Employee => Boolean(e && (e as any).hr_code)),
+    [aiAssistantEmployees]
+  );
   const hasReasoningData = useMemo(
     () =>
-      (aiAssistantEmployees || []).some(
-        emp => emp?.hasReasoningData || typeof emp?.reasoningChurnRisk === 'number'
+      safeEmployees.some(
+        emp => typeof emp?.reasoningChurnRisk === 'number'
       ),
-    [aiAssistantEmployees]
+    [safeEmployees]
   );
   const isModelReady = trainingStatus?.status === 'complete' || hasReasoningData;
   // Use centralized dynamic risk threshold functions
@@ -743,8 +749,9 @@ export function AIAssistant(): React.ReactElement {
   const thresholds = getCurrentThresholds();
 
   // Helper function to get reasoning data for an employee
-  const getEmployeeReasoning = useCallback((hrCode: string): ChurnReasoning | undefined => {
-    return reasoningData?.find(r => r.hr_code === hrCode);
+  const getEmployeeReasoning = useCallback((hrCode: string | undefined | null): ChurnReasoning | undefined => {
+    if (!hrCode) return undefined;
+    return reasoningData?.find(r => r && r.hr_code === hrCode);
   }, [reasoningData]);
 
   // Helper function to get risk score from reasoning data
@@ -756,14 +763,18 @@ export function AIAssistant(): React.ReactElement {
   // Fetch reasoning data when employees are selected OR when all employees are loaded
   useEffect(() => {
     if (selectedEmployees.length > 0) {
-      const hrCodes = selectedEmployees.map(emp => emp.hr_code);
+      const hrCodes = selectedEmployees
+        .map(emp => emp?.hr_code)
+        .filter((code): code is string => Boolean(code));
       fetchBatchReasoning(hrCodes);
-    } else if (aiAssistantEmployees && aiAssistantEmployees.length > 0) {
+    } else if (safeEmployees.length > 0) {
       // Fetch reasoning data for all employees to ensure we have proper risk scores
-      const allHrCodes = aiAssistantEmployees.map(emp => emp.hr_code);
+      const allHrCodes = safeEmployees
+        .map(emp => emp.hr_code)
+        .filter((code): code is string => Boolean(code));
       fetchBatchReasoning(allHrCodes);
     }
-  }, [selectedEmployees, aiAssistantEmployees, fetchBatchReasoning]);
+  }, [selectedEmployees, safeEmployees, fetchBatchReasoning]);
   
   const [chatState, setChatState] = useState<ChatState>(() => ({
     messages: [],
@@ -797,14 +808,14 @@ export function AIAssistant(): React.ReactElement {
     }
 
     const initializePage = async () => {
-      if (!aiAssistantEmployees || aiAssistantEmployees.length === 0) {
+      if (!safeEmployees || safeEmployees.length === 0) {
         await fetchAIAssistantData(activeProject?.dbPath || null);
       } 
       loadChatHistory(/* activeProject?.dbPath || null */);
     };
     
     initializePage();
-  }, [fetchAIAssistantData, aiAssistantEmployees, activeProject]);
+  }, [fetchAIAssistantData, safeEmployees, activeProject]);
   
   useEffect(() => {
     scrollToBottom();
@@ -1085,7 +1096,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
 
   // Handle sort changes with better user feedback (copied from Playground)
   const handleSortChange = useCallback((value: string) => {
-    if (aiAssistantEmployees && aiAssistantEmployees.length > 500) {
+    if (safeEmployees && safeEmployees.length > 500) {
       setIsSorting(true);
       // Use setTimeout to allow the UI to update before doing expensive operation
       setTimeout(() => {
@@ -1095,14 +1106,14 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
     } else {
       setSortBy(value);
     }
-  }, [aiAssistantEmployees]);
+  }, [safeEmployees]);
 
   // Base filtered data (before dropdown filters) for cascade filtering
   const baseFilteredEmployees = useMemo(() => {
-    let filtered = aiAssistantEmployees ? [...aiAssistantEmployees] : [];
+    let filtered = safeEmployees ? [...safeEmployees] : [];
 
     // Filter for active employees first
-    filtered = filtered.filter(emp => emp.status === 'Active');
+    filtered = filtered.filter(emp => !emp || emp.status === 'Active');
 
     // Apply search filter only
     if (searchTerm.trim()) {
@@ -1115,7 +1126,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
     }
 
     return filtered;
-  }, [aiAssistantEmployees, searchTerm]);
+  }, [safeEmployees, searchTerm]);
 
   // Cascade filter options based on current selections
   const availableDepartments = useMemo(() => {
@@ -1254,7 +1265,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
   ), [sortedEmployeesMemo, selectedEmployees, EmployeeRowRenderer]); // Depend on sortedEmployeesMemo
 
   const renderChatInput = () => (
-    <div className="flex-none bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
+    <div className="flex-none bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700 p-4">
       <div className="max-w-4xl mx-auto">
         {/* Input area with improved design */}
         <div className="relative">
@@ -1272,7 +1283,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
                 placeholder={selectedEmployees[0] ? `Ask about ${selectedEmployees[0].name} or general questions...` : "Select an employee or ask general questions..."}
                 disabled={chatState.isLoading}
                 rows={1}
-                className="w-full px-4 py-2.5 pr-14 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-all duration-200 resize-none min-h-[42px] overflow-hidden"
+                className="w-full px-4 py-2.5 pr-14 rounded-xl border border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-slate-100 placeholder-gray-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-emerald-500 focus:border-transparent transition-all duration-200 resize-none min-h-[42px] overflow-hidden"
                 style={{ 
                   height: 'auto',
                   minHeight: '42px'
@@ -1556,7 +1567,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
                 }
               }}
               disabled={!aiAssistantEmployees || aiAssistantEmployees.length < 1}
-              className="group relative overflow-hidden bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-700/50 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-red-500/20 dark:hover:shadow-red-400/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
+              className="group relative overflow-hidden bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/60 dark:to-red-900/40 border border-red-200 dark:border-red-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-red-500/20 dark:hover:shadow-red-400/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
               whileHover={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 1 ? 1 : 1.02 }}
               whileTap={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 1 ? 1 : 0.98 }}
             >
@@ -1583,7 +1594,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
                 }
               }}
               disabled={!aiAssistantEmployees || aiAssistantEmployees.length < 2}
-              className="group relative overflow-hidden bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border border-purple-200 dark:border-purple-700/50 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-purple-500/20 dark:hover:shadow-purple-400/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
+              className="group relative overflow-hidden bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/60 dark:to-purple-900/40 border border-purple-200 dark:border-purple-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-purple-500/20 dark:hover:shadow-purple-400/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
               whileHover={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 2 ? 1 : 1.02 }}
               whileTap={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 2 ? 1 : 0.98 }}
             >
@@ -1607,7 +1618,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
                 const standardized = standardizePrompt('trends');
                 setInputFromSuggestion(standardized.prompt);
               }}
-              className="group relative overflow-hidden bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-700/50 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-green-500/20 dark:hover:shadow-green-400/20 hover:-translate-y-0.5"
+              className="group relative overflow-hidden bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/60 dark:to-green-900/40 border border-green-200 dark:border-green-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-green-500/20 dark:hover:shadow-green-400/20 hover:-translate-y-0.5"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
@@ -1634,7 +1645,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
                 }
               }}
               disabled={!aiAssistantEmployees || aiAssistantEmployees.length < 3}
-              className="group relative overflow-hidden bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 border border-emerald-200 dark:border-emerald-700/50 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-emerald-500/20 dark:hover:shadow-emerald-400/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
+              className="group relative overflow-hidden bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/60 dark:to-emerald-900/40 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-emerald-500/20 dark:hover:shadow-emerald-400/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
               whileHover={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 3 ? 1 : 1.02 }}
               whileTap={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 3 ? 1 : 0.98 }}
             >
@@ -1661,7 +1672,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
                 }
               }}
               disabled={!aiAssistantEmployees || aiAssistantEmployees.length < 4}
-              className="group relative overflow-hidden bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 border border-orange-200 dark:border-orange-700/50 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-orange-500/20 dark:hover:shadow-orange-400/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
+              className="group relative overflow-hidden bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950/60 dark:to-orange-900/40 border border-orange-200 dark:border-orange-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-orange-500/20 dark:hover:shadow-orange-400/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
               whileHover={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 4 ? 1 : 1.02 }}
               whileTap={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 4 ? 1 : 0.98 }}
             >
@@ -1685,7 +1696,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
                 const standardized = standardizePrompt('departments');
                 setInputFromSuggestion(standardized.prompt);
               }}
-              className="group relative overflow-hidden bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/20 dark:to-indigo-800/20 border border-indigo-200 dark:border-indigo-700/50 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-indigo-500/20 dark:hover:shadow-indigo-400/20 hover:-translate-y-0.5"
+              className="group relative overflow-hidden bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-950/60 dark:to-indigo-900/40 border border-indigo-200 dark:border-indigo-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-indigo-500/20 dark:hover:shadow-indigo-400/20 hover:-translate-y-0.5"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
@@ -1709,7 +1720,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
                 const standardized = standardizePrompt('patterns');
                 setInputFromSuggestion(standardized.prompt);
               }}
-              className="group relative overflow-hidden bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20 border border-yellow-200 dark:border-yellow-700/50 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-yellow-500/20 dark:hover:shadow-yellow-400/20 hover:-translate-y-0.5"
+              className="group relative overflow-hidden bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-950/60 dark:to-amber-900/40 border border-yellow-200 dark:border-amber-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-yellow-500/20 dark:hover:shadow-yellow-400/20 hover:-translate-y-0.5"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
@@ -1833,7 +1844,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search employees..."
-                className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:focus:ring-emerald-600 dark:focus:border-emerald-600"
+                className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:focus:ring-emerald-600 dark:focus:border-emerald-600"
               />
             </div>
             
@@ -1853,7 +1864,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
                 value={sortBy}
                 onChange={e => handleSortChange(e.target.value)}
                 disabled={isSorting}
-                className={`w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:focus:ring-emerald-600 dark:focus:border-emerald-600 ${isSorting ? 'opacity-50 cursor-wait' : ''}`}
+                className={`w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:focus:ring-emerald-600 dark:focus:border-emerald-600 ${isSorting ? 'opacity-50 cursor-wait' : ''}`}
               >
                 {sortOptions.map(option => (
                   <option key={option.id} value={option.id}>
@@ -1865,7 +1876,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
               <select
                 value={selectedDepartment}
                 onChange={e => setSelectedDepartment(e.target.value)}
-                className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:focus:ring-emerald-600 dark:focus:border-emerald-600"
+                className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:focus:ring-emerald-600 dark:focus:border-emerald-600"
               >
                 <option value="">All Departments ({availableDepartments.length})</option>
                 {availableDepartments.map(dept => (
@@ -1878,7 +1889,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
               <select
                 value={selectedRiskLevel}
                 onChange={e => setSelectedRiskLevel(e.target.value)}
-                className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:focus:ring-emerald-600 dark:focus:border-emerald-600"
+                className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:focus:ring-emerald-600 dark:focus:border-emerald-600"
               >
                 <option value="">All Risk Levels ({availableRiskLevels.length})</option>
                 {availableRiskLevels.map(level => (
@@ -1891,7 +1902,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
               <select
                 value={selectedPosition}
                 onChange={e => setSelectedPosition(e.target.value)}
-                className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:focus:ring-emerald-600 dark:focus:border-emerald-600"
+                className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:focus:ring-emerald-600 dark:focus:border-emerald-600"
               >
                 <option value="">All Positions ({availablePositions.length})</option>
                 {availablePositions.map(pos => (
@@ -1938,7 +1949,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
             {isLoadingAIAssistantData ? (
               <div className="space-y-2">
                 {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="p-4 rounded-lg border border-gray-100 dark:border-gray-800 animate-pulse h-[83px] bg-gray-100 dark:bg-gray-800" />
+                  <div key={i} className="p-4 rounded-lg border border-gray-100 dark:border-slate-700 animate-pulse h-[83px] bg-gray-100 dark:bg-slate-800" />
                 ))}
               </div>
             ) : sortedEmployeesMemo.length === 0 ? (
@@ -1962,7 +1973,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
           {!showSidebar && (
             <button
               onClick={() => setShowSidebar(true)}
-              className="md:hidden absolute top-4 left-4 z-10 p-2 rounded-md bg-white dark:bg-gray-800 shadow-md text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="md:hidden absolute top-4 left-4 z-10 p-2 rounded-md bg-white dark:bg-slate-800 shadow-md text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200"
             >
               <Users className="h-5 w-5" />
             </button>
@@ -1970,7 +1981,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
 
           <div className="flex-1 overflow-hidden flex flex-col">
             {selectedEmployees[0] && (
-              <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-3 shadow-sm flex-none">
+              <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 p-3 shadow-sm flex-none">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
                     <div className="mr-3">
@@ -1990,7 +2001,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 scroll-smooth">
+            <div className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 to-white dark:from-slate-950 dark:to-slate-900 scroll-smooth">
               <div className="max-w-4xl mx-auto px-4 py-4">
                 {chatState.messages.length === 0 && !selectedEmployees[0] && (
                   renderWelcomeMessage()

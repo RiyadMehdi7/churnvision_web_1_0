@@ -134,16 +134,9 @@ async def get_license_status(installation_id: Optional[str] = None):
     """
     Get the current license status for the installation.
     """
-    license_key = LicenseValidator.load_license()
-    if not license_key:
-        return LicenseStatusResponse(
-            status="UNLICENSED",
-            tier="starter",
-            is_licensed=False
-        )
-
     try:
-        license_info = LicenseValidator.decode_license(license_key)
+        # validate_license includes dev-mode fallback to enterprise
+        license_info = LicenseValidator.validate_license()
         return _status_from_license_info(license_info)
     except HTTPException as exc:
         detail = str(exc.detail).lower()

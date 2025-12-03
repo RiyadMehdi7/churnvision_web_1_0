@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 from app.api.deps import get_current_user, get_db
 from app.models.auth import UserAccount
-from app.services.intelligent_chatbot import IntelligentChatbotService
+from app.services.intelligent_chatbot import IntelligentChatbotService, PatternType
 from app.models.chatbot import ChatMessage
 from sqlalchemy import select, desc
 
@@ -22,6 +22,7 @@ class IntelligentChatResponse(BaseModel):
     response: str
     session_id: str
     pattern_detected: Optional[str] = None
+    structured_data: Optional[Dict[str, Any]] = Field(None, description="Structured JSON for frontend renderers")
 
 
 class ChatHistoryResponse(BaseModel):
@@ -50,23 +51,37 @@ async def intelligent_chat(
     - Retention plan generation ("Create a retention plan for Mike Chen")
     - Employee comparison ("Compare Sarah with similar resigned employees")
     - Exit pattern mining ("Show common exit patterns")
+    - Workforce trends ("Show overall churn trends")
+    - Department analysis ("Analyze Sales department")
     - SHAP explanations ("What factors contribute to risk?")
     - General chat (falls back to LLM)
+
+    Returns structured_data for frontend renderers when applicable.
     """
     service = IntelligentChatbotService(db)
 
     try:
-        # Process message with intelligence
-        response = await service.chat(
+        # Process message with intelligence - returns both text and structured data
+        result = await service.chat(
             message=request.message,
             session_id=request.session_id,
             employee_id=request.employee_id
         )
 
-        return IntelligentChatResponse(
-            response=response,
-            session_id=request.session_id
-        )
+        # Handle both old (string) and new (dict) return formats
+        if isinstance(result, dict):
+            return IntelligentChatResponse(
+                response=result.get("response", ""),
+                session_id=request.session_id,
+                pattern_detected=result.get("pattern_detected"),
+                structured_data=result.get("structured_data")
+            )
+        else:
+            # Legacy string response
+            return IntelligentChatResponse(
+                response=result,
+                session_id=request.session_id
+            )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -147,11 +162,11 @@ async def analyze_employee_risk(
     service = IntelligentChatbotService(db)
 
     # Manually trigger risk diagnosis
-    pattern_type = "churn_risk_diagnosis"
+    pattern_type = PatternType.CHURN_RISK_DIAGNOSIS
     entities = {"hr_code": hr_code}
 
     context = await service.gather_context(pattern_type, entities)
-    response = await service._generate_risk_diagnosis(context)
+    response = await service._generate_enhanced_risk_diagnosis(context)
 
     return {"hr_code": hr_code, "analysis": response, "context": context}
 
@@ -170,11 +185,11 @@ async def generate_retention_plan(
     service = IntelligentChatbotService(db)
 
     # Manually trigger retention plan generation
-    pattern_type = "retention_plan"
+    pattern_type = PatternType.RETENTION_PLAN
     entities = {"hr_code": hr_code}
 
     context = await service.gather_context(pattern_type, entities)
-    response = await service._generate_retention_plan(context)
+    response = await service._generate_enhanced_retention_playbook(context)
 
     return {"hr_code": hr_code, "plan": response, "context": context}
 
@@ -190,11 +205,11 @@ async def get_exit_patterns(
     service = IntelligentChatbotService(db)
 
     # Manually trigger exit pattern analysis
-    pattern_type = "exit_pattern_mining"
+    pattern_type = PatternType.EXIT_PATTERN_MINING
     context = await service.gather_context(pattern_type, {})
-    response = await service._generate_exit_patterns(context)
+    response = await service._generate_exit_pattern_mining(context)
 
-    return {"analysis": response, "data": context.get("exit_patterns", {})}
+    return {"analysis": response, "data": context.get("exit_data", {})}
 
 
 @router.post("/compare-employee")
@@ -211,10 +226,10 @@ async def compare_with_resigned(
     service = IntelligentChatbotService(db)
 
     # Manually trigger employee comparison
-    pattern_type = "employee_comparison"
+    pattern_type = PatternType.EMPLOYEE_COMPARISON
     entities = {"hr_code": hr_code}
 
     context = await service.gather_context(pattern_type, entities)
-    response = await service._generate_comparison(context)
+    response = await service._generate_enhanced_similarity_analysis(context, "resigned")
 
     return {"hr_code": hr_code, "comparison": response, "similar_employees": context.get("similar_employees", [])}

@@ -4,6 +4,8 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
+import pandas as pd
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -323,6 +325,7 @@ async def upload_file(
     columnMapping: str = Form(None),
     mappings: str = Form(None),
     projectName: str = Form(None),
+    datasetName: str = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -344,6 +347,15 @@ async def upload_file(
         content = await file.read()
         dest.write_bytes(content)
 
+        # Count rows for metadata (best-effort, using chunks to avoid memory spikes)
+        row_count = None
+        try:
+            row_count = 0
+            for chunk in pd.read_csv(dest, chunksize=50000):
+                row_count += len(chunk)
+        except Exception:
+            row_count = None
+
         # Parse column mapping (optional) sent by the UI
         parsed_mapping = None
         mapping_payload = columnMapping or mappings
@@ -363,9 +375,9 @@ async def upload_file(
 
         dataset = DatasetModel(
             dataset_id=dataset_id,
-            name=file.filename,
+            name=datasetName or file.filename,
             upload_date=datetime.utcnow(),
-            row_count=None,
+            row_count=row_count,
             file_type=file.content_type or "unknown",
             size=len(content),
             is_active=1,

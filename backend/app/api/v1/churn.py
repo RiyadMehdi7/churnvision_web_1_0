@@ -572,7 +572,8 @@ async def train_churn_model(
 
 @router.get("/model/metrics", response_model=ModelMetricsResponse)
 async def get_model_metrics(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get current model performance metrics and feature importance
@@ -585,12 +586,37 @@ async def get_model_metrics(
     - Number of predictions made
     """
     try:
-        model_type = type(churn_service.model).__name__ if churn_service.model else "untrained"
+        model_type = type(churn_service.model).__name__ if churn_service.model else "xgboost"
 
-        # Return cached metrics or safe defaults
+        # Return cached metrics or load from database
         metrics = churn_service.model_metrics or {}
 
-        if not churn_service.model or not metrics or not metrics.get('trained_at'):
+        # If no cached metrics, try to load from database
+        if not metrics or not metrics.get('trained_at'):
+            # Query the active model from database
+            result = await db.execute(
+                select(ChurnModel).where(ChurnModel.is_active == 1).order_by(ChurnModel.trained_at.desc()).limit(1)
+            )
+            active_model = result.scalar_one_or_none()
+
+            if active_model:
+                # Load metrics from database
+                db_metrics = active_model.performance_metrics or active_model.metrics or {}
+                metrics = {
+                    'accuracy': db_metrics.get('accuracy', 0.0),
+                    'precision': db_metrics.get('precision', 0.0),
+                    'recall': db_metrics.get('recall', 0.0),
+                    'f1_score': db_metrics.get('f1_score', 0.0),
+                    'trained_at': active_model.trained_at,
+                    'model_version': active_model.model_version,
+                    'predictions_made': 0,
+                }
+                # Cache for future requests
+                churn_service.model_metrics = metrics
+                churn_service.feature_importance = db_metrics.get('feature_importance', {})
+                model_type = active_model.model_name or "xgboost"
+
+        if not metrics or not metrics.get('trained_at'):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not trained")
 
         return ModelMetricsResponse(

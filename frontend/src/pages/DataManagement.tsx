@@ -1196,7 +1196,7 @@ export function DataManagement(): React.ReactElement {
             for (let i = 0; i < rows.length; i++) {
                 const raw = rows[i][costIdx];
                 const normalized = normalizeNumericValue(String(raw ?? ''));
-                rows[i][costIdx] = normalized === null ? 0 : normalized;
+                rows[i][costIdx] = normalized === null ? '0' : String(normalized);
             }
             warnings.push('Normalized employee_cost values and filled blanks with 0.');
         }
@@ -1343,7 +1343,7 @@ export function DataManagement(): React.ReactElement {
 
             // Upload file via FastAPI
             const formData = new FormData();
-            const blob = new Blob([fileDataBuffer], {
+            const blob = new Blob([new Uint8Array(fileDataBuffer)], {
                 type: mimeType
             });
             const filename = uploadFilename;

@@ -19,11 +19,11 @@ describe('useTabState', () => {
     });
 
     it('should restore active tab from localStorage', () => {
-      localStorage.setItem('churnvision-active-tab', 'deepAnalysis');
+      localStorage.setItem('churnvision-active-tab', 'deep-analysis');
 
       const { result } = renderHook(() => useTabState('dashboard'));
 
-      expect(result.current.activeTab).toBe('deepAnalysis');
+      expect(result.current.activeTab).toBe('deep-analysis');
     });
 
     it('should initialize default tab states', () => {
@@ -83,20 +83,20 @@ describe('useTabState', () => {
       const { result } = renderHook(() => useTabState('dashboard'));
 
       act(() => {
-        result.current.setActiveTab('deepAnalysis');
+        result.current.setActiveTab('deep-analysis');
       });
 
-      expect(result.current.activeTab).toBe('deepAnalysis');
+      expect(result.current.activeTab).toBe('deep-analysis');
     });
 
     it('should persist active tab to localStorage', () => {
       const { result } = renderHook(() => useTabState('dashboard'));
 
       act(() => {
-        result.current.setActiveTab('deepAnalysis');
+        result.current.setActiveTab('deep-analysis');
       });
 
-      expect(localStorage.getItem('churnvision-active-tab')).toBe('deepAnalysis');
+      expect(localStorage.getItem('churnvision-active-tab')).toBe('deep-analysis');
     });
   });
 
@@ -166,13 +166,13 @@ describe('useTabState', () => {
 
       act(() => {
         result.current.updateSharedContext({
-          selectedEmployeeId: 'emp-123',
-          selectedDepartment: 'Sales',
+          selectedEmployeeIds: ['emp-123'],
+          departmentFilter: 'Sales',
         });
       });
 
-      expect(result.current.sharedContext.selectedEmployeeId).toBe('emp-123');
-      expect(result.current.sharedContext.selectedDepartment).toBe('Sales');
+      expect(result.current.sharedContext.selectedEmployeeIds).toEqual(['emp-123']);
+      expect(result.current.sharedContext.departmentFilter).toBe('Sales');
     });
 
     it('should persist shared context to localStorage', () => {
@@ -180,12 +180,12 @@ describe('useTabState', () => {
 
       act(() => {
         result.current.updateSharedContext({
-          selectedEmployeeId: 'emp-456',
+          selectedEmployeeIds: ['emp-456'],
         });
       });
 
       const stored = JSON.parse(localStorage.getItem('churnvision-shared-context') || '{}');
-      expect(stored.selectedEmployeeId).toBe('emp-456');
+      expect(stored.selectedEmployeeIds).toEqual(['emp-456']);
     });
   });
 
@@ -260,18 +260,18 @@ describe('useTabState', () => {
       const { result } = renderHook(() => useTabState('dashboard'));
 
       expect(result.current.isTabActive('dashboard')).toBe(true);
-      expect(result.current.isTabActive('deepAnalysis')).toBe(false);
+      expect(result.current.isTabActive('deep-analysis')).toBe(false);
     });
 
     it('should update when tab changes', () => {
       const { result } = renderHook(() => useTabState('dashboard'));
 
       act(() => {
-        result.current.setActiveTab('deepAnalysis');
+        result.current.setActiveTab('deep-analysis');
       });
 
       expect(result.current.isTabActive('dashboard')).toBe(false);
-      expect(result.current.isTabActive('deepAnalysis')).toBe(true);
+      expect(result.current.isTabActive('deep-analysis')).toBe(true);
     });
   });
 });

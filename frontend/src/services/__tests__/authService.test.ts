@@ -58,11 +58,11 @@ describe('AuthService', () => {
     });
 
     it('should throw error on login failure', async () => {
-      mockedAxios.post.mockRejectedValueOnce({
-        isAxiosError: true,
-        response: { data: { detail: 'Invalid credentials' } },
-      });
-      mockedAxios.isAxiosError = vi.fn().mockReturnValue(true);
+      const axiosError = new Error('Invalid credentials') as Error & { isAxiosError: boolean; response: { data: { detail: string } } };
+      axiosError.isAxiosError = true;
+      axiosError.response = { data: { detail: 'Invalid credentials' } };
+      mockedAxios.post.mockRejectedValueOnce(axiosError);
+      vi.spyOn(axios, 'isAxiosError').mockReturnValue(true);
 
       const credentials: LoginCredentials = {
         username: 'wrong',
@@ -74,7 +74,7 @@ describe('AuthService', () => {
 
     it('should throw generic error for network failures', async () => {
       mockedAxios.post.mockRejectedValueOnce(new Error('Network error'));
-      mockedAxios.isAxiosError = vi.fn().mockReturnValue(false);
+      vi.spyOn(axios, 'isAxiosError').mockReturnValue(false);
 
       const credentials: LoginCredentials = {
         username: 'testuser',
@@ -109,11 +109,11 @@ describe('AuthService', () => {
     });
 
     it('should throw error on registration failure', async () => {
-      mockedAxios.post.mockRejectedValueOnce({
-        isAxiosError: true,
-        response: { data: { detail: 'Email already registered' } },
-      });
-      mockedAxios.isAxiosError = vi.fn().mockReturnValue(true);
+      const axiosError = new Error('Email already registered') as Error & { isAxiosError: boolean; response: { data: { detail: string } } };
+      axiosError.isAxiosError = true;
+      axiosError.response = { data: { detail: 'Email already registered' } };
+      mockedAxios.post.mockRejectedValueOnce(axiosError);
+      (axios.isAxiosError as unknown as ReturnType<typeof vi.fn>) = vi.fn().mockReturnValue(true);
 
       const data: RegisterData = {
         username: 'existing',
@@ -183,11 +183,11 @@ describe('AuthService', () => {
 
     it('should clear auth on 401 response', async () => {
       localStorage.setItem('churnvision_access_token', 'expired-token');
-      mockedAxios.get.mockRejectedValueOnce({
-        isAxiosError: true,
-        response: { status: 401 },
-      });
-      mockedAxios.isAxiosError = vi.fn().mockReturnValue(true);
+      const axiosError = new Error('Unauthorized') as Error & { isAxiosError: boolean; response: { status: number } };
+      axiosError.isAxiosError = true;
+      axiosError.response = { status: 401 };
+      mockedAxios.get.mockRejectedValueOnce(axiosError);
+      (axios.isAxiosError as unknown as ReturnType<typeof vi.fn>) = vi.fn().mockReturnValue(true);
 
       await expect(authService.getCurrentUser()).rejects.toBeDefined();
       expect(localStorage.getItem('churnvision_access_token')).toBeNull();

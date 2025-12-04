@@ -32,13 +32,21 @@ async def chat(
     - **temperature**: Sampling temperature (0.0 to 2.0, default: 0.7)
     - **max_tokens**: Maximum tokens in response (optional)
     """
+    # Ensure clean session state before processing
+    try:
+        await db.rollback()
+    except Exception:
+        pass
+
     service = ChatbotService(db)
     try:
         response = await service.chat(request, current_user.id)
         return response
     except ValueError as e:
+        await db.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error processing chat request: {str(e)}"

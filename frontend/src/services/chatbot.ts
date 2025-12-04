@@ -222,9 +222,14 @@ class ChatbotService {
 
     try {
       // Sending message via API
+      // conversation_id must be an integer or undefined - UUID session IDs are client-side only
+      const conversationId = payload.sessionId && !payload.sessionId.includes('-')
+        ? parseInt(payload.sessionId, 10)
+        : undefined;
+
       const response = await api.post('/chatbot/chat', {
         message: payload.content,
-        conversation_id: payload.sessionId === 'new' ? undefined : payload.sessionId,
+        conversation_id: isNaN(conversationId as number) ? undefined : conversationId,
         // Add other fields as expected by the backend
       });
 

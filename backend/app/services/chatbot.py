@@ -1,9 +1,10 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, AsyncAzureOpenAI
 from ollama import AsyncClient
+import httpx
 
 from app.core.config import settings
 from app.models.chatbot import Conversation, Message
@@ -16,10 +17,274 @@ from app.schemas.chatbot import (
     ConversationListResponse
 )
 
+# Provider type for routing
+ProviderType = Literal["ollama", "openai", "azure", "qwen", "mistral", "ibm"]
+
+# Model to provider mapping
+MODEL_PROVIDER_MAP: Dict[str, ProviderType] = {
+    # Local (Ollama)
+    "qwen3:4b": "ollama",
+    "qwen3:8b": "ollama",
+    "llama3": "ollama",
+    # OpenAI
+    "gpt-5.1": "openai",
+    "gpt-4": "openai",
+    "gpt-4-turbo": "openai",
+    "gpt-3.5-turbo": "openai",
+    # Azure OpenAI
+    "azure-gpt-5.1": "azure",
+    "azure-gpt-4": "azure",
+    # Qwen Cloud
+    "qwen3-max": "qwen",
+    "qwen-turbo": "qwen",
+    # Mistral
+    "mistral-large-latest": "mistral",
+    "mistral-large-3": "mistral",
+    # IBM
+    "granite-3.0-8b-instruct": "ibm",
+}
+
 
 class ChatbotService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    def _determine_provider(self, model: str) -> ProviderType:
+        """Determine provider based on model name"""
+        # Check explicit mapping first
+        if model in MODEL_PROVIDER_MAP:
+            return MODEL_PROVIDER_MAP[model]
+
+        # Fallback to pattern matching
+        if model.startswith("gpt-") or model.startswith("o1-"):
+            return "openai"
+        elif model.startswith("azure-"):
+            return "azure"
+        elif model.startswith("qwen") and ":" in model:
+            # Local Ollama model (e.g., qwen3:4b)
+            return "ollama"
+        elif model.startswith("qwen"):
+            # Cloud Qwen model (e.g., qwen3-max)
+            return "qwen"
+        elif model.startswith("mistral"):
+            return "mistral"
+        elif model.startswith("granite"):
+            return "ibm"
+        elif "/" in model:
+            # Ollama format with namespace
+            return "ollama"
+
+        return settings.DEFAULT_LLM_PROVIDER
+
+    async def _call_openai(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        temperature: float,
+        max_tokens: Optional[int]
+    ) -> tuple[str, Dict[str, Any]]:
+        """Call OpenAI API"""
+        if not settings.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY not configured")
+
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=settings.LLM_REQUEST_TIMEOUT)
+        response = await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+
+        content = response.choices[0].message.content or ""
+        usage = response.usage
+        return content, {
+            "tokens_used": usage.total_tokens if usage else None,
+            "prompt_tokens": usage.prompt_tokens if usage else None,
+            "completion_tokens": usage.completion_tokens if usage else None
+        }
+
+    async def _call_azure(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        temperature: float,
+        max_tokens: Optional[int]
+    ) -> tuple[str, Dict[str, Any]]:
+        """Call Azure OpenAI API"""
+        if not settings.AZURE_OPENAI_API_KEY or not settings.AZURE_OPENAI_ENDPOINT:
+            raise ValueError("AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT must be configured")
+
+        # Remove azure- prefix for the actual model name
+        actual_model = model.replace("azure-", "") if model.startswith("azure-") else settings.AZURE_OPENAI_MODEL
+
+        client = AsyncAzureOpenAI(
+            api_key=settings.AZURE_OPENAI_API_KEY,
+            azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
+            api_version=settings.AZURE_OPENAI_API_VERSION,
+            timeout=settings.LLM_REQUEST_TIMEOUT
+        )
+        response = await client.chat.completions.create(
+            model=actual_model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+
+        content = response.choices[0].message.content or ""
+        usage = response.usage
+        return content, {
+            "tokens_used": usage.total_tokens if usage else None,
+            "prompt_tokens": usage.prompt_tokens if usage else None,
+            "completion_tokens": usage.completion_tokens if usage else None
+        }
+
+    async def _call_qwen(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        temperature: float,
+        max_tokens: Optional[int]
+    ) -> tuple[str, Dict[str, Any]]:
+        """Call Qwen Cloud API (OpenAI-compatible)"""
+        if not settings.QWEN_API_KEY:
+            raise ValueError("QWEN_API_KEY not configured")
+
+        client = AsyncOpenAI(
+            api_key=settings.QWEN_API_KEY,
+            base_url=settings.QWEN_BASE_URL,
+            timeout=settings.LLM_REQUEST_TIMEOUT
+        )
+        response = await client.chat.completions.create(
+            model=model or settings.QWEN_MODEL,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+
+        content = response.choices[0].message.content or ""
+        usage = response.usage
+        return content, {
+            "tokens_used": usage.total_tokens if usage else None,
+            "prompt_tokens": usage.prompt_tokens if usage else None,
+            "completion_tokens": usage.completion_tokens if usage else None
+        }
+
+    async def _call_mistral(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        temperature: float,
+        max_tokens: Optional[int]
+    ) -> tuple[str, Dict[str, Any]]:
+        """Call Mistral API (OpenAI-compatible)"""
+        if not settings.MISTRAL_API_KEY:
+            raise ValueError("MISTRAL_API_KEY not configured")
+
+        client = AsyncOpenAI(
+            api_key=settings.MISTRAL_API_KEY,
+            base_url=settings.MISTRAL_BASE_URL,
+            timeout=settings.LLM_REQUEST_TIMEOUT
+        )
+        response = await client.chat.completions.create(
+            model=model or settings.MISTRAL_MODEL,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+
+        content = response.choices[0].message.content or ""
+        usage = response.usage
+        return content, {
+            "tokens_used": usage.total_tokens if usage else None,
+            "prompt_tokens": usage.prompt_tokens if usage else None,
+            "completion_tokens": usage.completion_tokens if usage else None
+        }
+
+    async def _call_ibm(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        temperature: float,
+        max_tokens: Optional[int]
+    ) -> tuple[str, Dict[str, Any]]:
+        """Call IBM Granite API"""
+        if not settings.IBM_API_KEY:
+            raise ValueError("IBM_API_KEY not configured")
+
+        # Convert messages to IBM format (prompt string)
+        prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+
+        async with httpx.AsyncClient(timeout=settings.LLM_REQUEST_TIMEOUT) as client:
+            response = await client.post(
+                settings.IBM_BASE_URL,
+                headers={
+                    "Authorization": f"Bearer {settings.IBM_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model_id": model or settings.IBM_MODEL,
+                    "input": prompt,
+                    "parameters": {
+                        "temperature": temperature,
+                        "max_new_tokens": max_tokens or 1024
+                    }
+                }
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        content = data.get("results", [{}])[0].get("generated_text", "")
+        return content, {
+            "tokens_used": data.get("results", [{}])[0].get("generated_token_count"),
+            "prompt_tokens": data.get("results", [{}])[0].get("input_token_count"),
+            "completion_tokens": data.get("results", [{}])[0].get("generated_token_count")
+        }
+
+    async def _call_ollama(
+        self,
+        messages: List[Dict[str, str]],
+        model: str,
+        temperature: float,
+        max_tokens: Optional[int]
+    ) -> tuple[str, Dict[str, Any]]:
+        """Call local Ollama API"""
+        client = AsyncClient(host=settings.OLLAMA_BASE_URL)
+        response = await client.chat(
+            model=model or settings.OLLAMA_MODEL,
+            messages=messages,
+            options={
+                "temperature": temperature,
+                "num_predict": max_tokens if max_tokens else -1
+            }
+        )
+
+        message = response.get("message", {}) if isinstance(response, dict) else {}
+        content = message.get("content", "")
+        return content, {
+            "tokens_used": response.get('eval_count', 0) + response.get('prompt_eval_count', 0) if isinstance(response, dict) else None,
+            "prompt_tokens": response.get('prompt_eval_count', 0) if isinstance(response, dict) else None,
+            "completion_tokens": response.get('eval_count', 0) if isinstance(response, dict) else None
+        }
+
+    async def generate_response(
+        self,
+        messages: List[Dict[str, str]],
+        model: str = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None
+    ) -> str:
+        """
+        Generate a response from the LLM without persisting conversation history.
+        Useful for one-off generation tasks.
+        """
+        model = model or settings.OLLAMA_MODEL
+        content, _ = await self._get_llm_response(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        return content
 
     async def _get_llm_response(
         self,
@@ -28,15 +293,9 @@ class ChatbotService:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None
     ) -> tuple[str, Dict[str, Any]]:
-        """Get response from LLM provider (OpenAI or Ollama)"""
+        """Get response from LLM provider based on model selection"""
 
-        # Determine provider based on model name
-        if model.startswith("gpt-") or model.startswith("o1-"):
-            provider = "openai"
-        elif model.startswith("qwen") or "/" in model:
-            provider = "ollama"
-        else:
-            provider = settings.DEFAULT_LLM_PROVIDER
+        provider = self._determine_provider(model)
 
         metadata = {
             "model": model,
@@ -46,48 +305,23 @@ class ChatbotService:
 
         try:
             if provider == "openai":
-                if not settings.OPENAI_API_KEY:
-                    raise ValueError("OPENAI_API_KEY not configured")
+                content, usage = await self._call_openai(messages, model, temperature, max_tokens)
+            elif provider == "azure":
+                content, usage = await self._call_azure(messages, model, temperature, max_tokens)
+            elif provider == "qwen":
+                content, usage = await self._call_qwen(messages, model, temperature, max_tokens)
+            elif provider == "mistral":
+                content, usage = await self._call_mistral(messages, model, temperature, max_tokens)
+            elif provider == "ibm":
+                content, usage = await self._call_ibm(messages, model, temperature, max_tokens)
+            else:  # ollama (default)
+                content, usage = await self._call_ollama(messages, model, temperature, max_tokens)
 
-                client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=settings.LLM_REQUEST_TIMEOUT)
-                response = await client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens
-                )
-
-                content = response.choices[0].message.content or ""
-                usage = response.usage or None
-                metadata.update({
-                    "tokens_used": usage.total_tokens if usage else None,
-                    "prompt_tokens": usage.prompt_tokens if usage else None,
-                    "completion_tokens": usage.completion_tokens if usage else None
-                })
-
-            else:  # ollama
-                client = AsyncClient()
-                response = await client.chat(
-                    model=model,
-                    messages=messages,
-                    options={
-                        "temperature": temperature,
-                        "num_predict": max_tokens if max_tokens else -1
-                    }
-                )
-
-                message = response.get("message", {}) if isinstance(response, dict) else {}
-                content = message.get("content", "")
-                metadata.update({
-                    "tokens_used": response.get('eval_count', 0) + response.get('prompt_eval_count', 0) if isinstance(response, dict) else None,
-                    "prompt_tokens": response.get('prompt_eval_count', 0) if isinstance(response, dict) else None,
-                    "completion_tokens": response.get('eval_count', 0) if isinstance(response, dict) else None
-                })
-
+            metadata.update(usage)
             return content, metadata
 
         except Exception as e:
-            raise Exception(f"LLM API error: {str(e)}")
+            raise Exception(f"LLM API error ({provider}): {str(e)}")
 
     async def create_conversation(self, user_id: int, title: Optional[str] = None) -> Conversation:
         """Create a new conversation"""

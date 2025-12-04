@@ -14,9 +14,9 @@ const containerTransition: Transition = {
 
 const loadingSteps = [
   { icon: Database, label: 'Loading data models', delay: 0 },
-  { icon: Brain, label: 'Initializing AI engine', delay: 3000 },
-  { icon: Shield, label: 'Verifying license', delay: 6000 },
-  { icon: Sparkles, label: 'Preparing workspace', delay: 9000 },
+  { icon: Brain, label: 'Initializing AI engine', delay: 600 },
+  { icon: Shield, label: 'Verifying license', delay: 1200 },
+  { icon: Sparkles, label: 'Preparing workspace', delay: 1800 },
 ];
 
 export const AppLaunchAnimation = memo(({ isVisible, versionLabel }: AppLaunchAnimationProps) => {
@@ -45,7 +45,7 @@ export const AppLaunchAnimation = memo(({ isVisible, versionLabel }: AppLaunchAn
     // Complete last step
     const finalTimer = setTimeout(() => {
       setCompletedSteps(prev => [...prev, loadingSteps.length - 1]);
-    }, 12000);
+    }, 2400);
     timers.push(finalTimer);
 
     return () => timers.forEach(clearTimeout);

@@ -875,7 +875,8 @@ export function AIAssistant(): React.ReactElement {
     if (!chatState.input.trim() || chatState.isLoading) return;
 
     const userMessage = chatState.input.trim();
-    const pendingKind = inferResponseKind(userMessage, selectedEmployees.length > 0);
+    const hasEmployeeContext = selectedEmployees.length > 0;
+    const pendingKind = inferResponseKind(userMessage, hasEmployeeContext);
     const sessionId = chatState.sessionId;
     const userMessageId = `user-${uuidv4()}`;
     const optimisticUserMessage: ExtendedChatMessage = {
@@ -898,140 +899,17 @@ export function AIAssistant(): React.ReactElement {
     }));
 
     try {
-      // Enhanced context with ONLY reasoning data
-      let enhancedContext = '';
-      
-      // Add selected employees context with reasoning data
-      if (selectedEmployees.length > 0) {
-        enhancedContext += `\n\nSelected Employees Context (from AI Reasoning System):\n`;
-        selectedEmployees.forEach((emp, index) => {
-          const reasoning = getEmployeeReasoning(emp.hr_code);
-          if (reasoning) {
-            enhancedContext += `${index + 1}. ${emp.full_name} (${emp.hr_code}):\n`;
-            enhancedContext += `  - Combined Churn Risk: ${(reasoning.churn_risk * 100).toFixed(1)}%\n`;
-            enhancedContext += `  - ML Model Score: ${(reasoning.ml_score * 100).toFixed(1)}%\n`;
-            enhancedContext += `  - Business Rules Score: ${(reasoning.heuristic_score * 100).toFixed(1)}%\n`;
-            enhancedContext += `  - Behavioral Stage: ${reasoning.stage} (Score: ${(reasoning.stage_score * 100).toFixed(1)}%)\n`;
-            enhancedContext += `  - Confidence Level: ${(reasoning.confidence_level * 100).toFixed(1)}%\n`;
-            enhancedContext += `  - Department: ${emp.structure_name}, Position: ${emp.position}\n`;
-          } else {
-            // Fallback if reasoning data not available
-            const fallbackRisk = emp.churnProbability ?? 0;
-            enhancedContext += `${index + 1}. ${emp.full_name} (${emp.hr_code}) - Fallback Risk: ${(fallbackRisk * 100).toFixed(1)}%, Department: ${emp.structure_name}, Position: ${emp.position}\n`;
-          }
-        });
-      }
-
-      // Add detailed reasoning analysis data for selected employees
-      if (selectedEmployees.length > 0 && reasoningData && reasoningData.length > 0) {
-        enhancedContext += `\n\nDetailed AI Reasoning Analysis:\n`;
-        selectedEmployees.forEach((emp) => {
-          const reasoning = getEmployeeReasoning(emp.hr_code);
-          if (reasoning) {
-            enhancedContext += `\n${emp.full_name} (${emp.hr_code}) - Comprehensive Analysis:\n`;
-            
-            // Core scores
-            enhancedContext += `COMBINED SCORE BREAKDOWN:\n`;
-            enhancedContext += `- Final Churn Risk: ${(reasoning.churn_risk * 100).toFixed(1)}% (This is the authoritative score)\n`;
-            enhancedContext += `- ML Model Component: ${(reasoning.ml_score * 100).toFixed(1)}%\n`;
-            enhancedContext += `- Business Rules Component: ${(reasoning.heuristic_score * 100).toFixed(1)}%\n`;
-            enhancedContext += `- Behavioral Stage: ${reasoning.stage} (Score: ${(reasoning.stage_score * 100).toFixed(1)}%)\n`;
-            enhancedContext += `- Overall Confidence: ${(reasoning.confidence_level * 100).toFixed(1)}%\n`;
-            
-            // ML contributors
-            if (reasoning.ml_contributors && reasoning.ml_contributors.length > 0) {
-              enhancedContext += `\nML MODEL RISK FACTORS:\n`;
-              reasoning.ml_contributors.slice(0, 10).forEach((factor: any, idx: number) => {
-                enhancedContext += `  ${idx + 1}. ${factor.feature}: ${factor.value} (SHAP Impact: ${factor.importance > 0 ? '+' : ''}${(factor.importance * 100).toFixed(1)}%)\n`;
-              });
-            }
-            
-            // Business rule alerts
-            if (reasoning.heuristic_alerts && reasoning.heuristic_alerts.length > 0) {
-              enhancedContext += `\nBUSINESS RULE ALERTS:\n`;
-              reasoning.heuristic_alerts.forEach((alert: any, idx: number) => {
-                enhancedContext += `  ${idx + 1}. ${alert.rule_name}: +${(alert.impact * 100).toFixed(1)}% risk increase\n`;
-                enhancedContext += `     Reason: ${alert.reason}\n`;
-              });
-            }
-            
-            // Calculation breakdown if available
-            if (reasoning.calculation_breakdown) {
-              enhancedContext += `\nSCORE CALCULATION METHODOLOGY:\n`;
-              enhancedContext += `  ML Contribution: ${reasoning.calculation_breakdown.ml_contribution.toFixed(3)} (weight: ${reasoning.calculation_breakdown.weights.ml_weight})\n`;
-              enhancedContext += `  Business Rules Contribution: ${reasoning.calculation_breakdown.heuristic_contribution.toFixed(3)} (weight: ${reasoning.calculation_breakdown.weights.heuristic_weight})\n`;
-              enhancedContext += `  Stage Contribution: ${reasoning.calculation_breakdown.stage_contribution.toFixed(3)} (weight: ${reasoning.calculation_breakdown.weights.stage_weight})\n`;
-              enhancedContext += `  Final Combined Score: ${(reasoning.churn_risk * 100).toFixed(1)}%\n`;
-            }
-            
-            enhancedContext += `\nAI ANALYSIS: ${reasoning.reasoning}\n`;
-            if (reasoning.recommendations) {
-              enhancedContext += `AI RECOMMENDATIONS: ${reasoning.recommendations}\n`;
-            }
-          }
-        });
-      }
-
-      // Add general employee data context using ONLY reasoning data
-      if (reasoningData && reasoningData.length > 0) {
-        enhancedContext += `\n\nGeneral Population Context (AI Reasoning Data):\n`;
-        enhancedContext += `Total Employees with Reasoning Data: ${reasoningData.length}\n`;
-        
-        // Calculate risk distribution using dynamic reasoning data
-        const highRiskEmployees = reasoningData.filter(r => r.churn_risk > thresholds.highRisk);
-        const mediumRiskEmployees = reasoningData.filter(r => r.churn_risk > thresholds.mediumRisk && r.churn_risk <= thresholds.highRisk);
-        const lowRiskEmployees = reasoningData.filter(r => r.churn_risk <= thresholds.mediumRisk);
-        
-        const highThresholdPct = Math.round(thresholds.highRisk * 100);
-        const mediumThresholdPct = Math.round(thresholds.mediumRisk * 100);
-        enhancedContext += `Risk Distribution (AI Reasoning): High Risk (>${highThresholdPct}%): ${highRiskEmployees.length}, Medium Risk (${mediumThresholdPct}-${highThresholdPct}%): ${mediumRiskEmployees.length}, Low Risk (≤${mediumThresholdPct}%): ${lowRiskEmployees.length}\n`;
-        
-        // Stage distribution
-        const stageDistribution: Record<string, number> = {};
-        reasoningData.forEach(r => {
-          stageDistribution[r.stage] = (stageDistribution[r.stage] || 0) + 1;
-        });
-        enhancedContext += `Behavioral Stages: ${Object.entries(stageDistribution).map(([stage, count]) => `${stage}: ${count}`).join(', ')}\n`;
-        
-        // Average confidence
-        const avgConfidence = reasoningData.reduce((sum, r) => sum + r.confidence_level, 0) / reasoningData.length;
-        enhancedContext += `Average AI Confidence Level: ${(avgConfidence * 100).toFixed(1)}%\n`;
-      }
-
-      // Enhanced prompt instructions for AI using only reasoning data
-      const enhancedPrompt = `${userMessage}
-
-${enhancedContext}
-
-CRITICAL INSTRUCTIONS - USE ONLY AI REASONING DATA:
-1. NEVER use the old churnProbability values - ONLY use the churn_risk from the AI Reasoning System
-2. The churn_risk is the authoritative combined score that includes ML + Business Rules + Behavioral Stage
-3. When analyzing risk, reference the SHAP values from ml_contributors and business rule impacts
-4. Use the calculation breakdown to explain HOW the final score was computed
-5. Reference behavioral stages and their scores in your analysis
-6. Always mention confidence levels when making predictions
-7. Base ALL recommendations on the comprehensive reasoning data provided
-
-RESPONSE FORMATS (using reasoning data):
-- For DIAGNOSE RISK: Use "enhancedChurnRiskDiagnosis" with reasoning.churn_risk as overallRisk
-- For CREATE PLAN: Use "enhancedRetentionPlaybook" with reasoning.churn_risk as currentRisk  
-- For COMPARE queries: Use reasoning data to find similar risk profiles and patterns
-- For GENERAL questions: Use aggregate reasoning statistics and trends
-
-SCORING TRANSPARENCY:
-- Always explain the combination of ML + Business Rules + Stage scores
-- Reference specific SHAP values and rule impacts
-- Show confidence levels and calculation weights
-- Use behavioral stage context in recommendations
-
-MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis provided. Never use fallback churnProbability values.`;
-
+      // The intelligent-chat backend automatically handles:
+      // - Company-level queries (when no employee selected): retrieves workforce trends, exit patterns, department analysis
+      // - Employee-specific queries (when employee selected): retrieves employee data, churn reasoning, treatments
+      // We just need to pass the employee_id when one is selected
       const response = await chatbotService.sendMessage({
         sessionId,
-        content: enhancedPrompt,
-        employeeId: selectedEmployees[0]?.hr_code
+        content: userMessage, // Send raw message - backend handles context gathering
+        employeeId: hasEmployeeContext ? selectedEmployees[0]?.hr_code : undefined
       });
 
+      // Build assistant message with structured data if available
       const assistantMessage: ExtendedChatMessage = {
         id: response.botMessageId || `bot-${uuidv4()}`,
         role: 'assistant',
@@ -1042,6 +920,8 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
         confidence: response.response?.confidence,
         responseKind: pendingKind,
         responseTimeMs: response.response?.responseTime,
+        // Include structured data from intelligent chatbot for specialized renderers
+        structuredData: response.response?.structuredData as PossibleStructuredData | undefined,
       };
 
       setChatState(prev => {
@@ -1055,7 +935,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
           messages: [...updatedMessages, assistantMessage],
         };
       });
-      
+
       // Auto-scroll to bottom after adding message to ensure result is visible
       setTimeout(scrollToBottom, 100);
     } catch (err: any) {
@@ -1764,7 +1644,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="min-h-full flex flex-col">
       <header className="flex-none bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 border-b border-gray-700/50 relative overflow-hidden">
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
@@ -1820,7 +1700,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
         <TrainingReminderBanner />
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0">
         <aside className="w-[340px] flex-none flex flex-col bg-white border-r border-gray-200 dark:bg-gray-900 dark:border-gray-700">
           <div className="flex-none p-4 border-b border-gray-100 dark:border-gray-800">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Team Members</h2>
@@ -1847,7 +1727,7 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
                 className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:focus:ring-emerald-600 dark:focus:border-emerald-600"
               />
             </div>
-            
+
             <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-3">
               <div>
                 {searchTerm.trim() ? (
@@ -1913,50 +1793,35 @@ MAKE YOUR RESPONSES DATA-DRIVEN using the comprehensive AI reasoning analysis pr
               </select>
             </div>
 
-            {/* Quick Filter Chips */}
-            <div className="flex flex-wrap gap-1 mb-3">
-              {(selectedDepartment || selectedRiskLevel || selectedPosition) && (
+            {/* Active Filter Chips */}
+            {(selectedDepartment || selectedRiskLevel || selectedPosition) && (
+              <div className="flex flex-wrap gap-1">
                 <button
                   onClick={() => {
                     setSelectedDepartment('');
                     setSelectedRiskLevel('');
                     setSelectedPosition('');
                   }}
-                  className="px-2 py-1 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs rounded-full hover:bg-red-200 dark:hover:bg-red-800/50 transition-colors"
+                  className="px-1.5 py-0.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-[10px] rounded hover:bg-red-200 dark:hover:bg-red-800/50 transition-colors"
                 >
-                  Clear All
+                  Clear filters
                 </button>
-              )}
-              {selectedDepartment && (
-                <span className="px-2 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs rounded-full">
-                  Dept: {selectedDepartment}
-                </span>
-              )}
-              {selectedRiskLevel && (
-                <span className="px-2 py-1 bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 text-xs rounded-full">
-                  Risk: {selectedRiskLevel}
-                </span>
-              )}
-              {selectedPosition && (
-                <span className="px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-xs rounded-full">
-                  Pos: {selectedPosition}
-                </span>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
-          <div className="flex-1 overflow-auto p-3">
+          <div className="flex-1 overflow-auto p-2">
             {isLoadingAIAssistantData ? (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="p-4 rounded-lg border border-gray-100 dark:border-slate-700 animate-pulse h-[83px] bg-gray-100 dark:bg-slate-800" />
+                  <div key={i} className="p-3 rounded-lg border border-gray-100 dark:border-slate-700 animate-pulse h-[65px] bg-gray-100 dark:bg-slate-800" />
                 ))}
               </div>
             ) : sortedEmployeesMemo.length === 0 ? (
-              <div className="text-center py-12 px-4">
-                <Users className="h-12 w-12 text-gray-300 dark:text-gray-700 mx-auto mb-3" />
-                <h3 className="text-gray-900 dark:text-gray-100 font-medium mb-1">No employees found</h3>
-                <p className="text-gray-500 dark:text-gray-400 text-sm">Try adjusting your search or filters</p>
+              <div className="text-center py-8 px-3">
+                <Users className="h-10 w-10 text-gray-300 dark:text-gray-700 mx-auto mb-2" />
+                <h3 className="text-gray-900 dark:text-gray-100 font-medium text-sm mb-1">No employees found</h3>
+                <p className="text-gray-500 dark:text-gray-400 text-xs">Try adjusting filters</p>
               </div>
             ) : (
               MemoizedEmployeeList

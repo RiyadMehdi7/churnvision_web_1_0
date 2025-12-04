@@ -1191,10 +1191,27 @@ Provide concise, actionable insights based on the data available.
             {"role": "user", "content": message}
         ]
 
+        # Determine model based on DEFAULT_LLM_PROVIDER
+        # Default to Ollama (qwen3:4b) for local, privacy-focused inference
+        provider = settings.DEFAULT_LLM_PROVIDER.lower()
+        if provider == "openai" and settings.OPENAI_API_KEY:
+            model = settings.OPENAI_MODEL
+        elif provider == "azure" and settings.AZURE_OPENAI_API_KEY:
+            model = f"azure-{settings.AZURE_OPENAI_MODEL}"
+        elif provider == "qwen" and settings.QWEN_API_KEY:
+            model = settings.QWEN_MODEL
+        elif provider == "mistral" and settings.MISTRAL_API_KEY:
+            model = settings.MISTRAL_MODEL
+        elif provider == "ibm" and settings.IBM_API_KEY:
+            model = settings.IBM_MODEL
+        else:
+            # Default to local Ollama
+            model = settings.OLLAMA_MODEL
+
         try:
             response, _ = await self.chatbot_service._get_llm_response(
                 messages=messages,
-                model=settings.OPENAI_MODEL if settings.DEFAULT_LLM_PROVIDER == "openai" else settings.OLLAMA_MODEL,
+                model=model,
                 temperature=0.7
             )
             return response

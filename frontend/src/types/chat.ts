@@ -20,5 +20,6 @@ export interface ChatResponse {
     intent?: string;
     confidence?: number;
     responseTime: number;
+    structuredData?: Record<string, any>; // Structured JSON for frontend renderers
   };
 } 

@@ -221,16 +221,15 @@ class ChatbotService {
     }
 
     try {
-      // Sending message via API
-      // conversation_id must be an integer or undefined - UUID session IDs are client-side only
-      const conversationId = payload.sessionId && !payload.sessionId.includes('-')
-        ? parseInt(payload.sessionId, 10)
-        : undefined;
-
-      const response = await api.post('/chatbot/chat', {
+      // Use intelligent-chat endpoint for context-aware responses
+      // This endpoint automatically:
+      // - Detects query patterns (company-level vs employee-specific)
+      // - Retrieves pre-computed company metrics when no employee selected
+      // - Retrieves employee-specific data when employee_id is provided
+      const response = await api.post('/intelligent-chat/chat', {
         message: payload.content,
-        conversation_id: isNaN(conversationId as number) ? undefined : conversationId,
-        // Add other fields as expected by the backend
+        session_id: payload.sessionId,
+        employee_id: payload.employeeId || null, // Pass employee context if selected
       });
 
       if (!response || !response.data) {
@@ -239,10 +238,13 @@ class ChatbotService {
       }
 
       // Map backend response to ChatResponse format
+      // The intelligent-chat endpoint returns structured_data for specialized renderers
       const chatResponse: ChatResponse = {
         response: {
           message: response.data.response,
-          responseTime: 100 // Mock or calculate
+          responseTime: 100,
+          intent: response.data.pattern_detected, // Pattern type detected
+          structuredData: response.data.structured_data, // Structured JSON for renderers
         },
         botMessageId: response.data.id || uuidv4(),
         success: true,

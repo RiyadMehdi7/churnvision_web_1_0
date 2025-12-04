@@ -19,7 +19,8 @@ import {
   GitCompare,
   Zap,
   Activity,
-  Bot
+  Bot,
+  ChevronRight
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { CustomizationMode } from '../contexts/HomeCustomizationContext';
@@ -29,7 +30,10 @@ interface TutorialStep {
   title: string;
   description: string;
   content: React.ReactNode;
-  target?: string; // CSS selector for highlighting
+  icon: React.ReactNode;
+  gradient: string;
+  accentColor: string;
+  target?: string;
   position: 'center' | 'top' | 'bottom' | 'left' | 'right';
   action?: 'click' | 'hover' | 'drag' | 'none';
   mode?: CustomizationMode;
@@ -45,6 +49,76 @@ interface OnboardingTutorialProps {
   className?: string;
 }
 
+// Feature card component for step content
+const FeatureCard = ({
+  icon,
+  title,
+  description,
+  accentColor
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  accentColor: string;
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="flex items-start gap-4 p-4 rounded-xl bg-white/50 dark:bg-white/5 backdrop-blur-sm border border-gray-100 dark:border-white/10 hover:border-gray-200 dark:hover:border-white/20 transition-all duration-300"
+  >
+    <div className={cn(
+      "w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0",
+      accentColor
+    )}>
+      {icon}
+    </div>
+    <div>
+      <h4 className="font-semibold text-gray-900 dark:text-white text-sm mb-1">{title}</h4>
+      <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{description}</p>
+    </div>
+  </motion.div>
+);
+
+// Step indicator dot component
+const StepDot = ({
+  isActive,
+  isCompleted,
+  onClick,
+  index
+}: {
+  isActive: boolean;
+  isCompleted: boolean;
+  onClick: () => void;
+  index: number;
+}) => (
+  <motion.button
+    onClick={onClick}
+    className={cn(
+      "relative w-3 h-3 rounded-full transition-all duration-300",
+      isActive
+        ? "bg-white scale-125"
+        : isCompleted
+          ? "bg-white/60"
+          : "bg-white/30 hover:bg-white/40"
+    )}
+    whileHover={{ scale: 1.2 }}
+    whileTap={{ scale: 0.9 }}
+    aria-label={`Go to step ${index + 1}`}
+  >
+    {isActive && (
+      <motion.div
+        layoutId="activeDot"
+        className="absolute inset-0 rounded-full bg-white"
+        initial={false}
+        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+      />
+    )}
+    {isCompleted && !isActive && (
+      <CheckCircle className="w-3 h-3 text-white" />
+    )}
+  </motion.button>
+);
+
 export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
   isOpen,
   onClose,
@@ -57,36 +131,33 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
   const [showSkipConfirm, setShowSkipConfirm] = useState(false);
+  const [direction, setDirection] = useState(0);
 
-  // Tutorial steps configuration
+  // Tutorial steps configuration with enhanced visuals
   const tutorialSteps: TutorialStep[] = [
     {
       id: 'welcome',
       title: 'Welcome to ChurnVision',
-      description: 'Take a quick tour of the features that are available right now.',
+      description: 'Your AI-powered retention command center',
+      icon: <Sparkles className="w-8 h-8 text-white" />,
+      gradient: 'from-violet-600 via-purple-600 to-indigo-600',
+      accentColor: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400',
       position: 'center',
       action: 'none',
       content: (
-        <div className="text-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Sparkles className="w-10 h-10 text-white" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-            Your Retention Command Center
-          </h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto">
-            We&rsquo;ll highlight how to prepare your data, monitor churn risk, simulate interventions,
-            and collaborate with the Echo AI assistant.
+        <div className="space-y-6">
+          <p className="text-lg text-gray-600 dark:text-gray-300 leading-relaxed">
+            Take a quick tour of the features that help you predict, prevent, and manage employee churn effectively.
           </p>
-          <div className="flex items-center justify-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
-            <span className="flex items-center space-x-1">
-              <Clock className="w-4 h-4" />
-              <span>~3 minutes</span>
-            </span>
-            <span className="flex items-center space-x-1">
-              <Target className="w-4 h-4" />
-              <span>Product tour</span>
-            </span>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-violet-50 dark:bg-violet-900/20">
+              <Clock className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+              <span className="text-sm text-gray-700 dark:text-gray-300">~3 min tour</span>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-violet-50 dark:bg-violet-900/20">
+              <Target className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+              <span className="text-sm text-gray-700 dark:text-gray-300">7 key features</span>
+            </div>
           </div>
         </div>
       )
@@ -94,213 +165,194 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
     {
       id: 'data-readiness',
       title: 'Prepare Your Data',
-      description: 'Upload and validate HR data before running predictions.',
+      description: 'Upload and validate HR data before predictions',
+      icon: <UploadCloud className="w-8 h-8 text-white" />,
+      gradient: 'from-blue-600 via-cyan-600 to-teal-600',
+      accentColor: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
       position: 'center',
       action: 'none',
       content: (
-        <div>
-          <div className="flex items-start gap-3 mb-4">
-            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex items-center justify-center">
-              <UploadCloud className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-gray-900 dark:text-gray-100">Centralized onboarding</h4>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Use the Data Management workspace to import CSV or Excel files, monitor upload progress,
-                and store historical versions.
-              </p>
-            </div>
-          </div>
-          <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-            <li className="flex items-start gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-500 dark:text-emerald-400 mt-0.5" />
-              <span><strong>Validation checks</strong> flag schema issues, missing columns, leakage risks, and empty datasets before training.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Users className="w-4 h-4 text-blue-500 dark:text-blue-300 mt-0.5" />
-              <span><strong>Sample previews</strong> let you inspect employee rows and confirm mappings prior to ingestion.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Lightbulb className="w-4 h-4 text-amber-500 dark:text-amber-300 mt-0.5" />
-              <span><strong>Guided fixes</strong> provide clear messaging so stakeholders know how to resolve each issue.</span>
-            </li>
-          </ul>
+        <div className="space-y-4">
+          <FeatureCard
+            icon={<ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />}
+            title="Smart Validation"
+            description="Automatic schema checks, missing column detection, and leakage risk identification"
+            accentColor="bg-emerald-100 dark:bg-emerald-900/30"
+          />
+          <FeatureCard
+            icon={<Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />}
+            title="Data Preview"
+            description="Inspect employee rows and confirm column mappings before ingestion"
+            accentColor="bg-blue-100 dark:bg-blue-900/30"
+          />
+          <FeatureCard
+            icon={<Lightbulb className="w-5 h-5 text-amber-600 dark:text-amber-400" />}
+            title="Guided Fixes"
+            description="Clear messaging helps stakeholders resolve data issues quickly"
+            accentColor="bg-amber-100 dark:bg-amber-900/30"
+          />
         </div>
       )
     },
     {
       id: 'risk-overview',
       title: 'Monitor Churn Risk',
-      description: 'Track key churn metrics and AI insights on the Home dashboard.',
+      description: 'Track key metrics and AI insights on your dashboard',
+      icon: <BarChart3 className="w-8 h-8 text-white" />,
+      gradient: 'from-indigo-600 via-violet-600 to-purple-600',
+      accentColor: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400',
       position: 'center',
       action: 'none',
       content: (
-        <div>
-          <div className="flex items-start gap-3 mb-4">
-            <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg flex items-center justify-center">
-              <BarChart3 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-gray-900 dark:text-gray-100">Live risk monitoring</h4>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                The Home view surfaces risk distribution, dynamic thresholds, and autogenerated
-                narrative commentary for your current dataset.
-              </p>
-            </div>
-          </div>
-          <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-            <li className="flex items-start gap-2">
-              <Brain className="w-4 h-4 text-purple-500 dark:text-purple-300 mt-0.5" />
-              <span><strong>AI insights</strong> summarise department trends, risk drivers, and recommended focus areas.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Target className="w-4 h-4 text-rose-500 dark:text-rose-300 mt-0.5" />
-              <span><strong>Dynamic thresholds</strong> adapt automatically so teams share a consistent definition of high, medium, and low risk.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Users className="w-4 h-4 text-slate-500 dark:text-slate-300 mt-0.5" />
-              <span><strong>Employee search</strong> makes it easy to jump from overview metrics to individual profiles.</span>
-            </li>
-          </ul>
+        <div className="space-y-4">
+          <FeatureCard
+            icon={<Brain className="w-5 h-5 text-purple-600 dark:text-purple-400" />}
+            title="AI Insights"
+            description="Auto-generated summaries of department trends and risk drivers"
+            accentColor="bg-purple-100 dark:bg-purple-900/30"
+          />
+          <FeatureCard
+            icon={<Target className="w-5 h-5 text-rose-600 dark:text-rose-400" />}
+            title="Dynamic Thresholds"
+            description="Adaptive risk levels ensure consistent team-wide definitions"
+            accentColor="bg-rose-100 dark:bg-rose-900/30"
+          />
+          <FeatureCard
+            icon={<Users className="w-5 h-5 text-slate-600 dark:text-slate-400" />}
+            title="Quick Search"
+            description="Jump from overview metrics to individual employee profiles instantly"
+            accentColor="bg-slate-100 dark:bg-slate-900/30"
+          />
         </div>
       )
     },
     {
       id: 'scenario-playground',
-      title: 'Experiment in the Playground',
-      description: 'Model treatments, compare scenarios, and forecast retention impact.',
+      title: 'Experiment in Playground',
+      description: 'Model treatments and forecast retention impact',
+      icon: <GitCompare className="w-8 h-8 text-white" />,
+      gradient: 'from-emerald-600 via-teal-600 to-cyan-600',
+      accentColor: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400',
       position: 'center',
       action: 'none',
       content: (
-        <div>
-          <div className="flex items-start gap-3 mb-4">
-            <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg flex items-center justify-center">
-              <GitCompare className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-gray-900 dark:text-gray-100">Interactive scenario planning</h4>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Select an employee to view current predictions, apply AI-recommended treatments,
-                and track how survival curves shift over time.
-              </p>
-            </div>
-          </div>
-          <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-            <li className="flex items-start gap-2">
-              <Zap className="w-4 h-4 text-emerald-500 dark:text-emerald-300 mt-0.5" />
-              <span><strong>Scenario comparison</strong> charts baseline vs. post-treatment retention with automatic top-line metrics.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Users className="w-4 h-4 text-teal-500 dark:text-teal-300 mt-0.5" />
-              <span><strong>Mass treatment mode</strong> prioritizes cohorts, applies interventions in bulk, and reports aggregate ROI.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-500 dark:text-emerald-300 mt-0.5" />
-              <span><strong>Leakage-safe simulations</strong> reuse the validated model and respect the data diagnostics you completed earlier.</span>
-            </li>
-          </ul>
+        <div className="space-y-4">
+          <FeatureCard
+            icon={<Zap className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />}
+            title="Scenario Comparison"
+            description="Compare baseline vs post-treatment retention with automated metrics"
+            accentColor="bg-emerald-100 dark:bg-emerald-900/30"
+          />
+          <FeatureCard
+            icon={<Users className="w-5 h-5 text-teal-600 dark:text-teal-400" />}
+            title="Mass Treatment"
+            description="Prioritize cohorts, apply bulk interventions, and report aggregate ROI"
+            accentColor="bg-teal-100 dark:bg-teal-900/30"
+          />
+          <FeatureCard
+            icon={<ShieldCheck className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />}
+            title="Safe Simulations"
+            description="Leakage-safe predictions that respect your validated data"
+            accentColor="bg-cyan-100 dark:bg-cyan-900/30"
+          />
         </div>
       )
     },
     {
       id: 'treatment-tracking',
       title: 'Track Outcomes & ROI',
-      description: 'Follow up on applied treatments and measure impact over time.',
+      description: 'Measure impact and follow up on interventions',
+      icon: <Activity className="w-8 h-8 text-white" />,
+      gradient: 'from-orange-600 via-amber-600 to-yellow-600',
+      accentColor: 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400',
       position: 'center',
       action: 'none',
       content: (
-        <div>
-          <div className="flex items-start gap-3 mb-4">
-            <div className="w-12 h-12 bg-orange-50 dark:bg-orange-900/20 rounded-lg flex items-center justify-center">
-              <Activity className="w-6 h-6 text-orange-600 dark:text-orange-400" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-gray-900 dark:text-gray-100">Treatment tracker</h4>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Review which actions were applied, how much value they generated, and which employees still need attention.
-              </p>
-            </div>
-          </div>
-          <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-            <li className="flex items-start gap-2">
-              <CheckCircle className="w-4 h-4 text-emerald-500 dark:text-emerald-300 mt-0.5" />
-              <span><strong>Outcome summaries</strong> capture post-treatment churn probability, ELTV lift, and ROI for every intervention.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Lightbulb className="w-4 h-4 text-amber-500 dark:text-amber-300 mt-0.5" />
-              <span><strong>Prioritized follow-ups</strong> highlight employees still in queue and surface the highest value next steps.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Target className="w-4 h-4 text-rose-500 dark:text-rose-300 mt-0.5" />
-              <span><strong>Budget awareness</strong> keeps track of treatment cost ceilings so teams stay within constraints.</span>
-            </li>
-          </ul>
+        <div className="space-y-4">
+          <FeatureCard
+            icon={<CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />}
+            title="Outcome Summaries"
+            description="Track churn probability changes, ELTV lift, and ROI per intervention"
+            accentColor="bg-emerald-100 dark:bg-emerald-900/30"
+          />
+          <FeatureCard
+            icon={<Lightbulb className="w-5 h-5 text-amber-600 dark:text-amber-400" />}
+            title="Smart Follow-ups"
+            description="Surface employees still in queue with highest-value next steps"
+            accentColor="bg-amber-100 dark:bg-amber-900/30"
+          />
+          <FeatureCard
+            icon={<Target className="w-5 h-5 text-rose-600 dark:text-rose-400" />}
+            title="Budget Tracking"
+            description="Monitor treatment costs to stay within organizational constraints"
+            accentColor="bg-rose-100 dark:bg-rose-900/30"
+          />
         </div>
       )
     },
     {
       id: 'ai-assistant',
       title: 'Chat with Echo AI',
-      description: 'Use the built-in Echo assistant for guidance, explanations, and quick reports.',
+      description: 'Your intelligent retention assistant',
+      icon: <Bot className="w-8 h-8 text-white" />,
+      gradient: 'from-sky-600 via-blue-600 to-indigo-600',
+      accentColor: 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400',
       position: 'center',
       action: 'none',
       content: (
-        <div>
-          <div className="flex items-start gap-3 mb-4">
-            <div className="w-12 h-12 bg-sky-50 dark:bg-sky-900/20 rounded-lg flex items-center justify-center">
-              <Bot className="w-6 h-6 text-sky-600 dark:text-sky-400" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-gray-900 dark:text-gray-100">Echo assistant</h4>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Ask natural-language questions about churn metrics, treatments, and data quality. Echo replies with timestamps, intent labels, and confidence cues for transparency.
-              </p>
-            </div>
-          </div>
-          <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-            <li className="flex items-start gap-2">
-              <Lightbulb className="w-4 h-4 text-amber-500 dark:text-amber-300 mt-0.5" />
-              <span><strong>Explainability</strong>—request breakdowns of why an employee is high risk or how a metric was calculated.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Target className="w-4 h-4 text-rose-500 dark:text-rose-300 mt-0.5" />
-              <span><strong>Contextual prompts</strong> keep track of recent treatments, validation results, and dashboard insights.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-500 dark:text-emerald-300 mt-0.5" />
-              <span><strong>Accuracy reminders</strong> appear in the chat footer so end users know when to double-check responses.</span>
-            </li>
-          </ul>
+        <div className="space-y-4">
+          <FeatureCard
+            icon={<Lightbulb className="w-5 h-5 text-amber-600 dark:text-amber-400" />}
+            title="Explainability"
+            description="Get clear breakdowns of why employees are flagged as high risk"
+            accentColor="bg-amber-100 dark:bg-amber-900/30"
+          />
+          <FeatureCard
+            icon={<Target className="w-5 h-5 text-rose-600 dark:text-rose-400" />}
+            title="Context Aware"
+            description="Remembers recent treatments, validations, and dashboard insights"
+            accentColor="bg-rose-100 dark:bg-rose-900/30"
+          />
+          <FeatureCard
+            icon={<ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />}
+            title="Transparency"
+            description="Confidence indicators help you know when to verify AI responses"
+            accentColor="bg-emerald-100 dark:bg-emerald-900/30"
+          />
         </div>
       )
     },
     {
       id: 'completion',
-      title: 'You&rsquo;re Ready to Go',
-      description: 'Put your data, insights, and interventions to work.',
+      title: "You're Ready!",
+      description: 'Start reducing churn today',
+      icon: <CheckCircle className="w-8 h-8 text-white" />,
+      gradient: 'from-green-600 via-emerald-600 to-teal-600',
+      accentColor: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
       position: 'center',
       action: 'none',
       content: (
-        <div className="text-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle className="w-10 h-10 text-white" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-            Next Steps
-          </h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto">
-            Start by validating your latest dataset, then monitor the Home dashboard, explore the Playground,
-            and keep the Echo assistant handy for on-the-fly questions.
+        <div className="space-y-6">
+          <p className="text-lg text-gray-600 dark:text-gray-300 leading-relaxed">
+            You&apos;re all set to start predicting and preventing employee churn.
           </p>
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-left">
-            <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
-              Helpful reminders
+          <div className="p-5 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-800/50">
+            <h4 className="font-semibold text-emerald-900 dark:text-emerald-100 mb-3 flex items-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              Quick Start Checklist
             </h4>
-            <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
-              <li>• Re-run validation whenever a new file is uploaded.</li>
-              <li>• Use scenario snapshots to explain proposed interventions.</li>
-              <li>• Track applied treatments so ROI stays visible to stakeholders.</li>
-              <li>• Reference the chat disclaimer before you share AI-generated output.</li>
+            <ul className="space-y-2">
+              {[
+                'Upload and validate your HR dataset',
+                'Review the risk dashboard for insights',
+                'Explore scenarios in the Playground',
+                'Ask Echo AI for recommendations'
+              ].map((item, i) => (
+                <li key={i} className="flex items-center gap-2 text-sm text-emerald-800 dark:text-emerald-200">
+                  <ChevronRight className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  {item}
+                </li>
+              ))}
             </ul>
           </div>
         </div>
@@ -309,7 +361,7 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
   ];
 
   // Filter steps based on current mode
-  const relevantSteps = tutorialSteps.filter(step => 
+  const relevantSteps = tutorialSteps.filter(step =>
     !step.mode || step.mode === currentMode
   );
 
@@ -319,11 +371,12 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
 
     const timer = setTimeout(() => {
       if (currentStep < relevantSteps.length - 1) {
+        setDirection(1);
         setCurrentStep(prev => prev + 1);
       } else {
         setIsPlaying(false);
       }
-    }, 5000); // 5 seconds per step
+    }, 6000);
 
     return () => clearTimeout(timer);
   }, [currentStep, isPlaying, isOpen, relevantSteps.length]);
@@ -354,11 +407,11 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [isOpen, currentStep]);
 
-  // Event handlers
   const handleNext = useCallback(() => {
     if (currentStep < relevantSteps.length - 1) {
       const stepId = relevantSteps[currentStep].id;
       setCompletedSteps(prev => new Set([...prev, stepId]));
+      setDirection(1);
       setCurrentStep(prev => prev + 1);
     } else {
       handleComplete();
@@ -367,33 +420,36 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
 
   const handlePrevious = useCallback(() => {
     if (currentStep > 0) {
+      setDirection(-1);
       setCurrentStep(prev => prev - 1);
     }
   }, [currentStep]);
 
+  const handleGoToStep = useCallback((index: number) => {
+    setDirection(index > currentStep ? 1 : -1);
+    setCurrentStep(index);
+  }, [currentStep]);
+
   const handleComplete = useCallback(() => {
-    // Mark tutorial as completed
     localStorage.setItem('tutorial-completed', 'true');
     localStorage.setItem('tutorial-completion-date', new Date().toISOString());
-    
-    // Track completion
+
     const usage = JSON.parse(localStorage.getItem('tutorial-usage') || '{}');
     usage.completed = true;
     usage.completionDate = new Date().toISOString();
     usage.stepsCompleted = completedSteps.size;
     localStorage.setItem('tutorial-usage', JSON.stringify(usage));
-    
+
     onComplete();
   }, [completedSteps.size, onComplete]);
 
   const handleSkip = useCallback(() => {
-    // Track skip
     const usage = JSON.parse(localStorage.getItem('tutorial-usage') || '{}');
     usage.skipped = true;
     usage.skipDate = new Date().toISOString();
     usage.stepsCompleted = completedSteps.size;
     localStorage.setItem('tutorial-usage', JSON.stringify(usage));
-    
+
     onClose();
   }, [completedSteps.size, onClose]);
 
@@ -402,140 +458,244 @@ export const OnboardingTutorial: React.FC<OnboardingTutorialProps> = ({
 
   if (!isOpen || !currentStepData) return null;
 
+  // Animation variants
+  const slideVariants = {
+    enter: (direction: number) => ({
+      x: direction > 0 ? 100 : -100,
+      opacity: 0,
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+    },
+    exit: (direction: number) => ({
+      x: direction < 0 ? 100 : -100,
+      opacity: 0,
+    }),
+  };
+
   return (
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
       >
-        {/* Tutorial Modal */}
+        {/* Backdrop with blur */}
         <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.9, opacity: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowSkipConfirm(true)}
+        />
+
+        {/* Main Modal */}
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.95, opacity: 0, y: 20 }}
+          transition={{ type: "spring", stiffness: 300, damping: 30 }}
           className={cn(
-            "bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden",
+            "relative w-full max-w-2xl overflow-hidden rounded-2xl bg-white dark:bg-gray-900 shadow-2xl",
             className
           )}
         >
-          {/* Header */}
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          {/* Gradient Header */}
+          <div className={cn(
+            "relative px-6 py-8 sm:px-8 sm:py-10 bg-gradient-to-br",
+            currentStepData.gradient
+          )}>
+            {/* Decorative elements */}
+            <div className="absolute inset-0 overflow-hidden">
+              <div className="absolute -top-24 -right-24 w-48 h-48 bg-white/10 rounded-full blur-3xl" />
+              <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-white/10 rounded-full blur-2xl" />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-white/5 rounded-full blur-3xl" />
+            </div>
+
+            {/* Header Controls */}
+            <div className="relative flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsPlaying(!isPlaying)}
+                  className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+                  title={isPlaying ? 'Pause' : 'Auto-play'}
+                >
+                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                </button>
+              </div>
+              <button
+                onClick={() => setShowSkipConfirm(true)}
+                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Icon and Title */}
+            <div className="relative">
+              <motion.div
+                key={`icon-${currentStep}`}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.1 }}
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-5 shadow-lg"
+              >
+                {currentStepData.icon}
+              </motion.div>
+
+              <AnimatePresence mode="wait" custom={direction}>
+                <motion.div
+                  key={`title-${currentStep}`}
+                  custom={direction}
+                  variants={slideVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.3 }}
+                >
+                  <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
+                    {currentStepData.title}
+                  </h2>
+                  <p className="text-white/80 text-base sm:text-lg">
+                    {currentStepData.description}
+                  </p>
+                </motion.div>
+              </AnimatePresence>
+            </div>
+
+            {/* Progress dots */}
+            <div className="relative flex items-center justify-center gap-2 mt-6">
+              {relevantSteps.map((step, index) => (
+                <StepDot
+                  key={step.id}
+                  index={index}
+                  isActive={index === currentStep}
+                  isCompleted={completedSteps.has(step.id)}
+                  onClick={() => handleGoToStep(index)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Content Area */}
+          <div className="px-6 py-6 sm:px-8 sm:py-8 max-h-[40vh] overflow-y-auto">
+            <AnimatePresence mode="wait" custom={direction}>
+              <motion.div
+                key={`content-${currentStep}`}
+                custom={direction}
+                variants={slideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.3 }}
+              >
+                {currentStepData.content}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+
+          {/* Footer */}
+          <div className="px-6 py-4 sm:px-8 sm:py-5 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800">
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  Step {currentStep + 1} of {relevantSteps.length}
-                </div>
-                <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-2 max-w-32">
+              {/* Left side - progress text */}
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {currentStep + 1} of {relevantSteps.length}
+                </span>
+                <div className="hidden sm:block w-24 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                   <motion.div
-                    className="bg-blue-600 h-2 rounded-full"
+                    className={cn("h-full rounded-full bg-gradient-to-r", currentStepData.gradient)}
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
                     transition={{ duration: 0.3 }}
                   />
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded"
-                  title={isPlaying ? 'Pause' : 'Play'}
-                >
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                </button>
-                <button
-                  onClick={() => setShowSkipConfirm(true)}
-                  className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded"
-                  title="Close Tutorial"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
 
-          {/* Content */}
-          <div className="px-6 py-8">
-            <div className="mb-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-                {currentStepData.title}
-              </h2>
-              <p className="text-gray-600 dark:text-gray-400">
-                {currentStepData.description}
-              </p>
-            </div>
+              {/* Right side - navigation buttons */}
+              <div className="flex items-center gap-3">
+                {currentStep > 0 && (
+                  <motion.button
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    onClick={handlePrevious}
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span className="hidden sm:inline">Back</span>
+                  </motion.button>
+                )}
 
-            <div className="mb-8">
-              {currentStepData.content}
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="px-6 py-4 bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
-            <div className="flex items-center justify-between">
-              <button
-                onClick={handlePrevious}
-                disabled={currentStep === 0}
-                className="flex items-center space-x-2 px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Previous</span>
-              </button>
-
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={() => setShowSkipConfirm(true)}
-                  className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
-                >
-                  Skip Tutorial
-                </button>
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={handleNext}
-                  className="flex items-center space-x-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  className={cn(
+                    "flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white rounded-xl shadow-lg transition-all",
+                    "bg-gradient-to-r",
+                    currentStepData.gradient,
+                    "hover:shadow-xl hover:brightness-110"
+                  )}
                 >
                   <span>
-                    {currentStep === relevantSteps.length - 1 ? 'Complete' : 'Next'}
+                    {currentStep === relevantSteps.length - 1 ? 'Get Started' : 'Continue'}
                   </span>
                   {currentStep < relevantSteps.length - 1 && <ArrowRight className="w-4 h-4" />}
-                </button>
+                </motion.button>
               </div>
             </div>
           </div>
         </motion.div>
 
-        {/* Skip Confirmation */}
+        {/* Skip Confirmation Modal */}
         <AnimatePresence>
           {showSkipConfirm && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-10 flex items-center justify-center p-4"
             >
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                  Skip Tutorial?
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-black/40"
+                onClick={() => setShowSkipConfirm(false)}
+              />
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 max-w-sm w-full"
+              >
+                <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mb-4 mx-auto">
+                  <Lightbulb className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2 text-center">
+                  Skip the Tour?
                 </h3>
-                <p className="text-gray-600 dark:text-gray-400 mb-6">
-                  Are you sure you want to skip the tutorial? You can always access it later 
-                  from the help menu.
+                <p className="text-gray-600 dark:text-gray-400 mb-6 text-center text-sm">
+                  You can always restart the tutorial from the settings menu.
                 </p>
-                <div className="flex items-center justify-end space-x-3">
+                <div className="flex items-center gap-3">
                   <button
                     onClick={() => setShowSkipConfirm(false)}
-                    className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                    className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                   >
-                    Continue Tutorial
+                    Continue Tour
                   </button>
                   <button
                     onClick={handleSkip}
-                    className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                    className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-rose-500 to-orange-500 rounded-xl hover:brightness-110 transition-all shadow-lg"
                   >
-                    Skip Tutorial
+                    Skip
                   </button>
                 </div>
-              </div>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>

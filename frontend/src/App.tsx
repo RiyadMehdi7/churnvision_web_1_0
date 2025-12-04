@@ -131,14 +131,14 @@ function AppContent(): ReactElement {
   useEffect(() => {
     // Load AI model preference from localStorage
     const stored = localStorage.getItem('churnvision-ai-model-type');
-    let resolved: AIModelType = 'openai'; // Default to openai for web
+    let resolved: AIModelType = 'local'; // Default to local (ChurnVision Local - Qwen 3 4B)
 
     if (stored && isValidAiModelType(stored)) {
       resolved = stored as AIModelType;
     }
 
     if (resolved === 'auto') {
-      resolved = 'openai'; // Auto resolves to openai for web
+      resolved = 'local'; // Auto resolves to local (ChurnVision Local - Qwen 3 4B)
     }
 
     setSelectedAIModel(resolved);
@@ -272,9 +272,17 @@ function AppContent(): ReactElement {
 
   // === Effect for Threshold Synchronization ===
   useEffect(() => {
-    // Start automatic threshold sync with backend every 30 minutes
-    // Only start if we have a project database path
+    // Sync thresholds with backend when project loads
+    // This ensures risk levels are consistent with backend calculations
     if (activeProject?.id) {
+      // Immediate sync on project load
+      thresholdSyncService.syncWithBackend().then((result) => {
+        if (result.success) {
+          appLogger.info('Risk thresholds synced with backend:', result.message);
+        }
+      });
+
+      // Start automatic threshold sync with backend every 30 minutes
       thresholdSyncService.startAutoSync(30);
       appLogger.info('Started threshold sync service');
     }
@@ -288,11 +296,11 @@ function AppContent(): ReactElement {
   useEffect(() => {
     // For web application, ensure defaults are set
     if (!hasShownModelSelection && hasLoadedAiPreference && selectedAIModel === null) {
-      // Default to openai for web
-      setSelectedAIModel('openai');
+      // Default to local (ChurnVision Local - Qwen 3 4B)
+      setSelectedAIModel('local');
       setHasShownModelSelection(true);
       localStorage.setItem('churnvision-first-launch', 'completed');
-      localStorage.setItem('churnvision-ai-model-type', 'openai');
+      localStorage.setItem('churnvision-ai-model-type', 'local');
     }
   }, [
     hasShownModelSelection,
@@ -560,7 +568,7 @@ export const App: React.FC = (): React.ReactElement => {
       return;
     }
 
-    const minVisibleMs = 13000; // ~13 seconds for full animation
+    const minVisibleMs = 2800; // ~2.8 seconds for full animation
     const startTime = performance.now();
     let hasCompleted = false;
 
@@ -576,7 +584,7 @@ export const App: React.FC = (): React.ReactElement => {
     };
 
     // Don't hide on load - wait for the full animation
-    const fallbackTimeout = window.setTimeout(hideOverlay, 15000);
+    const fallbackTimeout = window.setTimeout(hideOverlay, 3500);
 
     return () => {
       window.removeEventListener('load', hideOverlay);

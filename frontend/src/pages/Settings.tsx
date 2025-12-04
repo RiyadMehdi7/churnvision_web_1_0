@@ -620,7 +620,7 @@ export function Settings() {
                       <div key={metric.key}>
                         <div className="flex items-center justify-between text-[11px] font-medium">
                           <span>{metric.label}</span>
-                          <span>{metric.score}/5</span>
+                          <span>{metric.score}/100</span>
                         </div>
                         <MetricBars
                           score={metric.score}
@@ -1242,20 +1242,24 @@ const renderProviderIcon = (brand: ProviderOption['icon']) => (
   />
 );
 
-const MetricBars: React.FC<{ score: number; accent: string; disabled?: boolean }> = ({ score, accent, disabled }) => (
-  <div className="mt-1 flex gap-1">
-    {Array.from({ length: 5 }).map((_, idx) => (
-      <div
-        key={idx}
-        className={cn(
-          'h-1.5 flex-1 rounded-full transition-colors',
-          idx < score ? accent : 'bg-border/60',
-          disabled && 'opacity-40'
-        )}
-      />
-    ))}
-  </div>
-);
+const MetricBars: React.FC<{ score: number; accent: string; disabled?: boolean }> = ({ score, accent, disabled }) => {
+  // Convert 0-100 score to 0-10 bars (each bar represents 10 points)
+  const filledBars = Math.round(score / 10);
+  return (
+    <div className="mt-1 flex gap-0.5">
+      {Array.from({ length: 10 }).map((_, idx) => (
+        <div
+          key={idx}
+          className={cn(
+            'h-1.5 flex-1 rounded-full transition-colors',
+            idx < filledBars ? accent : 'bg-border/60',
+            disabled && 'opacity-40'
+          )}
+        />
+      ))}
+    </div>
+  );
+};
 
 type AIProviderType =
   | 'local'
@@ -1274,60 +1278,65 @@ const isValidAIProvider = (value: unknown): value is AIProviderType =>
   typeof value === 'string' && (AI_PROVIDER_VALUES as readonly string[]).includes(value as string);
 
 // Inline provider catalog (previously imported from @shared/providerCatalog.json)
+// Model tiers:
+// - Default (local): Qwen 3 4B - privacy-focused, offline operation
+// - Standard cloud: OpenAI GPT-5.1, Azure OpenAI, Qwen3-Max, Mistral Large 3
+// - Enterprise: IBM Granite 3.0 for Trust/Safety/RAG faithfulness
 const manifestProviders: ProviderCatalogEntry[] = [
   {
     id: 'local',
     label: 'ChurnVision Local',
-    description: 'Run AI models locally on your machine',
+    description: 'Qwen 3 4B - Privacy-focused, offline operation, no external calls',
     deployment: 'local',
-    badge: 'Privacy First',
-    metrics: { speed: 85, performance: 90, intelligence: 88 }
+    badge: 'Default',
+    metrics: { speed: 85, performance: 88, intelligence: 86 }
   },
   {
     id: 'openai',
     label: 'OpenAI',
-    description: 'GPT-4 and other OpenAI models',
+    description: 'GPT-5.1 - Highest intelligence and speed',
     deployment: 'cloud',
     badge: 'Most Advanced',
-    metrics: { speed: 95, performance: 98, intelligence: 99 }
+    metrics: { speed: 98, performance: 98, intelligence: 100 }
   },
   {
     id: 'microsoft',
     label: 'Azure OpenAI',
-    description: 'Enterprise-grade AI from Microsoft',
+    description: 'GPT-5.1 via Azure - Enterprise-grade with Azure compliance',
     deployment: 'cloud',
     badge: 'Enterprise',
-    metrics: { speed: 93, performance: 96, intelligence: 97 }
+    metrics: { speed: 97, performance: 98, intelligence: 100 }
   },
   {
     id: 'qwen',
-    label: 'Qwen',
-    description: 'Alibaba Cloud AI models',
+    label: 'Qwen3-Max',
+    description: 'Alibaba Cloud - Excellent cost/performance, strong in Asian markets',
     deployment: 'cloud',
-    metrics: { speed: 90, performance: 92, intelligence: 93 }
+    metrics: { speed: 94, performance: 93, intelligence: 94 }
   },
   {
     id: 'mistral',
-    label: 'Mistral AI',
-    description: 'European AI excellence',
+    label: 'Mistral Large 3',
+    description: 'European AI - Very high intelligence, open-weight model',
     deployment: 'cloud',
-    metrics: { speed: 91, performance: 94, intelligence: 95 }
+    badge: 'European',
+    metrics: { speed: 93, performance: 95, intelligence: 97 }
   },
   {
     id: 'ibm',
-    label: 'IBM Watson',
-    description: 'IBM enterprise AI platform',
+    label: 'IBM Granite 3.0',
+    description: 'Enterprise AI - Top-tier Trust, Safety & RAG faithfulness',
     deployment: 'cloud',
-    badge: 'Enterprise',
-    metrics: { speed: 88, performance: 90, intelligence: 91 }
+    badge: 'Trust & Safety',
+    metrics: { speed: 88, performance: 92, intelligence: 91 }
   },
   {
     id: 'auto',
     label: 'Auto-Select',
-    description: 'Automatically choose the best provider',
+    description: 'Smart selection based on tenant preferences and query complexity',
     deployment: 'local',
     badge: 'Smart',
-    metrics: { speed: 90, performance: 92, intelligence: 94 }
+    metrics: { speed: 95, performance: 95, intelligence: 96 }
   }
 ];
 

@@ -799,6 +799,31 @@ class EmployeeService {
     return [lower, upper];
   }
 
+  /**
+   * Generate personalized treatments for an employee
+   */
+  async generateTreatments(hrCode: string): Promise<any[]> {
+    try {
+      if (this.isOfflineMode) {
+        console.warn('Cannot generate treatments in offline mode');
+        return [];
+      }
+
+      console.log(`Generating treatments for employee ${hrCode}...`);
+      const response = await api.post(`/employees/${hrCode}/generate-treatments`);
+
+      if (response.data && Array.isArray(response.data)) {
+        console.log(`Generated ${response.data.length} treatments`);
+        return response.data;
+      }
+
+      return [];
+    } catch (error) {
+      console.error('Error generating treatments:', error);
+      return [];
+    }
+  }
+
   // Public method to check if there are pending offline changes
   public hasPendingOfflineChanges(): boolean {
     const storedChanges = localStorage.getItem(OFFLINE_CACHE_KEY);

@@ -26,12 +26,12 @@ export interface DynamicRiskConfig {
 }
 
 /**
- * Default risk thresholds
- * Current: High > 70%, Medium 40-70%, Low ≤ 40%
+ * Default risk thresholds (aligned with backend)
+ * Current: High >= 60%, Medium 30-60%, Low < 30%
  */
 export const DEFAULT_RISK_THRESHOLDS: RiskThresholds = {
-  highRisk: 0.7,   // 70% - adjust this to change high risk threshold
-  mediumRisk: 0.4, // 40% - adjust this to change medium risk threshold
+  highRisk: 0.6,   // 60% - aligned with backend churn_prediction.py
+  mediumRisk: 0.3, // 30% - aligned with backend churn_prediction.py
 };
 
 // Global configuration state
@@ -54,15 +54,16 @@ let isCalibratingThresholds = false;
 
 /**
  * Get risk level based on probability and thresholds
+ * Uses >= comparison to match backend logic in churn_prediction.py
  */
 export function getRiskLevel(
-  probability: number, 
+  probability: number,
   thresholds: RiskThresholds = DEFAULT_RISK_THRESHOLDS
 ): 'High' | 'Medium' | 'Low' {
   const validProb = Math.max(0, Math.min(1, Number(probability) || 0));
-  
-  if (validProb > thresholds.highRisk) return 'High';
-  if (validProb > thresholds.mediumRisk) return 'Medium';
+
+  if (validProb >= thresholds.highRisk) return 'High';
+  if (validProb >= thresholds.mediumRisk) return 'Medium';
   return 'Low';
 }
 

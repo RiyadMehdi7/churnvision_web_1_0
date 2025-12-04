@@ -231,7 +231,6 @@ async def read_employees(
                 termination_date=str(row.termination_date) if row.termination_date else None,
                 reasoning_churn_risk=float(row.reasoning_churn_risk) if row.reasoning_churn_risk is not None else None,
                 reasoning_stage=row.reasoning_stage,
-                reasoning_confidence=float(row.reasoning_confidence) if row.reasoning_confidence is not None else None,
             ))
         return employees
     except Exception as e:
@@ -239,4 +238,30 @@ async def read_employees(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to load employees: {e}"
+        )
+
+
+@router.post("/{hr_code}/generate-treatments", response_model=List[Dict[str, Any]])
+async def generate_treatments(
+    hr_code: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """
+    Generate personalized treatments for an employee using AI.
+    """
+    try:
+        from app.services.treatment_generation_service import TreatmentGenerationService
+        service = TreatmentGenerationService(db)
+        treatments = await service.generate_personalized_treatments(hr_code)
+        return treatments
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate treatments: {str(e)}"
         )

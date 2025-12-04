@@ -62,7 +62,7 @@ class ConversationListResponse(ConversationBase):
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User message to send to the chatbot")
     conversation_id: Optional[int] = Field(None, description="ID of existing conversation, or None to start new")
-    model: Optional[str] = Field("gpt-3.5-turbo", description="LLM model to use (gpt-3.5-turbo, gpt-4, ollama/llama2, etc.)")
+    model: Optional[str] = Field("qwen3:4b", description="LLM model to use (qwen3:4b, gpt-4, etc.) - defaults to ChurnVision Local")
     temperature: Optional[float] = Field(0.7, ge=0.0, le=2.0, description="Sampling temperature")
     max_tokens: Optional[int] = Field(None, description="Maximum tokens in response")
 

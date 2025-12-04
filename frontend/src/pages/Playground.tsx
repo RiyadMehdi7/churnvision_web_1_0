@@ -1364,9 +1364,10 @@ export function Playground() {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const [playgroundData, suggestionsResult] = await Promise.all([
+        const [playgroundData, suggestionsResult, aiTreatments] = await Promise.all([
           api.get(`/playground/data/${employee.hr_code}`).then(r => r.data),
-          api.get(`/playground/treatments/${employee.hr_code}`).then(r => r.data)
+          api.get(`/playground/treatments/${employee.hr_code}`).then(r => r.data),
+          employeeService.generateTreatments(employee.hr_code)
         ]);
 
         if (!playgroundData || !suggestionsResult) {
@@ -1380,14 +1381,25 @@ export function Playground() {
         }
 
         setSelectedEmployeeData(playgroundData);
-        const suggestions: TreatmentSuggestion[] = suggestionsResult || [];
-        setTreatmentSuggestions(suggestions);
+
+        // Combine existing suggestions with AI treatments
+        // Ensure AI treatments have unique IDs if they don't already
+        const formattedAiTreatments = aiTreatments.map((t, index) => ({
+          ...t,
+          id: t.id || 1000 + index, // Temporary ID assignment if missing
+          projected_churn_prob_change: t.projected_churn_prob_change || -0.05, // Default impact if missing
+          projected_roi: t.projected_roi || 'medium',
+          cost: t.estimated_cost || 0
+        }));
+
+        const combinedSuggestions: TreatmentSuggestion[] = [...(suggestionsResult || []), ...formattedAiTreatments];
+        setTreatmentSuggestions(combinedSuggestions);
 
         // Switch to scenario tab to show employee details
         setActiveTab('scenario');
 
-        if (treatmentIdToSelect && suggestions.length > 0) {
-          const treatmentToSelect = suggestions.find(t => t.id === treatmentIdToSelect);
+        if (treatmentIdToSelect && combinedSuggestions.length > 0) {
+          const treatmentToSelect = combinedSuggestions.find(t => t.id === treatmentIdToSelect);
           if (treatmentToSelect) {
             await applyTreatment(treatmentToSelect);
           }
@@ -1395,7 +1407,7 @@ export function Playground() {
 
         toast({
           title: "Data loaded successfully",
-          description: `Loaded risk analysis data for ${employee.name}.`,
+          description: `Loaded risk analysis and generated ${aiTreatments.length} AI treatments for ${employee.name}.`,
           variant: "default"
         });
 
@@ -1634,7 +1646,7 @@ export function Playground() {
   }
 
   return (
-    <div className="h-screen w-full flex flex-col bg-gray-50 dark:bg-gray-900 overflow-hidden">
+    <div className="min-h-full w-full flex flex-col bg-gray-50 dark:bg-gray-900">
       <header className="flex-none bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 border-b border-gray-700/50 relative overflow-hidden">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-40"></div>

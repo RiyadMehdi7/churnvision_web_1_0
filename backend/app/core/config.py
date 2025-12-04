@@ -82,13 +82,38 @@ class Settings(BaseSettings):
     MODELS_DIR: str = Field(default="models", validation_alias=AliasChoices("MODELS_DIR", "CHURNVISION_MODELS_DIR"))
 
     # Chatbot / LLM settings
+    # Default (local): Qwen 3 4B via Ollama - privacy-focused, offline
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "qwen2.5:0.5b"
+    DEFAULT_LLM_PROVIDER: str = "ollama"  # 'openai', 'azure', 'ollama', 'mistral', 'ibm' - default to local
+
+    # OpenAI (GPT-5.1) - highest intelligence and speed
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-5.1"
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "qwen3:4b"
-    DEFAULT_LLM_PROVIDER: str = "openai"  # 'openai' or 'ollama'
+
+    # Azure OpenAI (GPT-5.1) - enterprise-grade with Azure compliance
+    AZURE_OPENAI_API_KEY: Optional[str] = None
+    AZURE_OPENAI_ENDPOINT: Optional[str] = None
+    AZURE_OPENAI_MODEL: str = "gpt-5.1"
+    AZURE_OPENAI_API_VERSION: str = "2024-02-15-preview"
+
+    # Qwen3-Max (Alibaba Cloud) - excellent cost/performance
+    QWEN_API_KEY: Optional[str] = None
+    QWEN_MODEL: str = "qwen3-max"
+    QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    # Mistral Large 3 (European) - very high intelligence, open-weight
+    MISTRAL_API_KEY: Optional[str] = None
+    MISTRAL_MODEL: str = "mistral-large-latest"
+    MISTRAL_BASE_URL: str = "https://api.mistral.ai/v1"
+
+    # IBM Granite 3.0 - top-tier trust, safety & RAG faithfulness
+    IBM_API_KEY: Optional[str] = None
+    IBM_MODEL: str = "granite-3.0-8b-instruct"
+    IBM_BASE_URL: str = "https://us-south.ml.cloud.ibm.com/ml/v1/text/generation"
+
     CHATBOT_MAX_HISTORY: int = 10  # Maximum number of previous messages to include in context
-    CHATBOT_SYSTEM_PROMPT: str = "You are a helpful AI assistant for ChurnVision Enterprise, a customer churn prediction platform. You help users understand their data, analyze churn patterns, and make data-driven decisions."
+    CHATBOT_SYSTEM_PROMPT: str = "You are a helpful AI assistant for ChurnVision Enterprise, an employee churn prediction platform. You help users understand their workforce data, analyze employee turnover patterns, and make data-driven HR decisions."
     LLM_REQUEST_TIMEOUT: int = 30  # seconds
 
     @computed_field

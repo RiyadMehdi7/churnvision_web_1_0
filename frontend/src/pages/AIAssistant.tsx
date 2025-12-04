@@ -18,7 +18,9 @@ import {
   ChevronUp,
   Expand, // Added Expand icon for full-screen view
   X, // Added X icon for close button
+  MessageSquare,
 } from 'lucide-react';
+import { PageHeader } from '../components/PageHeader';
 import type { Components } from 'react-markdown';
 import { RiskIndicator } from '../components/RiskIndicator';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -37,6 +39,13 @@ import { getCurrentThresholds, getDynamicRiskLevel } from '@/config/riskThreshol
 import { standardizePrompt } from '../utils/promptStandardizer';
 import { TrainingReminderBanner } from '../components/TrainingReminderBanner';
 import { ModelTrainingRequired } from '../components/ModelTrainingRequired';
+
+// Import agentic AI components
+import { AgentExecutionPanel, AgentContextPanel, ActionProposalCard } from '../components/agent';
+import { useAgentExecution } from '../hooks/useAgentExecution';
+import { useActionProposals } from '../hooks/useActionProposals';
+import { useAgentMemory } from '../hooks/useAgentMemory';
+import type { AgentContext, ActionProposal } from '@/types/agent';
 
 // Import analysis data types
 import type { 
@@ -105,6 +114,37 @@ const markdownComponents: Components = {
 };
 
 const ANALYSIS_KEYWORDS = ['analyze', 'analysis', 'diagnose', 'compare', 'plan', 'pattern', 'trend', 'insight', 'strategy', 'playbook', 'recommend'];
+
+// Helper to detect pattern type from user message for agent execution visualization
+const detectPatternFromMessage = (message: string, hasEmployeeContext: boolean): string => {
+  const lower = message.toLowerCase();
+
+  if (lower.includes('diagnose') || lower.includes('risk') || lower.includes('why is')) {
+    return 'churn_risk_diagnosis';
+  }
+  if (lower.includes('retention') || lower.includes('plan') || lower.includes('playbook')) {
+    return 'retention_plan';
+  }
+  if ((lower.includes('compare') || lower.includes('similar')) && lower.includes('stayed')) {
+    return 'employee_comparison_stayed';
+  }
+  if (lower.includes('compare') || lower.includes('similar') || lower.includes('resigned')) {
+    return 'employee_comparison';
+  }
+  if (lower.includes('exit') || lower.includes('pattern') || lower.includes('departure')) {
+    return 'exit_pattern_mining';
+  }
+  if (lower.includes('trend') || lower.includes('workforce') || lower.includes('overall')) {
+    return 'workforce_trends';
+  }
+  if (lower.includes('department') || lower.includes('team')) {
+    return 'department_analysis';
+  }
+  if (hasEmployeeContext) {
+    return 'churn_risk_diagnosis';
+  }
+  return 'general_chat';
+};
 
 const inferResponseKind = (content: string, hasEmployeeContext: boolean): ResponseKind => {
   const lower = content.toLowerCase();
@@ -408,7 +448,13 @@ const ChatMessageComponent = memo<{ message: ExtendedChatMessage; isContinuation
     return null;
   };
 
+  // Use structuredData from backend if available, otherwise try to parse from message text
   const structuredData = isBot ? (() => {
+    // First check if structuredData was passed directly from the backend response
+    if (message.structuredData && message.structuredData.type) {
+      return message.structuredData;
+    }
+    // Fall back to parsing the message text for legacy responses
     const result = tryParseStructuredData(message.message);
     return result;
   })() : null;
@@ -801,6 +847,38 @@ export function AIAssistant(): React.ReactElement {
   const [showQuickActions, setShowQuickActions] = useState(false); // Default to closed on small screens
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // --- Agentic AI State ---
+  const { execution, isExecuting, startExecution, completeExecution, resetExecution } = useAgentExecution();
+
+  // --- Agent Memory (with localStorage persistence & insights extraction) ---
+  const {
+    context: agentContext,
+    addEmployeeDiscussed,
+    extractInsightsFromResponse,
+    clearMemory,
+  } = useAgentMemory();
+
+  // --- Action Proposals ---
+  const {
+    proposals: actionProposals,
+    isGenerating: isGeneratingActions,
+    error: actionError,
+    generateEmail,
+    generateMeeting,
+    generateSuite,
+    approveAction,
+    rejectAction,
+    editAction,
+    clearProposals,
+  } = useActionProposals();
+
+  // Log action errors for debugging
+  useEffect(() => {
+    if (actionError) {
+      console.error('[ActionProposals] Error:', actionError);
+    }
+  }, [actionError]);
+
   useEffect(() => {
     if (!activeProject) {
       setChatState(prev => ({ ...prev, messages: [], isLoading: false, error: null }));
@@ -898,6 +976,20 @@ export function AIAssistant(): React.ReactElement {
       messages: [...prev.messages, optimisticUserMessage],
     }));
 
+    // Start agent execution visualization with context
+    const agentContextData = {
+      employeeName: hasEmployeeContext ? selectedEmployees[0]?.name : undefined,
+      riskScore: hasEmployeeContext ? getEmployeeRiskScore(selectedEmployees[0]) : undefined,
+      department: hasEmployeeContext ? selectedEmployees[0]?.department : undefined,
+    };
+
+    // Determine pattern type from the message for agent execution
+    const patternType = pendingKind === 'analysis'
+      ? detectPatternFromMessage(userMessage, hasEmployeeContext)
+      : 'general_chat';
+
+    startExecution(userMessage, patternType, agentContextData);
+
     try {
       // The intelligent-chat backend automatically handles:
       // - Company-level queries (when no employee selected): retrieves workforce trends, exit patterns, department analysis
@@ -936,6 +1028,29 @@ export function AIAssistant(): React.ReactElement {
         };
       });
 
+      // Complete agent execution visualization
+      completeExecution();
+
+      // Update agent memory with discussed employee
+      if (hasEmployeeContext && selectedEmployees[0]) {
+        const emp = selectedEmployees[0];
+        const riskScore = getEmployeeRiskScore(emp);
+        addEmployeeDiscussed({
+          hrCode: emp.hr_code || '',
+          name: emp.name,
+          riskLevel: riskScore >= 0.7 ? 'High' : riskScore >= 0.4 ? 'Medium' : 'Low',
+        });
+      }
+
+      // Extract and store insights from the AI response
+      const responseText = assistantMessage.message;
+      if (responseText && responseText.length > 50) {
+        extractInsightsFromResponse(
+          responseText,
+          hasEmployeeContext ? selectedEmployees[0]?.name : undefined
+        );
+      }
+
       // Auto-scroll to bottom after adding message to ensure result is visible
       setTimeout(scrollToBottom, 100);
     } catch (err: any) {
@@ -967,6 +1082,9 @@ export function AIAssistant(): React.ReactElement {
           }],
         };
       });
+
+      // Reset agent execution on error
+      resetExecution();
     }
   };
 
@@ -1145,45 +1263,43 @@ export function AIAssistant(): React.ReactElement {
   ), [sortedEmployeesMemo, selectedEmployees, EmployeeRowRenderer]); // Depend on sortedEmployeesMemo
 
   const renderChatInput = () => (
-    <div className="flex-none bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700 p-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Input area with improved design */}
+    <div className="flex-none bg-gradient-to-t from-white via-white to-white/80 dark:from-gray-900 dark:via-gray-900 dark:to-gray-900/80 pt-4 pb-6 px-4">
+      <div className="max-w-3xl mx-auto">
+        {/* ChatGPT-style centered input */}
         <div className="relative">
-          <div className="flex items-end gap-3">
-            <div className="flex-1 relative">
-              <textarea
-                value={chatState.input}
-                onChange={(e) => setChatState(prev => ({ ...prev, input: e.target.value }))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
-                  }
-                }}
-                placeholder={selectedEmployees[0] ? `Ask about ${selectedEmployees[0].name} or general questions...` : "Select an employee or ask general questions..."}
-                disabled={chatState.isLoading}
-                rows={1}
-                className="w-full px-4 py-2.5 pr-14 rounded-xl border border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-slate-100 placeholder-gray-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-emerald-500 focus:border-transparent transition-all duration-200 resize-none min-h-[42px] overflow-hidden"
-                style={{ 
-                  height: 'auto',
-                  minHeight: '42px'
-                }}
-                onInput={(e) => {
-                  const target = e.target as HTMLTextAreaElement;
-                  target.style.height = 'auto';
-                  target.style.height = Math.min(target.scrollHeight, 120) + 'px';
-                }}
-              />
-              <button
-                onClick={() => {
+          <div className="relative bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-lg shadow-gray-200/50 dark:shadow-black/20 transition-shadow duration-200 hover:shadow-xl hover:shadow-gray-200/60 dark:hover:shadow-black/30 focus-within:shadow-xl focus-within:shadow-gray-300/50 dark:focus-within:shadow-black/40 focus-within:border-gray-300 dark:focus-within:border-gray-600">
+            <textarea
+              value={chatState.input}
+              onChange={(e) => setChatState(prev => ({ ...prev, input: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
                   handleSendMessage();
-                }}
-                disabled={chatState.isLoading || !chatState.input.trim()}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white transition-colors duration-200 disabled:cursor-not-allowed"
-              >
-                {chatState.isLoading ? <LoadingSpinner /> : <Send size={16} />}
-              </button>
-            </div>
+                }
+              }}
+              placeholder={selectedEmployees[0] ? `Message about ${selectedEmployees[0].name}...` : "Message ChurnVision..."}
+              disabled={chatState.isLoading}
+              rows={1}
+              className="w-full px-4 py-4 pr-14 bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none resize-none min-h-[56px] max-h-[200px] text-base"
+              style={{
+                height: 'auto',
+                minHeight: '56px'
+              }}
+              onInput={(e) => {
+                const target = e.target as HTMLTextAreaElement;
+                target.style.height = 'auto';
+                target.style.height = Math.min(target.scrollHeight, 200) + 'px';
+              }}
+            />
+            <button
+              onClick={() => {
+                handleSendMessage();
+              }}
+              disabled={chatState.isLoading || !chatState.input.trim()}
+              className="absolute right-3 bottom-3 p-2 rounded-full bg-gray-900 dark:bg-white hover:bg-gray-700 dark:hover:bg-gray-200 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white dark:text-gray-900 transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {chatState.isLoading ? <LoadingSpinner /> : <Send size={18} />}
+            </button>
           </div>
         </div>
 
@@ -1365,8 +1481,8 @@ export function AIAssistant(): React.ReactElement {
             )}
           </div>
         )}
-        <p className="mt-4 text-xs text-gray-500 dark:text-gray-400 text-center">
-          The AI assistant may produce incorrect or outdated information. Please verify critical insights before acting.
+        <p className="mt-3 text-[11px] text-gray-400 dark:text-gray-500 text-center">
+          ChurnVision can make mistakes. Verify important information.
         </p>
       </div>
     </div>
@@ -1386,188 +1502,37 @@ export function AIAssistant(): React.ReactElement {
   const renderWelcomeMessage = () => {
 
     return (
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.3 }}
-        className="welcome-card p-6 rounded-xl bg-white dark:!bg-gradient-to-br dark:!from-gray-800 dark:!to-gray-900 shadow-lg max-w-3xl mx-auto my-8 border border-gray-200 dark:border-gray-700/50"
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="flex flex-col items-center justify-center min-h-[60vh] px-4"
       >
-        <div className="flex items-center mb-6">
-          <motion.div 
-            className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 flex items-center justify-center text-white mr-4 flex-shrink-0"
-            animate={{ 
-              scale: [1, 1.05, 1],
-              boxShadow: [
-                '0 0 0 rgba(91, 169, 139, 0.3)', 
-                '0 0 20px rgba(91, 169, 139, 0.6)', 
-                '0 0 0 rgba(91, 169, 139, 0.3)'
-              ]
-            }}
-            transition={{ 
-              duration: 2.5, 
-              repeat: Infinity,
-              ease: "easeInOut" 
-            }}
-          >
-            <Bot size={32} />
-          </motion.div>
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Welcome to AI Assistant</h2>
-            <p className="text-gray-600 dark:text-gray-300">Your intelligent retention analysis companion</p>
-          </div>
-        </div>
-
-        <div className="mt-6 border-l-4 border-emerald-500 dark:border-emerald-400 pl-4 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-md">
-          <p className="text-gray-700 dark:text-gray-200">
-            <strong>✨ New:</strong> Ask general questions about your workforce! Try queries like "Show me churn trends", "What are the top risk factors", or "Compare departments by risk level". No need to select an employee first.
-          </p>
-        </div>
-
-        <div className="mt-4 border-l-4 border-blue-500 dark:border-blue-400 pl-4 py-2 bg-blue-50 dark:bg-blue-700/50 rounded-md">
-          <p className="text-gray-700 dark:text-gray-200">
-            Select an employee for individual analysis, or ask general questions about workforce trends and analytics. I can generate insights, charts, and recommendations for both specific employees and overall workforce patterns.
+        {/* Centered title - ChatGPT style */}
+        <div className="text-center mb-12">
+          <h1 className="text-4xl md:text-5xl font-semibold text-gray-800 dark:text-gray-100 mb-3">
+            What can I help with?
+          </h1>
+          <p className="text-lg text-gray-500 dark:text-gray-400">
+            Ask about workforce trends, employee retention, or select an employee for detailed analysis
           </p>
         </div>
         
-        {/* --- Updated Grid with Consistent Design --- */}
-        <div className="mt-6">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent flex-1"></div>
-            <span className="text-sm font-medium text-gray-600 dark:text-gray-400 px-2">Quick Start</span>
-            <div className="h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-600 to-transparent flex-1"></div>
-          </div>
-          
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {/* Churn Risk Diagnosis */}
-            <motion.button
-              onClick={() => {
-                if (aiAssistantEmployees && aiAssistantEmployees[0]) {
-                  const standardized = standardizePrompt('diagnose', aiAssistantEmployees[0].name);
-                  setInputFromSuggestion(standardized.prompt);
-                }
-              }}
-              disabled={!aiAssistantEmployees || aiAssistantEmployees.length < 1}
-              className="group relative overflow-hidden bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/60 dark:to-red-900/40 border border-red-200 dark:border-red-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-red-500/20 dark:hover:shadow-red-400/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
-              whileHover={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 1 ? 1 : 1.02 }}
-              whileTap={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 1 ? 1 : 0.98 }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-red-500/5 to-red-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 group-hover:bg-red-200 dark:group-hover:bg-red-800/60 transition-colors">
-                    <BarChart size={16} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-red-700 dark:text-red-300 text-sm">Churn Risk Diagnosis</h3>
-                    <p className="text-xs text-red-600/80 dark:text-red-400/80">Understand why someone is at risk</p>
-                  </div>
-                </div>
-              </div>
-            </motion.button>
-            
-            {/* Retention Playbook */}
-            <motion.button
-              onClick={() => {
-                if (aiAssistantEmployees && aiAssistantEmployees[1]) {
-                  const standardized = standardizePrompt('retention', aiAssistantEmployees[1].name);
-                  setInputFromSuggestion(standardized.prompt);
-                }
-              }}
-              disabled={!aiAssistantEmployees || aiAssistantEmployees.length < 2}
-              className="group relative overflow-hidden bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/60 dark:to-purple-900/40 border border-purple-200 dark:border-purple-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-purple-500/20 dark:hover:shadow-purple-400/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
-              whileHover={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 2 ? 1 : 1.02 }}
-              whileTap={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 2 ? 1 : 0.98 }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 group-hover:bg-purple-200 dark:group-hover:bg-purple-800/60 transition-colors">
-                    <BookOpen size={16} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-purple-700 dark:text-purple-300 text-sm">Retention Playbooks</h3>
-                    <p className="text-xs text-purple-600/80 dark:text-purple-400/80">Get tailored action plans</p>
-                  </div>
-                </div>
-              </div>
-            </motion.button>
-
-            {/* Workforce Trends */}
+        {/* Quick action suggestions - ChatGPT style */}
+        <div className="w-full max-w-3xl">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {/* Workforce Trends - Simple card style like ChatGPT */}
             <motion.button
               onClick={() => {
                 const standardized = standardizePrompt('trends');
                 setInputFromSuggestion(standardized.prompt);
               }}
-              className="group relative overflow-hidden bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/60 dark:to-green-900/40 border border-green-200 dark:border-green-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-green-500/20 dark:hover:shadow-green-400/20 hover:-translate-y-0.5"
+              className="group p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-all duration-200 text-left"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-green-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 group-hover:bg-green-200 dark:group-hover:bg-green-800/60 transition-colors">
-                    <TrendingUp size={14} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-green-700 dark:text-green-300 text-sm">Workforce Trends</h3>
-                    <p className="text-xs text-green-600/80 dark:text-green-400/80">Analyze overall churn patterns</p>
-                  </div>
-                </div>
-              </div>
-            </motion.button>
-
-            {/* Peer Similarity (Stayed) */}
-            <motion.button
-              onClick={() => {
-                if (aiAssistantEmployees && aiAssistantEmployees[2]) {
-                  const standardized = standardizePrompt('similarity_stayed', aiAssistantEmployees[2].name);
-                  setInputFromSuggestion(standardized.prompt);
-                }
-              }}
-              disabled={!aiAssistantEmployees || aiAssistantEmployees.length < 3}
-              className="group relative overflow-hidden bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/60 dark:to-emerald-900/40 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-emerald-500/20 dark:hover:shadow-emerald-400/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
-              whileHover={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 3 ? 1 : 1.02 }}
-              whileTap={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 3 ? 1 : 0.98 }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-emerald-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-200 dark:group-hover:bg-emerald-800/60 transition-colors">
-                    <Users size={16} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-emerald-700 dark:text-emerald-300 text-sm">Compare (Stayed)</h3>
-                    <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80">Compare with retained colleagues</p>
-                  </div>
-                </div>
-              </div>
-            </motion.button>
-
-            {/* Peer Similarity (Resigned) */}
-            <motion.button
-              onClick={() => {
-                if (aiAssistantEmployees && aiAssistantEmployees[3]) {
-                  const standardized = standardizePrompt('similarity_resigned', aiAssistantEmployees[3].name);
-                  setInputFromSuggestion(standardized.prompt);
-                }
-              }}
-              disabled={!aiAssistantEmployees || aiAssistantEmployees.length < 4}
-              className="group relative overflow-hidden bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950/60 dark:to-orange-900/40 border border-orange-200 dark:border-orange-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-orange-500/20 dark:hover:shadow-orange-400/20 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:translate-y-0"
-              whileHover={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 4 ? 1 : 1.02 }}
-              whileTap={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 4 ? 1 : 0.98 }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-orange-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 group-hover:bg-orange-200 dark:group-hover:bg-orange-800/60 transition-colors">
-                    <Users size={16} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-orange-700 dark:text-orange-300 text-sm">Compare (Resigned)</h3>
-                    <p className="text-xs text-orange-600/80 dark:text-orange-400/80">Compare with resigned colleagues</p>
-                  </div>
-                </div>
-              </div>
+              <TrendingUp size={20} className="text-gray-400 dark:text-gray-500 mb-2" />
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Analyze workforce trends</p>
             </motion.button>
 
             {/* Department Analysis */}
@@ -1576,46 +1541,43 @@ export function AIAssistant(): React.ReactElement {
                 const standardized = standardizePrompt('departments');
                 setInputFromSuggestion(standardized.prompt);
               }}
-              className="group relative overflow-hidden bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-950/60 dark:to-indigo-900/40 border border-indigo-200 dark:border-indigo-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-indigo-500/20 dark:hover:shadow-indigo-400/20 hover:-translate-y-0.5"
+              className="group p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-all duration-200 text-left"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-indigo-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-200 dark:group-hover:bg-indigo-800/60 transition-colors">
-                    <BarChart size={16} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-indigo-700 dark:text-indigo-300 text-sm">Department Analysis</h3>
-                    <p className="text-xs text-indigo-600/80 dark:text-indigo-400/80">Compare risk across teams</p>
-                  </div>
-                </div>
-              </div>
+              <BarChart size={20} className="text-gray-400 dark:text-gray-500 mb-2" />
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Compare departments</p>
             </motion.button>
 
-            {/* Exit Pattern Mining */}
+            {/* Exit Patterns */}
             <motion.button
               onClick={() => {
                 const standardized = standardizePrompt('patterns');
                 setInputFromSuggestion(standardized.prompt);
               }}
-              className="group relative overflow-hidden bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-950/60 dark:to-amber-900/40 border border-yellow-200 dark:border-amber-800 rounded-lg p-4 text-left transition-all duration-300 hover:shadow-md hover:shadow-yellow-500/20 dark:hover:shadow-yellow-400/20 hover:-translate-y-0.5"
+              className="group p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-all duration-200 text-left"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/5 to-yellow-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/40 text-yellow-600 dark:text-yellow-400 group-hover:bg-yellow-200 dark:group-hover:bg-yellow-800/60 transition-colors">
-                    <Lightbulb size={16} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-yellow-700 dark:text-yellow-300 text-sm">Exit Pattern Mining</h3>
-                    <p className="text-xs text-yellow-600/80 dark:text-yellow-400/80">Identify departure trends</p>
-                  </div>
-                </div>
-              </div>
+              <Lightbulb size={20} className="text-gray-400 dark:text-gray-500 mb-2" />
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Find exit patterns</p>
+            </motion.button>
+
+            {/* Risk Analysis */}
+            <motion.button
+              onClick={() => {
+                if (aiAssistantEmployees && aiAssistantEmployees[0]) {
+                  const standardized = standardizePrompt('diagnose', aiAssistantEmployees[0].name);
+                  setInputFromSuggestion(standardized.prompt);
+                }
+              }}
+              disabled={!aiAssistantEmployees || aiAssistantEmployees.length < 1}
+              className="group p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-all duration-200 text-left disabled:opacity-50 disabled:cursor-not-allowed"
+              whileHover={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 1 ? 1 : 1.02 }}
+              whileTap={{ scale: !aiAssistantEmployees || aiAssistantEmployees.length < 1 ? 1 : 0.98 }}
+            >
+              <AlertTriangle size={20} className="text-gray-400 dark:text-gray-500 mb-2" />
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Diagnose risk factors</p>
             </motion.button>
           </div>
         </div>
@@ -1645,56 +1607,15 @@ export function AIAssistant(): React.ReactElement {
 
   return (
     <div className="min-h-full flex flex-col">
-      <header className="flex-none bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 border-b border-gray-700/50 relative overflow-hidden">
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-gray-500/50 to-transparent"></div>
-        </div>
-
-        <div className="max-w-[1400px] mx-auto px-8 relative">
-          <div className="py-8">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-4">
-                  <div>
-                    <div className="flex items-center gap-3 mb-3">
-                      <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-200 via-purple-400 to-purple-200 animate-gradient">
-                        Talent Retention AI Assistant
-                      </h1>
-                      <div className="flex items-center gap-2">
-                        <span className="relative">
-                          <span className="px-2.5 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-300 rounded-full border border-emerald-500/20 relative z-10 flex items-center gap-1">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping absolute"></span>
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-                            AI-Powered
-                          </span>
-                          <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-sm animate-pulse"></div>
-                        </span>
-
-                        {/* Echo Badge */}
-                        <span className="relative">
-                          <span className="px-2.5 py-0.5 text-xs font-semibold bg-purple-500/10 text-purple-300 rounded-full border border-purple-500/20 relative z-10 flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
-                              <path d="M12 8V4H8"/>
-                              <rect x="4" y="12" width="8" height="8" rx="2"/>
-                              <path d="M8 12v-2a2 2 0 0 1 2-2h2"/>
-                            </svg>
-                            Echo
-                          </span>
-                          <div className="absolute inset-0 bg-purple-500/20 rounded-full blur-sm animate-pulse"></div>
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-base text-gray-400 max-w-2xl">
-                      AI-driven assistant for talent retention analysis and actionable insights.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="AI Assistant"
+        subtitle="AI-driven assistant for talent retention analysis and actionable insights"
+        icon={MessageSquare}
+        badges={[
+          { label: 'AI-Powered', variant: 'emerald', pulse: true },
+          { label: 'Echo', variant: 'purple' },
+        ]}
+      />
 
       <div className="px-6 md:px-8 py-4">
         <TrainingReminderBanner />
@@ -1827,6 +1748,16 @@ export function AIAssistant(): React.ReactElement {
               MemoizedEmployeeList
             )}
           </div>
+
+          {/* Agent Memory Panel - shows session context */}
+          {(agentContext.employeesDiscussed.length > 0 || agentContext.recentDecisions.length > 0) && (
+            <div className="flex-none p-3 border-t border-gray-100 dark:border-gray-800">
+              <AgentContextPanel
+                context={agentContext}
+                onClearMemory={clearMemory}
+              />
+            </div>
+          )}
         </aside>
 
         <motion.main
@@ -1860,14 +1791,21 @@ export function AIAssistant(): React.ReactElement {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => selectedEmployees[0]?.hr_code && generateSuite(selectedEmployees[0].hr_code)}
+                      disabled={isGeneratingActions}
+                      className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-50"
+                    >
+                      {isGeneratingActions ? 'Generating...' : 'Suggest Actions'}
+                    </button>
                     <RiskIndicator riskScore={getEmployeeRiskScore(selectedEmployees[0])} size="sm" showIcon={true} />
                   </div>
                 </div>
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 to-white dark:from-slate-950 dark:to-slate-900 scroll-smooth">
-              <div className="max-w-4xl mx-auto px-4 py-4">
+            <div className="flex-1 overflow-y-auto bg-white dark:bg-gray-900 scroll-smooth">
+              <div className="max-w-3xl mx-auto px-4 py-6">
                 {chatState.messages.length === 0 && !selectedEmployees[0] && (
                   renderWelcomeMessage()
                 )}
@@ -1883,8 +1821,28 @@ export function AIAssistant(): React.ReactElement {
                         />
                       ))}
                     </AnimatePresence>
+                    {/* Agent Execution Panel - shows tool execution visualization */}
                     <AnimatePresence>
-                      {chatState.isLoading && (
+                      {chatState.isLoading && execution && (
+                        <motion.div
+                          key="agent-execution"
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -8 }}
+                          transition={{ duration: 0.2 }}
+                          className="mb-4"
+                        >
+                          <AgentExecutionPanel
+                            execution={execution}
+                            isActive={isExecuting || chatState.isLoading}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Fallback typing indicator for non-analysis queries without execution */}
+                    <AnimatePresence>
+                      {chatState.isLoading && !execution && (
                         <motion.div
                           key="chat-loading"
                           initial={{ opacity: 0, y: 8 }}
@@ -1892,15 +1850,82 @@ export function AIAssistant(): React.ReactElement {
                           exit={{ opacity: 0, y: -8 }}
                           transition={{ duration: 0.2 }}
                         >
-                          {chatState.pendingResponseKind === 'analysis'
-                            ? <AnalysisInProgressIndicator isLoading={chatState.isLoading} />
-                            : <TypingIndicator />}
+                          <TypingIndicator />
                         </motion.div>
                       )}
                     </AnimatePresence>
+
                     <div ref={messagesEndRef} />
                   </div>
                 )}
+
+                {/* Action Generation Loading/Error States */}
+                <AnimatePresence>
+                  {isGeneratingActions && (
+                    <motion.div
+                      key="action-loading"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="p-4 max-w-3xl mx-auto"
+                    >
+                      <div className="flex items-center gap-3 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl">
+                        <div className="animate-spin h-5 w-5 border-2 border-emerald-500 border-t-transparent rounded-full" />
+                        <span className="text-sm text-emerald-700 dark:text-emerald-300">
+                          Generating personalized actions based on employee data...
+                        </span>
+                      </div>
+                    </motion.div>
+                  )}
+                  {actionError && !isGeneratingActions && (
+                    <motion.div
+                      key="action-error"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="p-4 max-w-3xl mx-auto"
+                    >
+                      <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400">
+                        <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+                        <span className="text-sm">Failed to generate actions: {actionError}</span>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Action Proposals - AI-suggested actions for approval (shown regardless of messages) */}
+                <AnimatePresence>
+                  {actionProposals.length > 0 && (
+                    <motion.div
+                      key="action-proposals"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="p-4 max-w-3xl mx-auto space-y-3"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                          Suggested Actions ({actionProposals.filter(p => p.status === 'pending').length} pending)
+                        </span>
+                        <button
+                          onClick={clearProposals}
+                          className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                      {actionProposals.map((proposal) => (
+                        <ActionProposalCard
+                          key={proposal.id}
+                          proposal={proposal}
+                          onApprove={approveAction}
+                          onReject={rejectAction}
+                          onEdit={editAction}
+                        />
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {chatState.error && (
                   <motion.div 

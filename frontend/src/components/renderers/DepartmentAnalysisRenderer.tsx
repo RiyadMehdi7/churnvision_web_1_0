@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import type { Components } from 'react-markdown';
+import { motion } from 'framer-motion';
 import {
   AlertTriangle,
-  BarChart,
   Lightbulb,
   CheckCircle,
   Brain,
   Users,
-  Building2
+  Building2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { getCurrentThresholds, getRiskLevel } from '@/config/riskThresholds';
 import { DepartmentAnalysisData } from '@/types/analysisData';
@@ -18,33 +17,17 @@ interface DepartmentAnalysisRendererProps {
   data: DepartmentAnalysisData;
 }
 
-// Markdown components for consistent styling
-const markdownComponents: Components = {
-  h1: ({ children }) => <h1 className="text-xl font-bold mb-3 text-gray-900 dark:text-white">{children}</h1>,
-  h2: ({ children }) => <h2 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">{children}</h2>,
-  h3: ({ children }) => <h3 className="text-base font-medium mb-2 text-gray-900 dark:text-white">{children}</h3>,
-  p: ({ children }) => <p className="mb-2 text-gray-700 dark:text-gray-300 text-sm leading-relaxed">{children}</p>,
-  ul: ({ children }) => <ul className="list-disc list-inside mb-2 text-gray-700 dark:text-gray-300 text-sm">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal list-inside mb-2 text-gray-700 dark:text-gray-300 text-sm">{children}</ol>,
-  li: ({ children }) => <li className="mb-1">{children}</li>,
-  strong: ({ children }) => <strong className="font-semibold text-gray-900 dark:text-white">{children}</strong>,
-  em: ({ children }) => <em className="italic text-gray-700 dark:text-gray-300">{children}</em>,
-  code: ({ children }) => <code className="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs font-mono">{children}</code>,
-};
-
 export const DepartmentAnalysisRenderer: React.FC<DepartmentAnalysisRendererProps> = ({ data }) => {
   const thresholds = getCurrentThresholds();
-  const [activeTab, setActiveTab] = useState<'overview' | 'departments' | 'insights'>('overview');
+  const [expandedSection, setExpandedSection] = useState<string | null>('overview');
 
   if (data.error) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 my-4">
-        <div className="flex items-center text-red-600 dark:text-red-400">
-          <AlertTriangle className="w-5 h-5 mr-2" />
-          <div>
-            <h3 className="font-semibold">Department Analysis Error</h3>
-            <p className="text-sm">{data.message}</p>
-          </div>
+      <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-700/50">
+        <AlertTriangle size={14} className="text-red-500" />
+        <div>
+          <span className="font-medium text-red-700 dark:text-red-300 text-sm">Department Analysis Error</span>
+          <p className="text-xs text-red-600 dark:text-red-400">{data.message}</p>
         </div>
       </div>
     );
@@ -56,297 +39,235 @@ export const DepartmentAnalysisRenderer: React.FC<DepartmentAnalysisRendererProp
   const lowRiskDepts = data.departments?.filter(d => d.avgRisk <= thresholds.mediumRisk).length || 0;
   const totalEmployees = data.departments?.reduce((sum, dept) => sum + dept.totalEmployees, 0) || 0;
 
+  const toggleSection = (section: string) => {
+    setExpandedSection(expandedSection === section ? null : section);
+  };
+
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 my-4">
-      {/* Header - Same style as other quick actions */}
-      <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center space-x-2">
-          <Building2 className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {data.analysisType === 'specific' ? `${data.targetDepartment} Department Analysis` : 'Department Analysis'}
-          </h3>
-          <span className="px-2 py-1 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded">
-            Risk Overview
-          </span>
+    <div className="space-y-3">
+      {/* Header Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="group relative overflow-hidden bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/20 dark:to-indigo-800/20 border border-indigo-200 dark:border-indigo-700/50 rounded-lg p-4"
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-indigo-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        <div className="relative z-10">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400">
+                <Building2 size={14} />
+              </div>
+              <span className="font-semibold text-indigo-700 dark:text-indigo-300 text-sm">
+                {data.analysisType === 'specific' ? `${data.targetDepartment} Analysis` : 'Department Analysis'}
+              </span>
+            </div>
+            <div className="px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+              {totalDepartments} depts
+            </div>
+          </div>
+
+          {/* Quick Stats Grid */}
+          <div className="grid grid-cols-4 gap-2">
+            <div className="text-center p-2 bg-white/60 dark:bg-gray-800/40 rounded-md">
+              <div className="text-lg font-bold text-gray-900 dark:text-white">{totalDepartments}</div>
+              <div className="text-[10px] text-gray-500 dark:text-gray-400">Depts</div>
+            </div>
+            <div className="text-center p-2 bg-white/60 dark:bg-gray-800/40 rounded-md">
+              <div className="text-lg font-bold text-red-600 dark:text-red-400">{highRiskDepts}</div>
+              <div className="text-[10px] text-gray-500 dark:text-gray-400">High Risk</div>
+            </div>
+            <div className="text-center p-2 bg-white/60 dark:bg-gray-800/40 rounded-md">
+              <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{lowRiskDepts}</div>
+              <div className="text-[10px] text-gray-500 dark:text-gray-400">Low Risk</div>
+            </div>
+            <div className="text-center p-2 bg-white/60 dark:bg-gray-800/40 rounded-md">
+              <div className="text-lg font-bold text-purple-600 dark:text-purple-400">{totalEmployees}</div>
+              <div className="text-[10px] text-gray-500 dark:text-gray-400">Employees</div>
+            </div>
+          </div>
+
+          {/* Risk Distribution Bar */}
+          <div className="mt-3 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex">
+            <div className="bg-emerald-500" style={{ width: `${totalDepartments > 0 ? (lowRiskDepts / totalDepartments) * 100 : 0}%` }} />
+            <div className="bg-amber-500" style={{ width: `${totalDepartments > 0 ? (mediumRiskDepts / totalDepartments) * 100 : 0}%` }} />
+            <div className="bg-red-500" style={{ width: `${totalDepartments > 0 ? (highRiskDepts / totalDepartments) * 100 : 0}%` }} />
+          </div>
+
+          {data.summary && (
+            <p className="text-xs text-indigo-600/80 dark:text-indigo-400/80 mt-2">{data.summary}</p>
+          )}
         </div>
-        {data.summary && (
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{data.summary}</p>
-        )}
-      </div>
+      </motion.div>
 
-      {/* Content */}
-      <div className="p-6">
-        {/* Quick Stats Grid - Same style as other quick actions */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all duration-200">
-            <div className="flex items-start justify-between">
-              <div className="flex items-start space-x-3 flex-1">
-                <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20">
-                  <Building2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100">{totalDepartments}</h4>
-                  <p className="text-xs text-blue-700 dark:text-blue-300">Total Departments</p>
-                </div>
+      {/* Department Rankings */}
+      {data.departments && data.departments.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="group relative overflow-hidden bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border border-purple-200 dark:border-purple-700/50 rounded-lg"
+        >
+          <button
+            onClick={() => toggleSection('departments')}
+            className="w-full p-3 flex items-center justify-between text-left"
+          >
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400">
+                <Users size={14} />
               </div>
+              <span className="font-semibold text-purple-700 dark:text-purple-300 text-sm">Department Rankings</span>
+              <span className="text-xs text-purple-500 dark:text-purple-400">({data.departments.length})</span>
             </div>
-          </div>
+            {expandedSection === 'departments' ? (
+              <ChevronUp size={16} className="text-purple-400" />
+            ) : (
+              <ChevronDown size={16} className="text-purple-400" />
+            )}
+          </button>
 
-          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 transition-all duration-200">
-            <div className="flex items-start justify-between">
-              <div className="flex items-start space-x-3 flex-1">
-                <div className="p-2 rounded-lg bg-red-50 dark:bg-red-900/20">
-                  <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-medium text-red-900 dark:text-red-100">{highRiskDepts}</h4>
-                  <p className="text-xs text-red-700 dark:text-red-300">High Risk</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 transition-all duration-200">
-            <div className="flex items-start justify-between">
-              <div className="flex items-start space-x-3 flex-1">
-                <div className="p-2 rounded-lg bg-green-50 dark:bg-green-900/20">
-                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-medium text-green-900 dark:text-green-100">{lowRiskDepts}</h4>
-                  <p className="text-xs text-green-700 dark:text-green-300">Low Risk</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-all duration-200">
-            <div className="flex items-start justify-between">
-              <div className="flex items-start space-x-3 flex-1">
-                <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-900/20">
-                  <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-medium text-purple-900 dark:text-purple-100">{totalEmployees.toLocaleString()}</h4>
-                  <p className="text-xs text-purple-700 dark:text-purple-300">Total Employees</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation Tabs */}
-        <div className="flex space-x-1 mb-6 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-          {[
-            { id: 'overview', label: 'Overview', icon: BarChart },
-            { id: 'departments', label: 'Departments', icon: Building2 },
-            { id: 'insights', label: 'Insights', icon: Brain }
-          ].map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id as any)}
-              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                activeTab === id 
-                  ? 'bg-white dark:bg-gray-600 text-purple-600 dark:text-purple-400 shadow-sm' 
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-              }`}
+          {expandedSection === 'departments' && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="px-3 pb-3 space-y-2"
             >
-              <Icon size={14} />
-              {label}
-            </button>
-          ))}
-        </div>
+              {data.departments
+                .sort((a, b) => b.avgRisk - a.avgRisk)
+                .slice(0, 5)
+                .map((dept, index) => {
+                  const riskLevel = getRiskLevel(dept.avgRisk, thresholds);
+                  return (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-2 bg-white/60 dark:bg-gray-800/40 rounded-md"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-medium ${
+                          riskLevel === 'High' ? 'bg-red-500' :
+                          riskLevel === 'Medium' ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`}>
+                          {index + 1}
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-gray-800 dark:text-gray-200">{dept.department}</p>
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400">{dept.totalEmployees} employees</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-sm font-bold ${
+                          riskLevel === 'High' ? 'text-red-600 dark:text-red-400' :
+                          riskLevel === 'Medium' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+                        }`}>
+                          {(dept.avgRisk * 100).toFixed(0)}%
+                        </p>
+                        <p className="text-[10px] text-gray-500">{riskLevel} Risk</p>
+                      </div>
+                    </div>
+                  );
+                })}
+            </motion.div>
+          )}
+        </motion.div>
+      )}
 
-        {/* Tab Content */}
-        <div className="min-h-[300px]">
-          {activeTab === 'overview' && (
-            <div>
-              {/* Risk Distribution */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-medium text-red-900 dark:text-red-200 text-sm">High Risk</h4>
-                    <span className="text-xl font-bold text-red-600">{highRiskDepts}</span>
-                  </div>
-                  <div className="w-full bg-red-200 dark:bg-red-800 rounded-full h-2">
-                    <div 
-                      className="bg-red-600 h-2 rounded-full transition-all duration-500" 
-                      style={{ width: `${totalDepartments > 0 ? (highRiskDepts / totalDepartments) * 100 : 0}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-red-600 mt-2">{totalDepartments > 0 ? ((highRiskDepts / totalDepartments) * 100).toFixed(1) : 0}% of departments</p>
-                </div>
-
-                <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-medium text-orange-900 dark:text-orange-200 text-sm">Medium Risk</h4>
-                    <span className="text-xl font-bold text-orange-600">{mediumRiskDepts}</span>
-                  </div>
-                  <div className="w-full bg-orange-200 dark:bg-orange-800 rounded-full h-2">
-                    <div 
-                      className="bg-orange-600 h-2 rounded-full transition-all duration-500" 
-                      style={{ width: `${totalDepartments > 0 ? (mediumRiskDepts / totalDepartments) * 100 : 0}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-orange-600 mt-2">{totalDepartments > 0 ? ((mediumRiskDepts / totalDepartments) * 100).toFixed(1) : 0}% of departments</p>
-                </div>
-
-                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-medium text-green-900 dark:text-green-200 text-sm">Low Risk</h4>
-                    <span className="text-xl font-bold text-green-600">{lowRiskDepts}</span>
-                  </div>
-                  <div className="w-full bg-green-200 dark:bg-green-800 rounded-full h-2">
-                    <div 
-                      className="bg-green-600 h-2 rounded-full transition-all duration-500" 
-                      style={{ width: `${totalDepartments > 0 ? (lowRiskDepts / totalDepartments) * 100 : 0}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-green-600 mt-2">{totalDepartments > 0 ? ((lowRiskDepts / totalDepartments) * 100).toFixed(1) : 0}% of departments</p>
-                </div>
+      {/* Insights & Recommendations */}
+      {((data.insights?.strategicRecommendations && data.insights.strategicRecommendations.length > 0) ||
+        (data.insights?.urgentActions && data.insights.urgentActions.length > 0) ||
+        (data.insights?.organizationalInsights && data.insights.organizationalInsights.length > 0)) && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="group relative overflow-hidden bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 border border-emerald-200 dark:border-emerald-700/50 rounded-lg"
+        >
+          <button
+            onClick={() => toggleSection('insights')}
+            className="w-full p-3 flex items-center justify-between text-left"
+          >
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400">
+                <Lightbulb size={14} />
               </div>
+              <span className="font-semibold text-emerald-700 dark:text-emerald-300 text-sm">Insights & Actions</span>
+            </div>
+            {expandedSection === 'insights' ? (
+              <ChevronUp size={16} className="text-emerald-400" />
+            ) : (
+              <ChevronDown size={16} className="text-emerald-400" />
+            )}
+          </button>
 
-              {/* AI Analysis */}
-              {data.insights?.detailedAnalysis && (
-                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <h4 className="font-medium text-blue-900 dark:text-blue-200 mb-3 flex items-center text-sm">
-                    <Brain className="w-4 h-4 mr-2" />
-                    AI Analysis
-                  </h4>
-                  <div className="prose prose-sm max-w-none dark:prose-dark">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                      {data.insights.detailedAnalysis}
-                    </ReactMarkdown>
-                  </div>
+          {expandedSection === 'insights' && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="px-3 pb-3 space-y-2"
+            >
+              {/* Urgent Actions */}
+              {data.insights?.urgentActions && data.insights.urgentActions.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-medium text-red-600 dark:text-red-400 uppercase tracking-wide">Urgent Actions</p>
+                  {data.insights.urgentActions.slice(0, 2).map((action, index) => (
+                    <div key={index} className="flex items-start gap-2 p-2 bg-red-50/50 dark:bg-red-900/20 rounded-md">
+                      <AlertTriangle size={12} className="text-red-500 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-red-700 dark:text-red-300">{action}</p>
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
-          )}
 
-          {activeTab === 'departments' && (
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-white mb-4 flex items-center text-sm">
-                <Building2 className="w-4 h-4 mr-2" />
-                Department Rankings
-              </h4>
-              
-              {data.departments && data.departments.length > 0 ? (
-                <div className="space-y-3">
-                  {data.departments
-                    .sort((a, b) => b.avgRisk - a.avgRisk)
-                    .slice(0, 5)
-                    .map((dept, index) => {
-                      const riskLevel = getRiskLevel(dept.avgRisk, thresholds);
-                      const colorClass = riskLevel === 'High' ? 'text-red-600' : 
-                                        riskLevel === 'Medium' ? 'text-orange-600' : 'text-green-600';
-                      const bgClass = riskLevel === 'High' ? 'bg-red-50 dark:bg-red-900/20' : 
-                                     riskLevel === 'Medium' ? 'bg-orange-50 dark:bg-orange-900/20' : 'bg-green-50 dark:bg-green-900/20';
-                      
-                      return (
-                        <div key={index} className={`p-3 ${bgClass} rounded-lg border border-gray-200 dark:border-gray-600`}>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <span className="text-sm font-bold text-gray-500 w-6">#{index + 1}</span>
-                              <div>
-                                <h5 className="font-medium text-gray-900 dark:text-white text-sm">{dept.department}</h5>
-                                <p className="text-xs text-gray-600 dark:text-gray-400">{dept.totalEmployees} employees</p>
-                              </div>
-                            </div>
-                            
-                            <div className="text-right">
-                              <div className={`text-lg font-bold ${colorClass}`}>
-                                {(dept.avgRisk * 100).toFixed(1)}%
-                              </div>
-                              <div className="text-xs text-gray-500">{riskLevel} Risk</div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                  <Building2 className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-                  <p className="text-sm">No department data available</p>
+              {/* Strategic Recommendations */}
+              {data.insights?.strategicRecommendations && data.insights.strategicRecommendations.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Recommendations</p>
+                  {data.insights.strategicRecommendations.slice(0, 2).map((rec, index) => (
+                    <div key={index} className="flex items-start gap-2 p-2 bg-white/60 dark:bg-gray-800/40 rounded-md">
+                      <CheckCircle size={12} className="text-emerald-500 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-emerald-700 dark:text-emerald-300">{rec}</p>
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
+
+              {/* Organizational Insights */}
+              {data.insights?.organizationalInsights && data.insights.organizationalInsights.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide">Insights</p>
+                  {data.insights.organizationalInsights.slice(0, 2).map((insight, index) => (
+                    <div key={index} className="flex items-start gap-2 p-2 bg-blue-50/50 dark:bg-blue-900/20 rounded-md">
+                      <Brain size={12} className="text-blue-500 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-blue-700 dark:text-blue-300">{insight}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
           )}
+        </motion.div>
+      )}
 
-          {activeTab === 'insights' && (
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-white mb-4 flex items-center text-sm">
-                <Brain className="w-4 h-4 mr-2" />
-                Key Insights & Recommendations
-              </h4>
-              
-              <div className="space-y-4">
-                {/* Organizational Insights */}
-                {data.insights?.organizationalInsights && data.insights.organizationalInsights.length > 0 && (
-                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                    <h5 className="font-medium text-blue-900 dark:text-blue-200 mb-3 text-sm">Organizational Insights</h5>
-                    <div className="space-y-2">
-                      {data.insights.organizationalInsights.slice(0, 3).map((insight, index) => (
-                        <div key={index} className="flex items-start space-x-2">
-                          <span className="w-4 h-4 bg-blue-100 dark:bg-blue-800 rounded-full flex items-center justify-center text-xs font-bold text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0">
-                            {index + 1}
-                          </span>
-                          <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed">{insight}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Strategic Recommendations */}
-                {data.insights?.strategicRecommendations && data.insights.strategicRecommendations.length > 0 && (
-                  <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                    <h5 className="font-medium text-green-900 dark:text-green-200 mb-3 text-sm flex items-center">
-                      <Lightbulb className="w-4 h-4 mr-1" />
-                      Strategic Recommendations
-                    </h5>
-                    <div className="space-y-2">
-                      {data.insights.strategicRecommendations.slice(0, 3).map((rec, index) => (
-                        <div key={index} className="flex items-start space-x-2">
-                          <span className="w-4 h-4 bg-green-100 dark:bg-green-800 rounded-full flex items-center justify-center text-xs font-bold text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0">
-                            {index + 1}
-                          </span>
-                          <p className="text-sm text-green-800 dark:text-green-200 leading-relaxed">{rec}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Urgent Actions */}
-                {data.insights?.urgentActions && data.insights.urgentActions.length > 0 && (
-                  <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
-                    <h5 className="font-medium text-orange-900 dark:text-orange-200 mb-3 text-sm flex items-center">
-                      <AlertTriangle className="w-4 h-4 mr-1" />
-                      Urgent Actions
-                    </h5>
-                    <div className="space-y-2">
-                      {data.insights.urgentActions.slice(0, 3).map((action, index) => (
-                        <div key={index} className="flex items-start space-x-2">
-                          <AlertTriangle className="w-4 h-4 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
-                          <p className="text-sm text-orange-800 dark:text-orange-200 leading-relaxed">{action}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {(!data.insights?.organizationalInsights?.length && !data.insights?.strategicRecommendations?.length && !data.insights?.urgentActions?.length) && (
-                  <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                    <Brain className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-                    <p className="text-sm">No insights available</p>
-                  </div>
-                )}
-              </div>
+      {/* AI Analysis Summary */}
+      {data.insights?.detailedAnalysis && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="group relative overflow-hidden bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-700/50 rounded-lg p-3"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-1.5 rounded-md bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
+              <Brain size={14} />
             </div>
-          )}
-        </div>
-      </div>
+            <span className="font-semibold text-blue-700 dark:text-blue-300 text-sm">AI Analysis</span>
+          </div>
+          <p className="text-xs text-blue-600/80 dark:text-blue-400/80 leading-relaxed">
+            {data.insights.detailedAnalysis}
+          </p>
+        </motion.div>
+      )}
     </div>
   );
 };

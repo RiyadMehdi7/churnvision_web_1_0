@@ -14,8 +14,10 @@ import {
   GitCompare,
   Zap,
   Activity,
-  CheckCircle
+  CheckCircle,
+  Beaker
 } from 'lucide-react';
+import { PageHeader } from '../components/PageHeader';
 import { cn } from '../utils/cn';
 import { useToast } from '@/hooks/use-toast';
 import { useProject } from '@/contexts/ProjectContext';
@@ -1647,53 +1649,17 @@ export function Playground() {
 
   return (
     <div className="min-h-full w-full flex flex-col bg-gray-50 dark:bg-gray-900">
-      <header className="flex-none bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 border-b border-gray-700/50 relative overflow-hidden">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-40"></div>
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-gray-500/50 to-transparent"></div>
-        </div>
-        <div className="max-w-[1600px] mx-auto px-6 md:px-8 relative z-10">
-          <div className="py-6 md:py-8">
-            {/* Main flex container for title and badges */}
-            <div className="flex items-center gap-3 mb-3">
-              <h1 className="text-2xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-200 via-blue-400 to-blue-200 animate-gradient">
-                {localStorage.getItem('settings.dataMode') === 'performance' ? 'Retention Value Index (RVI) Playground' : 'ELTV Treatment Playground'}
-              </h1>
-              {/* Badges Group */}
-              <div className="flex items-center gap-2">
-                {/* Atlas by ChurnVision Badge (Consistent Styling) */}
-                <span className="relative">
-                  <span className="px-2.5 py-0.5 text-xs font-medium bg-teal-500/10 text-teal-300 rounded-full border border-teal-500/20 relative z-10 flex items-center gap-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-teal-400">
-                      <path d="M21.2078 12.0117C21.6076 12.0053 21.9832 11.7346 21.9941 11.3333V6C21.9941 4.89543 21.101 4 20.0005 4H19.9057" />
-                      <path d="M2.79222 11.9883C2.39235 11.9947 2.01681 12.2654 2.00586 12.6667V18C2.00586 19.1046 2.89903 20 3.99953 20H4.09431" />
-                      <path d="M12 22C12.2106 22 12.3801 21.7531 12.3331 21.5451L11.0531 15.8311C11.0061 15.6231 10.79 15.4909 10.5742 15.5449L4.86949 17.2084C4.65367 17.2624 4.51911 17.5066 4.59327 17.7031L6.17929 21.6265C6.25346 21.823 6.49286 21.9735 6.70347 21.9275L12 20.5909L17.2965 21.9275C17.5071 21.9735 17.7465 21.823 17.8207 21.6265L19.4067 17.7031C19.4809 17.5066 19.3463 17.2624 19.1305 17.2084L13.4258 15.5449C13.21 15.4909 12.9939 15.6231 12.9469 15.8311L11.6669 21.5451C11.6199 21.7531 11.7894 22 12 22Z" />
-                      <path d="M12 12L12 2M12 12L19 5M12 12L5 5" />
-                    </svg>
-                    Atlas by ChurnVision
-                  </span>
-                  <div className="absolute inset-0 bg-teal-500/20 rounded-full blur-sm animate-pulse"></div>
-                </span>
-
-                {/* Beta Badge (Consistent Styling - Green) */}
-                <span className="relative">
-                  <span className="px-2.5 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-300 rounded-full border border-emerald-500/20 relative z-10 flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping absolute"></span>
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-                    Beta
-                  </span>
-                  <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-sm animate-pulse"></div>
-                </span>
-              </div>
-            </div>
-            <p className="text-sm md:text-base text-gray-400 max-w-3xl mt-2">
-              {localStorage.getItem('settings.dataMode') === 'performance'
-                ? 'Simulate retention scenarios. Select an employee, choose a treatment, and see the projected impact on Retention Value Index (RVI) and churn risk.'
-                : 'Simulate retention scenarios. Select an employee, choose a treatment, and see the projected impact on ELTV and churn risk.'}
-            </p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title={isPerformanceMode ? 'RVI Playground' : 'ELTV Playground'}
+        subtitle={isPerformanceMode
+          ? 'Simulate retention scenarios and see the projected impact on Retention Value Index'
+          : 'Simulate retention scenarios and see the projected impact on ELTV and churn risk'}
+        icon={Beaker}
+        badges={[
+          { label: 'Atlas', variant: 'blue' },
+          { label: 'Beta', variant: 'emerald', pulse: true },
+        ]}
+      />
 
       <div className="px-6 md:px-8 py-4">
         <TrainingReminderBanner />

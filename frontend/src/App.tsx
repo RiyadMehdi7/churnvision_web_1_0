@@ -508,14 +508,17 @@ function AppContent(): ReactElement {
   // --- End LLM Model Checks ---
   */
 
+  // Check if current route is auth page (login/register)
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+
   // === Main Return (after loading and error checks) ===
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-background text-foreground transition-colors duration-300">
       <SkipToContent />
       {/* Render based on authentication - license checks disabled */}
       <>
-        <Header />
-        <main id="main-content" className="flex-1 bg-surface-subtle overflow-auto transition-colors duration-300" tabIndex={-1}>
+        {!isAuthPage && <Header />}
+        <main id="main-content" className={`flex-1 ${isAuthPage ? 'bg-background' : 'bg-surface-subtle'} overflow-auto transition-colors duration-300`} tabIndex={-1}>
           <Suspense
             fallback={
               <div
@@ -532,7 +535,7 @@ function AppContent(): ReactElement {
             <KeepAliveRoutes routes={allRoutes} />
           </Suspense>
         </main>
-        <Footer />
+        {!isAuthPage && <Footer />}
       </>
 
       {import.meta.env.DEV && (

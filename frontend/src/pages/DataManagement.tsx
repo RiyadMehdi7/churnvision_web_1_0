@@ -7,8 +7,10 @@ import {
     FileText, Wifi, WifiOff, LucideIcon, Trash2, RefreshCw,
     ArrowRight, Check, X, FolderPlus, Folder, FolderOpen, Info, // ADDED Info icon
     Share2, // Import Share2 icon
-    Download, Upload, Clock, MessageSquare, BarChart, GitCompare // Added Clock icon for Coming Soon and MessageSquare for interviews
+    Download, Upload, Clock, MessageSquare, BarChart, GitCompare, // Added Clock icon for Coming Soon and MessageSquare for interviews
+    HardDrive // Added for PageHeader icon
 } from 'lucide-react';
+import { PageHeader } from '../components/PageHeader';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalDataCache } from '@/hooks/useGlobalDataCache';
 import { useProject } from '@/contexts/ProjectContext'; // Import from local context
@@ -489,6 +491,9 @@ export function DataManagement(): React.ReactElement {
     const [isProjectActionLoading, setIsProjectActionLoading] = useState(false);
     // Ref to prevent double deletion
     const deletingProjectRef = useRef<string | null>(null);
+    // Ref to track current active project ID to avoid dependency in fetchProjects
+    const activeProjectIdRef = useRef<string | null>(null);
+    activeProjectIdRef.current = activeProject?.id ?? null;
     // ---------------------------------------
 
     // --- NEW States for DB Actions ---
@@ -630,62 +635,26 @@ export function DataManagement(): React.ReactElement {
         const activeDataset = datasets.find(d => d.active);
         const datasetCount = datasets.length;
 
+        // Build dynamic badges based on data state
+        const badges: Array<{ label: string; variant: 'emerald' | 'purple' | 'blue' | 'sky' | 'amber'; pulse?: boolean }> = [
+            { label: 'Enterprise-Ready', variant: 'purple' },
+        ];
+
+        if (datasetCount > 0) {
+            badges.push({ label: `${datasetCount} Dataset${datasetCount !== 1 ? 's' : ''}`, variant: 'blue' });
+        }
+
+        if (activeDataset) {
+            badges.push({ label: `Active: ${activeDataset.name}`, variant: 'emerald', pulse: true });
+        }
+
         return (
-            <header className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 border-b border-gray-700/50 relative overflow-hidden dark:border-gray-700"> {/* Ensure dark mode border consistency */}
-                {/* Animated background elements */}
-                <div className="absolute inset-0 overflow-hidden">
-                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
-                    <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-gray-500/50 to-transparent"></div>
-                </div>
-
-                <div className="max-w-[1400px] mx-auto px-8 relative">
-                    <div className="py-8">
-                        <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                                <div className="flex items-center gap-4">
-                                    <div>
-                                        <div className="flex items-center gap-3 mb-3">
-                                            <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-200 via-blue-400 to-blue-200 animate-gradient">
-                                                Data Management Platform
-                                            </h1>
-                                            <div className="flex items-center gap-2">
-                                                <span className="relative">
-                                                    <span className="px-2.5 py-0.5 text-xs font-medium bg-purple-500/10 text-purple-300 rounded-full border border-purple-500/20 relative z-10 flex items-center gap-1">
-                                                        <span className="h-1.5 w-1.5 rounded-full bg-purple-400"></span>
-                                                        Enterprise-Ready
-                                                    </span>
-                                                    <div className="absolute inset-0 bg-purple-500/20 rounded-full blur-sm animate-pulse"></div>
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center gap-2 mb-3">
-                                            {datasetCount > 0 && (
-                                                <span className="px-2.5 py-0.5 text-xs font-medium bg-blue-500/10 text-blue-300 rounded-full border border-blue-500/20 relative z-10 flex items-center gap-1.5">
-                                                    <Database className="w-3 h-3" />
-                                                    {datasetCount} Dataset{datasetCount !== 1 ? 's' : ''}
-                                                </span>
-                                            )}
-
-                                            {activeDataset && (
-                                                <span className="px-2.5 py-0.5 text-xs font-medium bg-green-500/10 text-green-300 rounded-full border border-green-500/20 relative z-10 flex items-center gap-1.5">
-                                                    <span className="h-1.5 w-1.5 rounded-full bg-green-400"></span>
-                                                    Active: {activeDataset.name}
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        <p className="text-base text-gray-400 max-w-2xl">
-                                            Seamlessly integrate, transform, and organize your workforce data. Our intelligent platform
-                                            automates the complex data processes to bring clarity and precision to your HR analytics.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </header>
+            <PageHeader
+                title="Data Management"
+                subtitle="Import, transform, and organize your workforce data"
+                icon={HardDrive}
+                badges={badges}
+            />
         );
     };
 
@@ -737,10 +706,13 @@ export function DataManagement(): React.ReactElement {
             setProjects(fetchedProjects || []);
 
             // Sync active project with context: prefer active flag, otherwise keep current
+            // Only update if the active project actually changed (compare by id to avoid infinite loops)
+            // Use ref to access current value without creating a dependency
+            const currentActiveId = activeProjectIdRef.current;
             const activeFromApi = (fetchedProjects || []).find((p: Project) => p.active);
-            if (activeFromApi) {
+            if (activeFromApi && activeFromApi.id !== currentActiveId) {
                 setActiveProject(activeFromApi);
-            } else if (!activeProject && fetchedProjects?.length) {
+            } else if (!currentActiveId && fetchedProjects?.length) {
                 setActiveProject(fetchedProjects[0]);
             }
         } catch (err: any) {
@@ -750,7 +722,7 @@ export function DataManagement(): React.ReactElement {
         } finally {
             setIsProjectListLoading(false); // Use specific loading state
         }
-    }, [activeProject, setActiveProject]);
+    }, [setActiveProject]); // Removed activeProject from deps, using ref instead
 
     // handleSetActiveProject - Calls API, context listener will update the state
     const handleSetActiveProject = useCallback(async (dbPath: string | null) => {

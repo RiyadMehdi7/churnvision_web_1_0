@@ -417,12 +417,15 @@ async def train_churn_model(
                     )
                     existing_row = existing.scalar_one_or_none()
 
+                    # Convert confidence from 0-1 to 0-100 scale for storage
+                    confidence_pct = prediction.confidence_score * 100
+
                     if existing_row:
                         existing_row.resign_proba = prediction.churn_probability
                         existing_row.shap_values = shap_dict
                         existing_row.model_version = model_version
                         existing_row.generated_at = datetime.utcnow()
-                        existing_row.confidence_score = getattr(prediction, 'confidence_score', None) or 70.0
+                        existing_row.confidence_score = confidence_pct
                     else:
                         db.add(ChurnOutput(
                             hr_code=hr_code,
@@ -430,7 +433,7 @@ async def train_churn_model(
                             resign_proba=prediction.churn_probability,
                             shap_values=shap_dict,
                             model_version=model_version,
-                            confidence_score=getattr(prediction, 'confidence_score', None) or 70.0,
+                            confidence_score=confidence_pct,
                         ))
                     predictions_made += 1
 
@@ -479,7 +482,7 @@ async def train_churn_model(
                         existing_reasoning_row.heuristic_alerts = heuristic_alerts_json
                         existing_reasoning_row.reasoning = reasoning_text
                         existing_reasoning_row.recommendations = recommendations
-                        existing_reasoning_row.confidence_level = getattr(prediction, 'confidence_score', None) or 0.7
+                        existing_reasoning_row.confidence_level = prediction.confidence_score
                     else:
                         db.add(ChurnReasoning(
                             hr_code=hr_code,
@@ -492,7 +495,7 @@ async def train_churn_model(
                             heuristic_alerts=heuristic_alerts_json,
                             reasoning=reasoning_text,
                             recommendations=recommendations,
-                            confidence_level=getattr(prediction, 'confidence_score', None) or 0.7,
+                            confidence_level=prediction.confidence_score,
                         ))
                     reasoning_made += 1
 

@@ -39,6 +39,8 @@ class ChurnPredictionResponse(BaseModel):
     """Response model for churn prediction"""
     employee_id: Optional[int]
     churn_probability: float = Field(..., ge=0.0, le=1.0, description="Probability of churning (0-1)")
+    confidence_score: float = Field(default=0.7, ge=0.0, le=1.0, description="Model confidence in prediction (0-1)")
+    confidence_breakdown: Dict[str, float] = Field(default_factory=dict, description="Breakdown of confidence components")
     risk_level: ChurnRiskLevel
     contributing_factors: List[Dict[str, Any]] = Field(default_factory=list, description="Top factors contributing to churn risk")
     recommendations: List[str] = Field(default_factory=list, description="Recommendations to reduce churn risk")
@@ -49,6 +51,12 @@ class ChurnPredictionResponse(BaseModel):
             "example": {
                 "employee_id": 123,
                 "churn_probability": 0.75,
+                "confidence_score": 0.82,
+                "confidence_breakdown": {
+                    "tree_agreement": 0.88,
+                    "prediction_margin": 0.50,
+                    "final_confidence": 0.82
+                },
                 "risk_level": "high",
                 "contributing_factors": [
                     {"feature": "satisfaction_level", "value": 0.2, "impact": "high"},

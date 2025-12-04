@@ -25,6 +25,7 @@ class UserAccount(Base):
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     user_roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
+    agent_session = relationship("AgentSession", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
 
 Index('idx_users_username', UserAccount.username)

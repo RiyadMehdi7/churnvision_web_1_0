@@ -144,6 +144,137 @@ class ChurnPredictionService:
         else:
             return ChurnRiskLevel.LOW
 
+    def calculate_prediction_confidence(
+        self,
+        features_array: np.ndarray,
+        probability: float
+    ) -> Tuple[float, Dict[str, float]]:
+        """
+        Calculate model confidence based on:
+        1. Tree Agreement (60%): How much individual trees agree on the prediction
+        2. Prediction Margin (40%): Distance from decision boundary (0.5)
+
+        Returns:
+            Tuple of (confidence_score, breakdown_dict)
+        """
+        breakdown = {}
+
+        # Component 1: Prediction Margin (40% weight)
+        # How far from 50/50 uncertainty
+        margin = abs(probability - 0.5) * 2  # Scale to 0-1
+        breakdown['prediction_margin'] = margin
+
+        # Component 2: Tree Agreement (60% weight)
+        # Measure variance across individual tree predictions
+        tree_agreement = self._calculate_tree_agreement(features_array)
+        breakdown['tree_agreement'] = tree_agreement
+
+        # Final confidence: weighted combination
+        confidence = (0.6 * tree_agreement) + (0.4 * margin)
+
+        # Ensure bounds
+        confidence = max(0.0, min(1.0, confidence))
+        breakdown['final_confidence'] = confidence
+
+        return confidence, breakdown
+
+    def _calculate_tree_agreement(self, features_array: np.ndarray) -> float:
+        """
+        Calculate how much individual trees in the ensemble agree.
+
+        For XGBoost: Get predictions at different boosting iterations
+        For RandomForest: Get predictions from individual trees
+        For other models: Return moderate confidence (0.7)
+
+        Low variance = high agreement = high confidence
+        High variance = trees disagree = low confidence
+        """
+        if self.model is None:
+            return 0.5  # No model, moderate confidence
+
+        try:
+            if isinstance(self.model, xgb.XGBClassifier):
+                return self._xgboost_tree_agreement(features_array)
+            elif isinstance(self.model, RandomForestClassifier):
+                return self._random_forest_tree_agreement(features_array)
+            else:
+                # For other models (LogisticRegression, etc.), use prediction margin only
+                return 0.7  # Default moderate-high confidence
+        except Exception as e:
+            print(f"Error calculating tree agreement: {e}")
+            return 0.5
+
+    def _xgboost_tree_agreement(self, features_array: np.ndarray) -> float:
+        """
+        Calculate tree agreement for XGBoost by getting predictions
+        at different boosting iterations and measuring variance.
+        """
+        try:
+            booster = self.model.get_booster()
+            n_trees = booster.num_boosted_rounds()
+
+            if n_trees <= 1:
+                return 0.7  # Single tree, can't measure agreement
+
+            # Sample predictions at different iteration checkpoints
+            # Use ~10 checkpoints for efficiency
+            n_checkpoints = min(10, n_trees)
+            checkpoint_indices = [int(x) for x in np.linspace(1, n_trees, n_checkpoints)]
+
+            # Convert to DMatrix for booster prediction
+            dmatrix = xgb.DMatrix(features_array)
+
+            predictions = []
+            for n_iter in checkpoint_indices:
+                # Get prediction using first n_iter trees
+                pred = booster.predict(dmatrix, iteration_range=(0, int(n_iter)))
+                predictions.append(float(pred[0]))
+
+            # Calculate standard deviation of predictions
+            predictions = np.array(predictions)
+            std_dev = float(np.std(predictions))
+
+            # Convert std to agreement score
+            # Lower std = higher agreement
+            # Scale: std of 0.25 or more = 0 confidence, std of 0 = 1.0 confidence
+            agreement = 1.0 - min(std_dev * 4, 1.0)
+
+            return max(0.0, min(1.0, agreement))
+
+        except Exception as e:
+            print(f"XGBoost tree agreement error: {e}")
+            return 0.5
+
+    def _random_forest_tree_agreement(self, features_array: np.ndarray) -> float:
+        """
+        Calculate tree agreement for RandomForest by getting predictions
+        from individual trees and measuring variance.
+        """
+        try:
+            n_trees = len(self.model.estimators_)
+
+            if n_trees <= 1:
+                return 0.7
+
+            # Get predictions from each tree
+            predictions = []
+            for tree in self.model.estimators_:
+                pred = tree.predict_proba(features_array)[0][1]
+                predictions.append(pred)
+
+            # Calculate standard deviation
+            predictions = np.array(predictions)
+            std_dev = np.std(predictions)
+
+            # Convert std to agreement score
+            agreement = 1.0 - min(std_dev * 4, 1.0)
+
+            return max(0.0, min(1.0, agreement))
+
+        except Exception as e:
+            print(f"RandomForest tree agreement error: {e}")
+            return 0.5
+
     def _get_contributing_factors(self, features: EmployeeChurnFeatures, probability: float) -> List[Dict[str, Any]]:
         """Identify top contributing factors for churn risk"""
         factors = []
@@ -259,8 +390,21 @@ class ChurnPredictionService:
                 raise RuntimeError("No trained model loaded. Train a model before serving predictions.")
             # If no trained model, use heuristic-based prediction
             probability = self._heuristic_prediction(request.features)
+            # For heuristic predictions, use margin-only confidence
+            margin = abs(probability - 0.5) * 2
+            confidence_score = margin
+            confidence_breakdown = {
+                'prediction_margin': margin,
+                'tree_agreement': 0.5,  # N/A for heuristic
+                'final_confidence': confidence_score,
+                'method': 'heuristic'
+            }
         else:
             probability = float(self.model.predict_proba(features_array)[0][1])
+            # Calculate real confidence using tree agreement + margin
+            confidence_score, confidence_breakdown = self.calculate_prediction_confidence(
+                features_array, probability
+            )
 
         # Determine risk level
         risk_level = self._determine_risk_level(probability)
@@ -274,6 +418,8 @@ class ChurnPredictionService:
         return ChurnPredictionResponse(
             employee_id=request.employee_id,
             churn_probability=probability,
+            confidence_score=confidence_score,
+            confidence_breakdown=confidence_breakdown,
             risk_level=risk_level,
             contributing_factors=contributing_factors,
             recommendations=recommendations,

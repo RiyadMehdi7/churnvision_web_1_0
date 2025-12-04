@@ -342,7 +342,8 @@ class IntelligentChatbotService:
         limit: int = 5
     ) -> List[Dict[str, Any]]:
         """Find similar employees (resigned or active)"""
-        status_filter = "resigned" if resigned else "active"
+        # Match "Terminated" for resigned and "Active" for active (case-insensitive)
+        status_filter = "terminated" if resigned else "active"
 
         # Get employees with same position and similar tenure
         query = select(HRDataInput, ChurnReasoning).outerjoin(
@@ -350,7 +351,7 @@ class IntelligentChatbotService:
             HRDataInput.hr_code == ChurnReasoning.hr_code
         ).where(
             and_(
-                HRDataInput.status == status_filter,
+                func.lower(HRDataInput.status) == status_filter,
                 HRDataInput.hr_code != employee.hr_code,
                 or_(
                     HRDataInput.position == employee.position,
@@ -382,10 +383,11 @@ class IntelligentChatbotService:
     async def _get_workforce_statistics(self) -> Dict[str, Any]:
         """Get comprehensive workforce statistics"""
         # Get all active employees with reasoning data
+        # Use case-insensitive comparison for status
         query = select(HRDataInput, ChurnReasoning).outerjoin(
             ChurnReasoning,
             HRDataInput.hr_code == ChurnReasoning.hr_code
-        ).where(HRDataInput.status == "active")
+        ).where(func.lower(HRDataInput.status) == "active")
 
         result = await self.db.execute(query)
         employees = result.all()
@@ -465,7 +467,7 @@ class IntelligentChatbotService:
             HRDataInput.hr_code == ChurnReasoning.hr_code
         ).where(
             and_(
-                HRDataInput.status == "active",
+                func.lower(HRDataInput.status) == "active",
                 HRDataInput.structure_name.ilike(f"%{department}%")
             )
         )
@@ -508,7 +510,7 @@ class IntelligentChatbotService:
         query = select(HRDataInput, ChurnReasoning).outerjoin(
             ChurnReasoning,
             HRDataInput.hr_code == ChurnReasoning.hr_code
-        ).where(HRDataInput.status == "active")
+        ).where(func.lower(HRDataInput.status) == "active")
 
         result = await self.db.execute(query)
         employees = result.all()
@@ -538,11 +540,11 @@ class IntelligentChatbotService:
 
     async def _analyze_exit_patterns_enhanced(self) -> Dict[str, Any]:
         """Comprehensive exit pattern analysis"""
-        # Get resigned employees with reasoning
+        # Get terminated employees with reasoning (case-insensitive)
         query = select(HRDataInput, ChurnReasoning).outerjoin(
             ChurnReasoning,
             HRDataInput.hr_code == ChurnReasoning.hr_code
-        ).where(HRDataInput.status == "resigned")
+        ).where(func.lower(HRDataInput.status) == "terminated")
 
         result = await self.db.execute(query)
         resigned = result.all()

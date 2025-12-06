@@ -59,6 +59,7 @@ interface SendMessagePayload {
   sessionId: string;
   employeeId?: string | number | null;
   content: string;
+  datasetId?: string | null;
   // userId?: number; // Removed userId
 }
 
@@ -230,6 +231,7 @@ class ChatbotService {
         message: payload.content,
         session_id: payload.sessionId,
         employee_id: payload.employeeId || null, // Pass employee context if selected
+        dataset_id: payload.datasetId || null,
       });
 
       if (!response || !response.data) {

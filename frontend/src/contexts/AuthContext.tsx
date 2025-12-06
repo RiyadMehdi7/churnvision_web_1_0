@@ -39,7 +39,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (token && storedUser) {
         try {
           // Verify token is still valid by fetching current user
-          const currentUser = await authService.getCurrentUser();
+          // Add timeout to prevent indefinite loading
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Auth check timeout')), 5000)
+          );
+          const currentUser = await Promise.race([
+            authService.getCurrentUser(),
+            timeoutPromise
+          ]) as typeof storedUser;
           setUser(currentUser);
         } catch (error) {
           console.error('Token validation failed:', error);

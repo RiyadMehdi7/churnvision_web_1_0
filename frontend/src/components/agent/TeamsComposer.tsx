@@ -5,7 +5,7 @@
  * Opens Teams with prefilled chat message or meeting form.
  */
 
-import { memo, useState, useCallback } from 'react';
+import { memo, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageSquare,
@@ -23,7 +23,11 @@ import {
   Maximize2,
   ExternalLink,
   Phone,
+  Wand2,
+  Loader2,
+  CornerDownLeft,
 } from 'lucide-react';
+import api from '@/services/api';
 
 interface TeamsComposerProps {
   attendees: string[];
@@ -88,6 +92,12 @@ export const TeamsComposer = memo<TeamsComposerProps>(({
   const [copied, setCopied] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
 
+  // AI Refinement state
+  const [aiInstruction, setAiInstruction] = useState('');
+  const [isRefining, setIsRefining] = useState(false);
+  const [lastChange, setLastChange] = useState<string | null>(null);
+  const aiInputRef = useRef<HTMLInputElement>(null);
+
   const attendeesArray = attendees.split(',').map(e => e.trim()).filter(Boolean);
 
   const handleOpenTeamsChat = useCallback(() => {
@@ -118,6 +128,47 @@ export const TeamsComposer = memo<TeamsComposerProps>(({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [activeMode, attendees, subject, message, duration, proposedTime]);
+
+  // AI Refinement handler
+  const handleAiRefine = useCallback(async () => {
+    if (!aiInstruction.trim() || isRefining) return;
+
+    setIsRefining(true);
+    setLastChange(null);
+
+    try {
+      const response = await api.post('/intelligent-chat/refine-content', {
+        content_type: 'meeting',
+        subject,
+        body: message,
+        instruction: aiInstruction,
+        recipient_context: attendees ? `Attendees: ${attendees}` : undefined,
+      });
+
+      if (response.data) {
+        if (response.data.refined_subject && response.data.refined_subject !== subject) {
+          setSubject(response.data.refined_subject);
+        }
+        if (response.data.refined_body) {
+          setMessage(response.data.refined_body);
+        }
+        setLastChange(response.data.changes_made);
+        setAiInstruction('');
+      }
+    } catch (error) {
+      console.error('AI refinement error:', error);
+      setLastChange('Failed to refine content. Please try again.');
+    } finally {
+      setIsRefining(false);
+    }
+  }, [aiInstruction, isRefining, subject, message, attendees]);
+
+  const handleAiKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleAiRefine();
+    }
+  }, [handleAiRefine]);
 
   const handlePrimaryAction = useCallback(() => {
     if (activeMode === 'chat') {
@@ -269,6 +320,56 @@ export const TeamsComposer = memo<TeamsComposerProps>(({
                     Suggested: {proposedTime.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
                   </span>
                 )}
+              </div>
+            )}
+
+            {/* AI Refinement Bar - not for call */}
+            {activeMode !== 'call' && (
+              <div className="border-b border-gray-100 dark:border-gray-700 px-4 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/10 dark:to-indigo-900/10">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 text-[#5b5fc7]">
+                    <Wand2 size={14} />
+                    <span className="text-xs font-medium">AI Edit</span>
+                  </div>
+                  <div className="flex-1 relative">
+                    <input
+                      ref={aiInputRef}
+                      type="text"
+                      value={aiInstruction}
+                      onChange={(e) => setAiInstruction(e.target.value)}
+                      onKeyDown={handleAiKeyDown}
+                      disabled={isRefining}
+                      className="w-full text-sm text-gray-800 dark:text-gray-200 bg-white dark:bg-slate-700 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 pr-20 focus:outline-none focus:ring-2 focus:ring-[#5b5fc7]/50 disabled:opacity-50"
+                      placeholder="e.g., add more detail, make it concise, add action items..."
+                    />
+                    <button
+                      onClick={handleAiRefine}
+                      disabled={!aiInstruction.trim() || isRefining}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-[#5b5fc7] hover:bg-[#4b4fb7] disabled:bg-gray-400 rounded transition-colors"
+                    >
+                      {isRefining ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <>
+                          <CornerDownLeft size={12} />
+                          Apply
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <AnimatePresence>
+                  {lastChange && (
+                    <motion.p
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className={`text-xs mt-1.5 ${lastChange.includes('Failed') ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}
+                    >
+                      {lastChange.includes('Failed') ? lastChange : `✓ ${lastChange}`}
+                    </motion.p>
+                  )}
+                </AnimatePresence>
               </div>
             )}
 

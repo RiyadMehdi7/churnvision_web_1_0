@@ -21,7 +21,7 @@ import { logger } from '@/utils/logger'; // Import frontend logger
 // // import type { ConnectionTestParams } from '@/types/electron'; // Removed ConnectionCreateParams
 import { Button } from "@/components/ui/button";
 import { useToast } from '@/hooks/use-toast';
-import { useBatchReasoning } from '../hooks/useReasoning';
+// Removed unused: import { useBatchReasoning } from '../hooks/useReasoning';
 import { InterviewUploadWindow } from '../components/InterviewUploadWindow';
 import { EngagementUploadWindow } from '../components/EngagementUploadWindow';
 import { ModelPerformanceGauge } from '../components/ModelPerformanceGauge';
@@ -500,9 +500,6 @@ export function DataManagement(): React.ReactElement {
     // const [isListingTables, setIsListingTables] = useState<boolean>(false); // Unused
     // --- END NEW States ---
 
-    // Batch reasoning hook for post-upload processing
-    useBatchReasoning();
-
     // Main tab state for the interface
     const [activeMainTab, setActiveMainTab] = useState<'files' | 'database' | 'api' | 'mlmodels'>('files');
 
@@ -905,9 +902,11 @@ export function DataManagement(): React.ReactElement {
             const currentActiveDataset = mappedDatasets.find(d => d.active);
             if (currentActiveDataset) {
                 setSelectedDataset(currentActiveDataset.id);
+                try { localStorage.setItem('activeDatasetId', currentActiveDataset.id); } catch { /* ignore */ }
                 logger.info(`Active dataset set: ${currentActiveDataset.name} (ID: ${currentActiveDataset.id})`, undefined, 'DataManagement');
             } else {
                 setSelectedDataset(null);
+                try { localStorage.removeItem('activeDatasetId'); } catch { /* ignore */ }
                 if (mappedDatasets.length > 0) {
                     logger.warn('No active dataset found in the fetched list.', undefined, 'DataManagement');
                 }
@@ -2034,6 +2033,7 @@ export function DataManagement(): React.ReactElement {
                 fetchDatasets(); // Refresh list (uses context project implicitly)
                 // Ensure projectId is passed to fetchHomeData
                 useGlobalDataCache.getState().fetchHomeData(currentProjectId, true);
+                try { localStorage.setItem('activeDatasetId', datasetId); } catch { /* noop */ }
                 setUploadMessage('Dataset set as active.');
                 setUploadStatus('success');
             } else {
@@ -2597,7 +2597,7 @@ export function DataManagement(): React.ReactElement {
                 logger.info('Training successfully queued via API.', { status: result.status }, 'DataManagement');
                 // Start GLOBAL POLLING - PASS PROJECT ID
                 logger.info(`Triggering global cache polling for training status (Project: ${projectId}).`, undefined, 'DataManagement');
-                startGlobalPolling(projectId);
+                startGlobalPolling(projectId, activeDataset.id);
             } else {
                 const errorMessage = result.error || 'Failed to start training (unknown reason)';
                 throw new Error(errorMessage);
@@ -2612,7 +2612,7 @@ export function DataManagement(): React.ReactElement {
     return (
         <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"> {/* ADJUSTED main background and text for consistency */}
             {renderHeader()}
-            <div className="p-6 md:p-8">
+            <div className="p-6 md:p-8 max-w-7xl mx-auto w-full">
                 {/* General Error Display */}
                 {generalError && (
                     <motion.div

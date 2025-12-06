@@ -82,23 +82,78 @@ async def test_generate_personalized_treatments():
 async def test_generate_personalized_treatments_json_error():
     # Mock dependencies
     mock_db = AsyncMock()
-    
+
     # Mock ChatbotService to return invalid JSON
     mock_chatbot_service = AsyncMock()
     mock_chatbot_service.generate_response.return_value = "This is not JSON"
-    
+
     # Initialize service with mocks
     service = TreatmentGenerationService(mock_db)
     service.chatbot_service = mock_chatbot_service
-    
+
     # Mock internal helper methods
     service._get_employee_data = AsyncMock(return_value=HRDataInput(hr_code="EMP001", full_name="John"))
     service._get_churn_data = AsyncMock(return_value=None)
     service._get_churn_reasoning = AsyncMock(return_value=None)
-    
+
     # Run method
     treatments = await service.generate_personalized_treatments("EMP001")
-    
-    # Verify fallback
-    assert len(treatments) == 1
-    assert treatments[0]["name"] == "Stay Interview"
+
+    # Verify fallback returns multiple treatments with required structure
+    assert len(treatments) >= 3
+    # Each treatment should have required fields
+    for t in treatments:
+        assert "name" in t
+        assert "type" in t
+        assert "description" in t
+        assert t["type"] in ["material", "non-material"]
+
+
+@pytest.mark.asyncio
+async def test_generate_personalized_treatments_supplements_few_ai_results():
+    """Test that when AI returns fewer than 3 treatments, fallback supplements them"""
+    mock_db = AsyncMock()
+
+    # Mock ChatbotService to return only 1 valid treatment
+    mock_chatbot_service = AsyncMock()
+    mock_chatbot_service.generate_response.return_value = """
+    [
+        {
+            "name": "AI Generated Treatment",
+            "type": "material",
+            "description": "A treatment from AI",
+            "estimated_cost": 1000,
+            "implementation_timeline": "1 week",
+            "expected_impact": "High"
+        }
+    ]
+    """
+
+    # Initialize service with mocks
+    service = TreatmentGenerationService(mock_db)
+    service.chatbot_service = mock_chatbot_service
+
+    # Mock internal helper methods
+    service._get_employee_data = AsyncMock(return_value=HRDataInput(
+        hr_code="EMP001",
+        full_name="John",
+        position="Developer",
+        structure_name="Engineering",
+        tenure=2.5,
+        employee_cost=80000
+    ))
+    service._get_churn_data = AsyncMock(return_value=ChurnOutput(hr_code="EMP001", resign_proba=0.6))
+    service._get_churn_reasoning = AsyncMock(return_value=None)
+
+    # Run method
+    treatments = await service.generate_personalized_treatments("EMP001")
+
+    # Should have supplemented with fallback treatments
+    assert len(treatments) >= 3
+    # First treatment should be the AI-generated one
+    assert treatments[0]["name"] == "AI Generated Treatment"
+    # All treatments should have valid structure
+    for t in treatments:
+        assert "name" in t
+        assert "type" in t
+        assert "description" in t

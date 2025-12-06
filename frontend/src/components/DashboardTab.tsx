@@ -330,8 +330,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   }, [activeProject, fetchHomeData]);
 
   useEffect(() => {
+    const datasetId = trainingStatus?.datasetId || (typeof window !== 'undefined' ? localStorage.getItem('activeDatasetId') : null);
     if (isModelReady && homeEmployees && homeEmployees.length > 0) {
-      autoThresholdService.start(homeEmployees);
+      autoThresholdService.start(homeEmployees, datasetId);
     } else {
       autoThresholdService.stop();
     }
@@ -339,7 +340,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     return () => {
       autoThresholdService.stop();
     };
-  }, [isModelReady, homeEmployees]);
+  }, [isModelReady, homeEmployees, trainingStatus?.datasetId]);
 
   // Use homeEmployees directly from the global cache
   const employees = homeEmployees || [];

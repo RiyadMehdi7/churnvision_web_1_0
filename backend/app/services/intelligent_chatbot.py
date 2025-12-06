@@ -7,7 +7,7 @@ Returns structured JSON data that matches frontend renderer expectations.
 
 from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, desc
+from sqlalchemy import select, func, and_, or_, desc, case
 from sqlalchemy.orm import selectinload
 import re
 import json
@@ -18,6 +18,8 @@ from app.models.hr_data import HRDataInput
 from app.models.churn import ChurnOutput, ChurnReasoning
 from app.models.treatment import TreatmentDefinition, TreatmentApplication
 from app.services.chatbot import ChatbotService
+from app.models.dataset import Dataset
+from app.services.project_service import ensure_default_project, get_active_project
 
 
 class PatternType:
@@ -175,13 +177,50 @@ class IntelligentChatbotService:
                 return match.group(1)
         return None
 
+    async def _resolve_dataset_id(self, dataset_id: Optional[str]) -> str:
+        """Resolve the active dataset id, defaulting to the active project dataset."""
+        if dataset_id:
+            result = await self.db.execute(select(Dataset).where(Dataset.dataset_id == dataset_id))
+            if result.scalar_one_or_none():
+                return dataset_id
+            raise ValueError("Dataset not found. Please select a valid dataset and try again.")
+
+        # Use active project dataset
+        await ensure_default_project(self.db)
+        active_project = await get_active_project(self.db)
+        result = await self.db.execute(
+            select(Dataset).where(Dataset.project_id == active_project.id, Dataset.is_active == 1).limit(1)
+        )
+        dataset = result.scalar_one_or_none()
+        if not dataset:
+            raise ValueError("No active dataset found for the current project")
+        return dataset.dataset_id
+
+    def _parse_additional_data(self, raw: Any) -> Dict[str, Any]:
+        """Best-effort parse of additional_data field into a dict."""
+        if not raw:
+            return {}
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+                return parsed if isinstance(parsed, dict) else {}
+            except json.JSONDecodeError:
+                return {}
+        return {}
+
     async def gather_context(
         self,
         pattern_type: str,
-        entities: Dict[str, Any]
+        entities: Dict[str, Any],
+        dataset_id: str
     ) -> Dict[str, Any]:
         """Gather relevant context from database based on pattern type"""
-        context = {"pattern": pattern_type}
+        context = {"pattern": pattern_type, "dataset_id": dataset_id}
+
+        # Always include company-level overview so general/company queries are grounded
+        context["company_overview"] = await self._get_company_overview(dataset_id)
 
         # Employee-specific patterns
         if pattern_type in [
@@ -193,10 +232,13 @@ class IntelligentChatbotService:
         ]:
             employee = await self._get_employee_data(
                 hr_code=entities.get("hr_code"),
-                full_name=entities.get("employee_name")
+                full_name=entities.get("employee_name"),
+                dataset_id=dataset_id
             )
 
             if employee:
+                additional_data = self._parse_additional_data(getattr(employee, "additional_data", None))
+
                 context["employee"] = {
                     "hr_code": employee.hr_code,
                     "full_name": employee.full_name,
@@ -205,11 +247,22 @@ class IntelligentChatbotService:
                     "tenure": float(employee.tenure) if employee.tenure else 0,
                     "status": employee.status,
                     "employee_cost": float(employee.employee_cost) if employee.employee_cost else 50000,
-                    "report_date": str(employee.report_date) if employee.report_date else None
+                    "report_date": str(employee.report_date) if employee.report_date else None,
+                    "termination_date": str(employee.termination_date) if getattr(employee, "termination_date", None) else None,
+                    "manager_id": employee.manager_id,
+                    "additional_data": additional_data,
+                    "performance_rating_latest": additional_data.get("performance_rating_latest") or additional_data.get("performance_rating")
                 }
 
+                # Manager/team and department rollups for richer context
+                if employee.manager_id:
+                    context["manager_team"] = await self._get_manager_team_summary(employee.manager_id, dataset_id)
+
+                if employee.structure_name:
+                    context["department_snapshot"] = await self._get_department_snapshot(employee.structure_name, dataset_id)
+
                 # Get churn prediction
-                churn_data = await self._get_churn_data(employee.hr_code)
+                churn_data = await self._get_churn_data(employee.hr_code, dataset_id)
                 if churn_data:
                     context["churn"] = {
                         "resign_proba": float(churn_data.resign_proba),
@@ -219,7 +272,7 @@ class IntelligentChatbotService:
                     }
 
                 # Get churn reasoning
-                reasoning = await self._get_churn_reasoning(employee.hr_code)
+                reasoning = await self._get_churn_reasoning(employee.hr_code, dataset_id)
                 if reasoning:
                     # Parse ml_contributors and heuristic_alerts from JSON strings
                     ml_contributors = []
@@ -256,27 +309,31 @@ class IntelligentChatbotService:
 
                 # Get similar employees for comparison
                 if pattern_type == PatternType.EMPLOYEE_COMPARISON:
-                    similar = await self._get_similar_employees(employee, resigned=True)
+                    similar = await self._get_similar_employees(employee, dataset_id, resigned=True)
                     context["similar_employees"] = similar
                 elif pattern_type == PatternType.EMPLOYEE_COMPARISON_STAYED:
-                    similar = await self._get_similar_employees(employee, resigned=False)
+                    similar = await self._get_similar_employees(employee, dataset_id, resigned=False)
                     context["similar_employees"] = similar
 
         # Workforce trends
         if pattern_type == PatternType.WORKFORCE_TRENDS:
-            context["workforce_stats"] = await self._get_workforce_statistics()
+            context["workforce_stats"] = await self._get_workforce_statistics(dataset_id)
 
         # Department analysis
         if pattern_type == PatternType.DEPARTMENT_ANALYSIS:
             dept = entities.get("department")
             if dept:
-                context["department_data"] = await self._get_department_analysis(dept)
+                context["department_data"] = await self._get_department_analysis(dept, dataset_id)
             else:
-                context["departments"] = await self._get_all_departments_overview()
+                context["departments"] = await self._get_all_departments_overview(dataset_id)
 
         # Exit pattern mining
         if pattern_type == PatternType.EXIT_PATTERN_MINING:
-            context["exit_data"] = await self._analyze_exit_patterns_enhanced()
+            context["exit_data"] = await self._analyze_exit_patterns_enhanced(dataset_id)
+
+        # For general chat we still want lightweight org stats for grounded responses
+        if pattern_type == PatternType.GENERAL_CHAT and "workforce_stats" not in context:
+            context["workforce_stats"] = await self._get_workforce_statistics(dataset_id)
 
         return context
 
@@ -284,11 +341,12 @@ class IntelligentChatbotService:
 
     async def _get_employee_data(
         self,
-        hr_code: Optional[str] = None,
-        full_name: Optional[str] = None
+        hr_code: Optional[str],
+        full_name: Optional[str],
+        dataset_id: str
     ) -> Optional[HRDataInput]:
         """Fetch employee data from database"""
-        query = select(HRDataInput)
+        query = select(HRDataInput).where(HRDataInput.dataset_id == dataset_id)
 
         if hr_code:
             query = query.where(HRDataInput.hr_code == hr_code)
@@ -301,18 +359,22 @@ class IntelligentChatbotService:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
-    async def _get_churn_data(self, hr_code: str) -> Optional[ChurnOutput]:
+    async def _get_churn_data(self, hr_code: str, dataset_id: str) -> Optional[ChurnOutput]:
         """Fetch churn prediction data"""
         query = select(ChurnOutput).where(
-            ChurnOutput.hr_code == hr_code
+            ChurnOutput.hr_code == hr_code,
+            ChurnOutput.dataset_id == dataset_id
         ).order_by(desc(ChurnOutput.generated_at)).limit(1)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
-    async def _get_churn_reasoning(self, hr_code: str) -> Optional[ChurnReasoning]:
-        """Fetch churn reasoning data"""
-        query = select(ChurnReasoning).where(
-            ChurnReasoning.hr_code == hr_code
+    async def _get_churn_reasoning(self, hr_code: str, dataset_id: str) -> Optional[ChurnReasoning]:
+        """Fetch churn reasoning data scoped to dataset via HR data join."""
+        query = select(ChurnReasoning).join(
+            HRDataInput, HRDataInput.hr_code == ChurnReasoning.hr_code
+        ).where(
+            ChurnReasoning.hr_code == hr_code,
+            HRDataInput.dataset_id == dataset_id
         ).order_by(desc(ChurnReasoning.updated_at)).limit(1)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
@@ -338,6 +400,7 @@ class IntelligentChatbotService:
     async def _get_similar_employees(
         self,
         employee: HRDataInput,
+        dataset_id: str,
         resigned: bool = True,
         limit: int = 5
     ) -> List[Dict[str, Any]]:
@@ -352,6 +415,7 @@ class IntelligentChatbotService:
         ).where(
             and_(
                 func.lower(HRDataInput.status) == status_filter,
+                HRDataInput.dataset_id == dataset_id,
                 HRDataInput.hr_code != employee.hr_code,
                 or_(
                     HRDataInput.position == employee.position,
@@ -380,7 +444,7 @@ class IntelligentChatbotService:
             for e, r in similar
         ]
 
-    async def _get_workforce_statistics(self) -> Dict[str, Any]:
+    async def _get_workforce_statistics(self, dataset_id: str) -> Dict[str, Any]:
         """Get comprehensive workforce statistics"""
         # Get all active employees with reasoning data
         # Use case-insensitive comparison for status
@@ -388,13 +452,15 @@ class IntelligentChatbotService:
             ChurnReasoning,
             HRDataInput.hr_code == ChurnReasoning.hr_code
         ).where(func.lower(HRDataInput.status) == "active")
+        query = query.where(HRDataInput.dataset_id == dataset_id)
 
         result = await self.db.execute(query)
         employees = result.all()
 
         total = len(employees)
-        high_risk = sum(1 for e, r in employees if r and r.churn_risk and r.churn_risk >= 0.7)
-        medium_risk = sum(1 for e, r in employees if r and r.churn_risk and 0.4 <= r.churn_risk < 0.7)
+        # Use standard thresholds (0.6/0.3) matching frontend and churn_prediction.py
+        high_risk = sum(1 for e, r in employees if r and r.churn_risk and r.churn_risk >= 0.6)
+        medium_risk = sum(1 for e, r in employees if r and r.churn_risk and 0.3 <= r.churn_risk < 0.6)
         low_risk = total - high_risk - medium_risk
 
         # Department breakdown
@@ -420,7 +486,7 @@ class IntelligentChatbotService:
                 "department": dept,
                 "count": stats["count"],
                 "avgRisk": sum(risks) / len(risks) if risks else 0,
-                "highRiskCount": sum(1 for r in risks if r >= 0.7),
+                "highRiskCount": sum(1 for r in risks if r >= 0.6),
                 "avgMLScore": sum(stats["ml_scores"]) / len(stats["ml_scores"]) if stats["ml_scores"] else 0,
                 "avgStageScore": sum(stats["stage_scores"]) / len(stats["stage_scores"]) if stats["stage_scores"] else 0,
                 "avgConfidence": sum(stats["confidences"]) / len(stats["confidences"]) if stats["confidences"] else 0
@@ -460,7 +526,107 @@ class IntelligentChatbotService:
             }
         }
 
-    async def _get_department_analysis(self, department: str) -> Dict[str, Any]:
+    async def _get_company_overview(self, dataset_id: str) -> Dict[str, Any]:
+        """Aggregate company-level metrics scoped to dataset."""
+        stats_query = select(
+            func.count().label("total_employees"),
+            func.sum(case((func.lower(HRDataInput.status) == "active", 1), else_=0)).label("active_employees"),
+            func.avg(HRDataInput.tenure).label("avg_tenure"),
+            func.avg(HRDataInput.employee_cost).label("avg_cost"),
+            func.avg(ChurnOutput.resign_proba).label("avg_risk"),
+            func.sum(case((ChurnOutput.resign_proba >= 0.6, 1), else_=0)).label("high_risk"),
+            func.sum(case(((ChurnOutput.resign_proba >= 0.3) & (ChurnOutput.resign_proba < 0.6), 1), else_=0)).label("medium_risk"),
+            func.sum(case((ChurnOutput.resign_proba < 0.3, 1), else_=0)).label("low_risk"),
+        ).select_from(HRDataInput).outerjoin(
+            ChurnOutput,
+            and_(ChurnOutput.hr_code == HRDataInput.hr_code, ChurnOutput.dataset_id == dataset_id)
+        ).where(HRDataInput.dataset_id == dataset_id)
+
+        result = await self.db.execute(stats_query)
+        row = result.fetchone()
+        if not row:
+            return {}
+
+        return {
+            "totalEmployees": row.total_employees or 0,
+            "activeEmployees": row.active_employees or 0,
+            "avgTenure": float(row.avg_tenure) if row.avg_tenure else 0,
+            "avgCost": float(row.avg_cost) if row.avg_cost else 0,
+            "avgRisk": float(row.avg_risk) if row.avg_risk else 0,
+            "riskDistribution": {
+                "high": int(row.high_risk or 0),
+                "medium": int(row.medium_risk or 0),
+                "low": int(row.low_risk or 0),
+            }
+        }
+
+    async def _get_manager_team_summary(self, manager_id: str, dataset_id: str) -> Optional[Dict[str, Any]]:
+        """Summarize team under a manager with risk/cost/tenure aggregates."""
+        if not manager_id:
+            return None
+
+        query = select(
+            func.count().label("team_size"),
+            func.avg(HRDataInput.tenure).label("avg_tenure"),
+            func.avg(HRDataInput.employee_cost).label("avg_cost"),
+            func.avg(ChurnOutput.resign_proba).label("avg_risk"),
+            func.sum(case((ChurnOutput.resign_proba >= 0.6, 1), else_=0)).label("high_risk"),
+        ).select_from(HRDataInput).outerjoin(
+            ChurnOutput,
+            and_(ChurnOutput.hr_code == HRDataInput.hr_code, ChurnOutput.dataset_id == dataset_id)
+        ).where(
+            HRDataInput.manager_id == manager_id,
+            HRDataInput.dataset_id == dataset_id
+        )
+
+        result = await self.db.execute(query)
+        row = result.fetchone()
+        if not row or not row.team_size:
+            return None
+
+        return {
+            "managerId": manager_id,
+            "teamSize": int(row.team_size or 0),
+            "avgTenure": float(row.avg_tenure) if row.avg_tenure else 0,
+            "avgCost": float(row.avg_cost) if row.avg_cost else 0,
+            "avgRisk": float(row.avg_risk) if row.avg_risk else 0,
+            "highRiskCount": int(row.high_risk or 0),
+        }
+
+    async def _get_department_snapshot(self, department: str, dataset_id: str) -> Optional[Dict[str, Any]]:
+        """Return key stats for a department to enrich responses."""
+        if not department:
+            return None
+
+        query = select(
+            func.count().label("headcount"),
+            func.avg(HRDataInput.tenure).label("avg_tenure"),
+            func.avg(HRDataInput.employee_cost).label("avg_cost"),
+            func.avg(ChurnOutput.resign_proba).label("avg_risk"),
+            func.sum(case((ChurnOutput.resign_proba >= 0.6, 1), else_=0)).label("high_risk"),
+        ).select_from(HRDataInput).outerjoin(
+            ChurnOutput,
+            and_(ChurnOutput.hr_code == HRDataInput.hr_code, ChurnOutput.dataset_id == dataset_id)
+        ).where(
+            HRDataInput.dataset_id == dataset_id,
+            HRDataInput.structure_name.ilike(f"%{department}%")
+        )
+
+        result = await self.db.execute(query)
+        row = result.fetchone()
+        if not row or not row.headcount:
+            return None
+
+        return {
+            "department": department,
+            "headcount": int(row.headcount or 0),
+            "avgTenure": float(row.avg_tenure) if row.avg_tenure else 0,
+            "avgCost": float(row.avg_cost) if row.avg_cost else 0,
+            "avgRisk": float(row.avg_risk) if row.avg_risk else 0,
+            "highRiskCount": int(row.high_risk or 0),
+        }
+
+    async def _get_department_analysis(self, department: str, dataset_id: str) -> Dict[str, Any]:
         """Get detailed analysis for a specific department"""
         query = select(HRDataInput, ChurnReasoning).outerjoin(
             ChurnReasoning,
@@ -468,7 +634,8 @@ class IntelligentChatbotService:
         ).where(
             and_(
                 func.lower(HRDataInput.status) == "active",
-                HRDataInput.structure_name.ilike(f"%{department}%")
+                HRDataInput.structure_name.ilike(f"%{department}%"),
+                HRDataInput.dataset_id == dataset_id
             )
         )
 
@@ -490,27 +657,28 @@ class IntelligentChatbotService:
                 "stage": r.stage if r else "Unknown",
                 "reasoning": r.reasoning if r else None
             }
-            for e, r in employees if r and r.churn_risk and r.churn_risk >= 0.7
+            for e, r in employees if r and r.churn_risk and r.churn_risk >= 0.6
         ]
 
         return {
             "departmentName": department,
             "totalEmployees": total,
-            "highRisk": sum(1 for r in risks if r >= 0.7),
-            "mediumRisk": sum(1 for r in risks if 0.4 <= r < 0.7),
-            "lowRisk": sum(1 for r in risks if r < 0.4),
+            "highRisk": sum(1 for r in risks if r >= 0.6),
+            "mediumRisk": sum(1 for r in risks if 0.3 <= r < 0.6),
+            "lowRisk": sum(1 for r in risks if r < 0.3),
             "avgRisk": sum(risks) / len(risks) if risks else 0,
             "highRiskEmployees": high_risk_employees[:5],
             "avgTenure": sum(float(e.tenure) for e, r in employees if e.tenure) / total if total else 0,
             "avgCost": sum(float(e.employee_cost) for e, r in employees if e.employee_cost) / total if total else 0
         }
 
-    async def _get_all_departments_overview(self) -> List[Dict[str, Any]]:
+    async def _get_all_departments_overview(self, dataset_id: str) -> List[Dict[str, Any]]:
         """Get overview of all departments"""
         query = select(HRDataInput, ChurnReasoning).outerjoin(
             ChurnReasoning,
             HRDataInput.hr_code == ChurnReasoning.hr_code
         ).where(func.lower(HRDataInput.status) == "active")
+        query = query.where(HRDataInput.dataset_id == dataset_id)
 
         result = await self.db.execute(query)
         employees = result.all()
@@ -530,21 +698,22 @@ class IntelligentChatbotService:
             departments.append({
                 "department": dept,
                 "totalEmployees": len(data["employees"]),
-                "highRisk": sum(1 for r in risks if r >= 0.7),
-                "mediumRisk": sum(1 for r in risks if 0.4 <= r < 0.7),
-                "lowRisk": sum(1 for r in risks if r < 0.4),
+                "highRisk": sum(1 for r in risks if r >= 0.6),
+                "mediumRisk": sum(1 for r in risks if 0.3 <= r < 0.6),
+                "lowRisk": sum(1 for r in risks if r < 0.3),
                 "avgRisk": sum(risks) / len(risks) if risks else 0
             })
 
         return sorted(departments, key=lambda x: x["avgRisk"], reverse=True)
 
-    async def _analyze_exit_patterns_enhanced(self) -> Dict[str, Any]:
+    async def _analyze_exit_patterns_enhanced(self, dataset_id: str) -> Dict[str, Any]:
         """Comprehensive exit pattern analysis"""
         # Get terminated employees with reasoning (case-insensitive)
         query = select(HRDataInput, ChurnReasoning).outerjoin(
             ChurnReasoning,
             HRDataInput.hr_code == ChurnReasoning.hr_code
         ).where(func.lower(HRDataInput.status) == "terminated")
+        query = query.where(HRDataInput.dataset_id == dataset_id)
 
         result = await self.db.execute(query)
         resigned = result.all()
@@ -677,7 +846,7 @@ class IntelligentChatbotService:
         churn = context.get("churn", {})
         reasoning = context.get("reasoning", {})
 
-        risk_level = "High" if churn.get("resign_proba", 0) >= 0.7 else "Medium" if churn.get("resign_proba", 0) >= 0.4 else "Low"
+        risk_level = "High" if churn.get("resign_proba", 0) >= 0.6 else "Medium" if churn.get("resign_proba", 0) >= 0.3 else "Low"
 
         # Format ML contributors
         ml_contributors = []
@@ -757,7 +926,7 @@ class IntelligentChatbotService:
         treatments = context.get("treatments", [])
 
         risk = churn.get("resign_proba", reasoning.get("churn_risk", 0))
-        risk_level = "High" if risk >= 0.7 else "Medium" if risk >= 0.4 else "Low"
+        risk_level = "High" if risk >= 0.6 else "Medium" if risk >= 0.3 else "Low"
 
         # Generate action plan from treatments
         action_plan = []
@@ -767,7 +936,7 @@ class IntelligentChatbotService:
             time_frame = t.get("time_to_effect", "3 months")
 
             category = "immediate" if i <= 2 else "short_term" if i <= 4 else "long_term"
-            priority = "critical" if risk >= 0.7 and i <= 2 else "high" if i <= 3 else "medium"
+            priority = "critical" if risk >= 0.6 and i <= 2 else "high" if i <= 3 else "medium"
 
             action_plan.append({
                 "step": i,
@@ -1182,10 +1351,31 @@ class IntelligentChatbotService:
         context: Dict[str, Any]
     ) -> str:
         """Generate general response using LLM"""
+        # Build context-aware prompt
+        employee = context.get("employee")
+        churn = context.get("churn", {})
+        reasoning = context.get("reasoning", {})
+
+        employee_context = ""
+        if employee:
+            risk = churn.get("resign_proba", reasoning.get("churn_risk", 0))
+            risk_level = "High" if risk >= 0.6 else "Medium" if risk >= 0.3 else "Low"
+            employee_context = f"""
+Current employee context:
+- Name: {employee.full_name}
+- HR Code: {employee.hr_code}
+- Position: {employee.position}
+- Department: {employee.structure_name}
+- Tenure: {employee.tenure:.1f} years
+- Churn Risk: {risk:.1%} ({risk_level})
+- Stage: {reasoning.get('stage', 'Unknown')}
+"""
+
         system_prompt = f"""{settings.CHATBOT_SYSTEM_PROMPT}
 
 You are ChurnVision AI Assistant, helping HR professionals with employee retention and churn analytics.
 Provide concise, actionable insights based on the data available.
+{employee_context}
 """
 
         messages = [
@@ -1216,25 +1406,56 @@ Provide concise, actionable insights based on the data available.
                 model=model,
                 temperature=0.7
             )
-            return response
+            # Check for empty response
+            if response and response.strip():
+                return response
+            # Fallback if LLM returned empty
+            raise ValueError("LLM returned empty response")
         except Exception as e:
-            return f"I apologize, but I encountered an error: {str(e)}"
+            import logging
+            logging.getLogger(__name__).warning(f"LLM call failed: {e}")
+
+            # Return employee-specific fallback if employee is selected
+            if employee:
+                risk = churn.get("resign_proba", reasoning.get("churn_risk", 0))
+                risk_level = "High" if risk >= 0.6 else "Medium" if risk >= 0.3 else "Low"
+                return (
+                    f"I'm analyzing {employee.full_name} ({employee.hr_code}). "
+                    f"They have a {risk:.0%} churn risk ({risk_level} priority) "
+                    f"and have been with the company for {employee.tenure:.1f} years. "
+                    "What would you like to know about this employee?"
+                )
+
+            # Generic fallback
+            stats = context.get("workforce_stats", {}) or {}
+            total = stats.get("totalEmployees", 0)
+            high = stats.get("highRisk", 0)
+            medium = stats.get("mediumRisk", 0)
+            return (
+                f"Hi! I'm your ChurnVision AI Assistant. "
+                f"Currently tracking {total} employees ({high} high risk, {medium} medium risk). "
+                "How can I help you with employee retention today?"
+            )
 
     async def chat(
         self,
         message: str,
         session_id: str,
-        employee_id: Optional[str] = None
+        employee_id: Optional[str] = None,
+        dataset_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Main chat method that processes messages with intelligence.
         Returns dict with response text and structured data.
         """
+        # Resolve dataset context first
+        dataset_id = await self._resolve_dataset_id(dataset_id)
+
         # Detect pattern
         pattern_type, entities = await self.detect_pattern(message, employee_id)
 
         # Gather context
-        context = await self.gather_context(pattern_type, entities)
+        context = await self.gather_context(pattern_type, entities, dataset_id)
 
         # Generate response
         result = await self.generate_response(pattern_type, context, message)

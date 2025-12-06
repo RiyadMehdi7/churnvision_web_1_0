@@ -10,20 +10,12 @@ import {
   Calculator,
   ChevronDown,
   ChevronRight,
+  X,
+  Lightbulb,
 } from 'lucide-react';
 import { useEmployeeReasoning } from '../hooks/useReasoning';
 import { MLContributor, HeuristicAlert } from '../types/reasoning';
 import { getCurrentThresholds } from '../config/riskThresholds';
-
-// --- Types from Playground ---
-interface SuggestionExplanation {
-  ruleId: string;
-  ruleName: string;
-  impact: number;
-  newProbability: number;
-  reason: string;
-}
-// --- End Types ---
 
 interface ReasoningDashboardProps {
   hrCode: string;
@@ -32,51 +24,198 @@ interface ReasoningDashboardProps {
   isPerformanceMode?: boolean;
 }
 
-// --- Reusable Components ---
-const SimpleCard: React.FC<{ 
-  title: string; 
-  children: React.ReactNode; 
-  className?: string;
-}> = ({ title, children, className = '' }) => (
-  <div className={`bg-white border border-gray-200 rounded-lg p-4 ${className}`}>
-    <h3 className="font-medium text-gray-900 mb-3">{title}</h3>
-    {children}
+// Feature explanations - what each factor means and why it matters
+const FEATURE_INFO: Record<string, { name: string; highMeaning: string; lowMeaning: string }> = {
+  satisfaction_level: {
+    name: 'Job Satisfaction',
+    highMeaning: 'Low satisfaction is often a leading indicator of departure',
+    lowMeaning: 'High satisfaction suggests strong engagement with work'
+  },
+  last_evaluation: {
+    name: 'Performance Review',
+    highMeaning: 'Performance issues may indicate role mismatch or disengagement',
+    lowMeaning: 'Strong performance suggests good fit and motivation'
+  },
+  number_project: {
+    name: 'Project Workload',
+    highMeaning: 'Too many or too few projects can lead to burnout or boredom',
+    lowMeaning: 'Balanced workload indicates sustainable pace'
+  },
+  average_monthly_hours: {
+    name: 'Monthly Hours',
+    highMeaning: 'Unusual hours may signal overwork or underutilization',
+    lowMeaning: 'Normal hours indicate healthy work-life balance'
+  },
+  time_spend_company: {
+    name: 'Tenure',
+    highMeaning: 'Certain tenure periods have historically higher turnover',
+    lowMeaning: 'This tenure range shows strong retention historically'
+  },
+  work_accident: {
+    name: 'Workplace Safety',
+    highMeaning: 'Past incidents may affect engagement and trust',
+    lowMeaning: 'Clean safety record is a positive indicator'
+  },
+  promotion_last_5years: {
+    name: 'Career Progression',
+    highMeaning: 'Lack of advancement may cause frustration',
+    lowMeaning: 'Recent promotion indicates career growth'
+  },
+  salary_level: {
+    name: 'Compensation',
+    highMeaning: 'Pay concerns may be driving dissatisfaction',
+    lowMeaning: 'Competitive compensation supports retention'
+  },
+  department: {
+    name: 'Department',
+    highMeaning: 'This department has higher historical turnover',
+    lowMeaning: 'This department has strong retention'
+  },
+};
+
+// Stage explanations with actionable insights
+// Includes both tenure-based stages (from backend) and risk-based stages
+const STAGE_INFO: Record<string, { description: string; action: string; urgency: 'low' | 'medium' | 'high' }> = {
+  // Tenure-based stages from backend
+  'Onboarding': {
+    description: 'New employee in adjustment period (0-6 months). Higher turnover risk is normal during this phase.',
+    action: 'Assign mentor, schedule regular check-ins, clarify role expectations',
+    urgency: 'medium'
+  },
+  'Early Career': {
+    description: 'Building skills and seeking growth (6 months - 2 years). Looking for learning opportunities.',
+    action: 'Provide skill development, discuss career path, consider stretch assignments',
+    urgency: 'low'
+  },
+  'Established': {
+    description: 'Stable contributor with institutional knowledge (2-5 years). May be seeking advancement.',
+    action: 'Discuss promotion timeline, provide leadership opportunities, recognize contributions',
+    urgency: 'low'
+  },
+  'Senior': {
+    description: 'Experienced professional with deep expertise (5-10 years). May seek new challenges if unchallenged.',
+    action: 'Ensure meaningful projects, consider leadership roles, competitive compensation review',
+    urgency: 'medium'
+  },
+  'Veteran': {
+    description: 'Long-tenured employee (10+ years). Critical knowledge holder, may consider retirement or change.',
+    action: 'Knowledge transfer planning, succession discussions, flexible arrangements',
+    urgency: 'medium'
+  },
+  // Risk-based stages (legacy)
+  'Stable': {
+    description: 'Employee shows strong engagement and commitment signals.',
+    action: 'Maintain regular check-ins and recognition',
+    urgency: 'low'
+  },
+  'Early Warning': {
+    description: 'Some early disengagement patterns detected. Intervention now is most effective.',
+    action: 'Schedule a 1-on-1 to discuss satisfaction and goals',
+    urgency: 'medium'
+  },
+  'At Risk': {
+    description: 'Multiple warning signs present. This employee may be actively considering leaving.',
+    action: 'Prioritize a retention conversation this week',
+    urgency: 'high'
+  },
+  'Critical': {
+    description: 'Strong departure indicators. Without action, departure is likely.',
+    action: 'Immediate manager intervention recommended',
+    urgency: 'high'
+  },
+};
+
+// Get feature info with fallback
+const getFeatureInfo = (feature: string) => {
+  const key = feature.toLowerCase();
+  return FEATURE_INFO[key] || {
+    name: feature.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+    highMeaning: 'This factor is contributing to higher risk',
+    lowMeaning: 'This factor is helping reduce risk'
+  };
+};
+
+// Clean card component with optional description
+const Card: React.FC<{
+  title: string;
+  description?: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}> = ({ title, description, icon, children }) => (
+  <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+    <div className="px-5 py-4 border-b border-gray-50">
+      <div className="flex items-center gap-2">
+        {icon && <span className="text-gray-400">{icon}</span>}
+        <h3 className="font-medium text-gray-800">{title}</h3>
+      </div>
+      {description && (
+        <p className="text-xs text-gray-400 mt-1">{description}</p>
+      )}
+    </div>
+    <div className="p-5">{children}</div>
   </div>
 );
 
-const ScoreCard: React.FC<{ 
-  label: string; 
-  score: number; 
-  description?: string;
-  showNotUsed?: boolean;
-}> = ({ label, score, description, showNotUsed = false }) => {
-  const thresholds = getCurrentThresholds();
-  const percentage = Math.round(score * 100);
-  const getColor = (score: number) => {
-    if (score >= thresholds.highRisk) return 'text-red-600 bg-red-50 border-red-200';
-    if (score >= thresholds.mediumRisk) return 'text-orange-600 bg-orange-50 border-orange-200';
-    return 'text-green-600 bg-green-50 border-green-200';
-  };
-
-  const getNotUsedColor = () => 'text-gray-600 bg-gray-50 border-gray-200';
+// Factor row with explanation
+const FactorRow: React.FC<{
+  feature: string;
+  value: any;
+  impact: number;
+}> = ({ feature, value, impact }) => {
+  const isRisk = impact > 0;
+  const info = getFeatureInfo(feature);
 
   return (
-    <div className={`p-3 rounded border ${showNotUsed ? getNotUsedColor() : getColor(score)}`}>
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">{label}</span>
-        <span className="text-lg font-bold">
-          {showNotUsed ? 'Not Used' : `${percentage}%`}
-        </span>
+    <div className="py-3 border-b border-gray-50 last:border-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 flex-1">
+          {isRisk ? (
+            <TrendingUp className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+          ) : (
+            <TrendingDown className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+          )}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">{info.name}</span>
+              <span className="text-xs text-gray-400">
+                {typeof value === 'number' ? value.toFixed(2) : String(value)}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {isRisk ? info.highMeaning : info.lowMeaning}
+            </p>
+          </div>
+        </div>
+        <div className={`text-xs font-semibold px-2 py-1 rounded ${
+          isRisk ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
+        }`}>
+          {isRisk ? '+' : ''}{(impact * 100).toFixed(0)}%
+        </div>
       </div>
-      {description && (
-        <p className="text-xs mt-1 opacity-75">{description}</p>
-      )}
     </div>
   );
 };
 
+// Alert row with clear explanation
+const AlertRow: React.FC<{ alert: HeuristicAlert }> = ({ alert }) => (
+  <div className="py-3 border-b border-gray-50 last:border-0">
+    <div className="flex items-start gap-3">
+      <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium text-gray-700">{alert.rule_name}</span>
+          <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+            +{(alert.impact * 100).toFixed(0)}%
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 mt-1 leading-relaxed">{alert.reason}</p>
+      </div>
+    </div>
+  </div>
+);
+
+// ML Factors List
 const MLFactorsList: React.FC<{ contributors: MLContributor[] | string | Record<string, any> | null | undefined }> = ({ contributors }) => {
-  // Handle different data formats from backend
   let normalizedContributors: MLContributor[] = [];
 
   if (!contributors) {
@@ -84,13 +223,11 @@ const MLFactorsList: React.FC<{ contributors: MLContributor[] | string | Record<
   } else if (Array.isArray(contributors)) {
     normalizedContributors = contributors;
   } else if (typeof contributors === 'string') {
-    // Parse JSON string if needed
     try {
       const parsed = JSON.parse(contributors);
       if (Array.isArray(parsed)) {
         normalizedContributors = parsed;
       } else if (typeof parsed === 'object') {
-        // Convert object format {feature: value} to array
         normalizedContributors = Object.entries(parsed).map(([feature, value]) => ({
           feature,
           value: value,
@@ -101,7 +238,6 @@ const MLFactorsList: React.FC<{ contributors: MLContributor[] | string | Record<
       normalizedContributors = [];
     }
   } else if (typeof contributors === 'object') {
-    // Convert object format {feature: value} to array
     normalizedContributors = Object.entries(contributors).map(([feature, value]) => ({
       feature,
       value: value,
@@ -111,45 +247,34 @@ const MLFactorsList: React.FC<{ contributors: MLContributor[] | string | Record<
 
   const topFactors = normalizedContributors
     .sort((a, b) => Math.abs(b.importance) - Math.abs(a.importance))
-    .slice(0, 8);
+    .slice(0, 6);
+
+  if (topFactors.length === 0) {
+    return (
+      <div className="text-center py-8 text-gray-400">
+        <BarChart3 className="w-10 h-10 mx-auto mb-2 opacity-40" />
+        <p className="text-sm font-medium">No factors analyzed yet</p>
+        <p className="text-xs mt-1">Run predictions to see contributing factors</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-2">
+    <div>
       {topFactors.map((factor, index) => (
-        <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-          <div className="flex items-center gap-2">
-            {factor.importance > 0 ? (
-              <TrendingUp className="w-4 h-4 text-red-500" />
-            ) : (
-              <TrendingDown className="w-4 h-4 text-green-500" />
-            )}
-            <div>
-              <span className="text-sm font-medium text-gray-900">
-                {factor.feature.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-              </span>
-              <div className="text-xs text-gray-600">
-                Value: {typeof factor.value === 'number' ? 
-                  factor.value.toFixed(2) : 
-                  String(factor.value)
-                }
-              </div>
-            </div>
-          </div>
-          <span className={`text-xs font-mono px-2 py-1 rounded ${
-            factor.importance > 0 ? 
-              'bg-red-100 text-red-700' :
-              'bg-green-100 text-green-700'
-          }`}>
-            {factor.importance > 0 ? '+' : ''}{(factor.importance * 100).toFixed(1)}%
-          </span>
-        </div>
+        <FactorRow
+          key={index}
+          feature={factor.feature}
+          value={factor.value}
+          impact={factor.importance}
+        />
       ))}
     </div>
   );
 };
 
+// Business Rules List
 const BusinessRulesList: React.FC<{ alerts: HeuristicAlert[] | string | null | undefined }> = ({ alerts }) => {
-  // Handle different data formats from backend
   let normalizedAlerts: HeuristicAlert[] = [];
 
   if (!alerts) {
@@ -169,30 +294,18 @@ const BusinessRulesList: React.FC<{ alerts: HeuristicAlert[] | string | null | u
 
   if (normalizedAlerts.length === 0) {
     return (
-      <div className="text-center py-4">
-        <CheckCircle className="w-6 h-6 mx-auto mb-2 text-green-500" />
-        <p className="text-sm text-gray-600">No business rule alerts triggered</p>
+      <div className="text-center py-8">
+        <CheckCircle className="w-10 h-10 mx-auto mb-2 text-emerald-400" />
+        <p className="text-sm font-medium text-emerald-600">All clear</p>
+        <p className="text-xs text-gray-400 mt-1">No warning patterns detected</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div>
       {normalizedAlerts.map((alert, index) => (
-        <div key={index} className="p-3 bg-orange-50 border border-orange-200 rounded">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-orange-500" />
-                <span className="font-medium text-orange-900">{alert.rule_name}</span>
-              </div>
-              <p className="text-sm text-orange-700 mt-1">{alert.reason}</p>
-            </div>
-            <span className="text-xs font-medium bg-orange-100 text-orange-800 px-2 py-1 rounded">
-              +{(alert.impact * 100).toFixed(1)}%
-            </span>
-          </div>
-        </div>
+        <AlertRow key={index} alert={alert} />
       ))}
     </div>
   );
@@ -202,217 +315,298 @@ export const ReasoningDashboard: React.FC<ReasoningDashboardProps> = ({
   hrCode,
   employeeName,
   onClose,
-  isPerformanceMode = false
+  isPerformanceMode: _isPerformanceMode = false
 }) => {
-  // Removed useCurrentRiskThresholds call
   const { reasoning, isLoading, error } = useEmployeeReasoning(hrCode);
   const [showCalculation, setShowCalculation] = useState(false);
+  const thresholds = getCurrentThresholds();
+
+  // Loading
   if (isLoading) {
     return (
-      <div className="w-full max-w-7xl mx-auto p-3 sm:p-4 lg:p-6">
-        <div className="animate-pulse space-y-4">
+      <div className="bg-gray-50/50 rounded-2xl p-6">
+        <div className="animate-pulse space-y-6">
           <div className="h-6 bg-gray-200 rounded w-1/3"></div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-20 bg-gray-200 rounded"></div>
-            ))}
+          <div className="h-32 bg-gray-200 rounded-xl"></div>
+          <div className="grid grid-cols-2 gap-4">
+            {[1, 2].map(i => <div key={i} className="h-40 bg-gray-200 rounded-xl"></div>)}
           </div>
-          <div className="h-32 bg-gray-200 rounded"></div>
         </div>
       </div>
     );
   }
 
+  // Error
   if (error) {
     return (
-      <div className="w-full max-w-7xl mx-auto p-3 sm:p-4 lg:p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-red-700">
-            <AlertTriangle className="w-5 h-5" />
-            <span className="font-medium">Failed to load reasoning data</span>
-          </div>
-          <p className="text-red-600 mt-1 text-sm">{error}</p>
+      <div className="bg-gray-50/50 rounded-2xl p-6">
+        <div className="flex items-center gap-2 text-red-600">
+          <AlertTriangle className="w-5 h-5" />
+          <span className="font-medium">Failed to load analysis</span>
         </div>
+        <p className="text-gray-500 text-sm mt-1">{error}</p>
       </div>
     );
   }
 
+  // No data
   if (!reasoning) {
     return (
-      <div className="w-full max-w-7xl mx-auto p-3 sm:p-4 lg:p-6">
-        <div className="text-center py-8 sm:py-12">
-          <Brain className="w-10 h-10 sm:w-12 sm:h-12 mx-auto text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No reasoning data available
-          </h3>
-          <p className="text-gray-600 text-sm sm:text-base">
-            Reasoning analysis has not been computed for this employee yet.
-          </p>
-        </div>
+      <div className="bg-gray-50/50 rounded-2xl p-6 text-center py-12">
+        <Brain className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+        <p className="text-gray-500 font-medium">No analysis available</p>
+        <p className="text-gray-400 text-sm mt-1">Run predictions to generate risk analysis</p>
       </div>
     );
   }
 
-  // Ensure heuristic_alerts and ml_contributors are arrays (may come as JSON strings from old data)
+  // Parse data
   const heuristicAlerts = Array.isArray(reasoning.heuristic_alerts)
     ? reasoning.heuristic_alerts
-    : (typeof reasoning.heuristic_alerts === 'string'
-        ? (() => { try { return JSON.parse(reasoning.heuristic_alerts); } catch { return []; } })()
-        : []);
+    : typeof reasoning.heuristic_alerts === 'string'
+      ? (() => { try { return JSON.parse(reasoning.heuristic_alerts); } catch { return []; } })()
+      : [];
+
   const mlContributors = Array.isArray(reasoning.ml_contributors)
     ? reasoning.ml_contributors
-    : (typeof reasoning.ml_contributors === 'string'
-        ? (() => { try { return JSON.parse(reasoning.ml_contributors); } catch { return []; } })()
-        : []);
+    : typeof reasoning.ml_contributors === 'string'
+      ? (() => { try { return JSON.parse(reasoning.ml_contributors); } catch { return []; } })()
+      : [];
 
-  // Check if business rules are actually used and calculate total impact
   const hasBusinessRuleAlerts = heuristicAlerts && heuristicAlerts.length > 0;
   const totalRuleImpact = hasBusinessRuleAlerts
     ? heuristicAlerts.reduce((sum: number, alert: any) => sum + (alert.impact || 0), 0)
     : 0;
   const businessRulesNotUsed = !hasBusinessRuleAlerts && totalRuleImpact === 0;
 
+  // Risk level
+  const riskScore = reasoning.churn_risk;
+  const riskLevel = riskScore >= thresholds.highRisk ? 'high'
+    : riskScore >= thresholds.mediumRisk ? 'medium' : 'low';
+
+  const riskConfig = {
+    high: {
+      bg: 'bg-red-50',
+      text: 'text-red-600',
+      border: 'border-red-200',
+      label: 'High Risk',
+      message: 'This employee shows significant indicators of potential departure. Review the factors below and consider taking action.',
+    },
+    medium: {
+      bg: 'bg-amber-50',
+      text: 'text-amber-600',
+      border: 'border-amber-200',
+      label: 'Medium Risk',
+      message: 'Some risk factors detected. Monitor this employee and consider proactive engagement to address concerns.',
+    },
+    low: {
+      bg: 'bg-emerald-50',
+      text: 'text-emerald-600',
+      border: 'border-emerald-200',
+      label: 'Low Risk',
+      message: 'No significant risk factors detected. Continue standard engagement and recognition practices.',
+    },
+  }[riskLevel];
+
+  // Stage info
+  const stageInfo = STAGE_INFO[reasoning.stage || ''] || {
+    description: 'Unable to determine behavioral stage from available data.',
+    action: 'Gather more information through check-ins',
+    urgency: 'low' as const
+  };
+
   return (
-    <div className="w-full max-w-7xl mx-auto p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6">
-      {/* Responsive Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b pb-3 sm:pb-4 gap-3">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
-            <Brain className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0" />
-            <span className="truncate">Risk Analysis: {employeeName}</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-gray-600 mt-1">
-            Updated: {reasoning.updated_at ? (
-              `${new Date(reasoning.updated_at).toLocaleDateString()} ${new Date(reasoning.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-            ) : 'Recently'}
-          </p>
+    <div className="bg-gray-50/30 rounded-2xl overflow-hidden">
+      {/* Header */}
+      <div className="bg-white px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-xl ${riskConfig.bg} flex items-center justify-center`}>
+            <Brain className={`w-5 h-5 ${riskConfig.text}`} />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold text-gray-900">{employeeName}</h1>
+            <p className="text-xs text-gray-400">
+              Analysis from {reasoning.updated_at
+                ? new Date(reasoning.updated_at).toLocaleDateString()
+                : 'recently'}
+            </p>
+          </div>
         </div>
         {onClose && (
-          <button
-            onClick={onClose}
-            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm flex-shrink-0 self-start sm:self-auto"
-          >
-            Close
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-gray-400" />
           </button>
         )}
       </div>
 
-      {/* Responsive Risk Scores Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-        <ScoreCard
-          label="Overall Risk"
-          score={reasoning.churn_risk}
-          description="Final combined score"
-        />
-        <ScoreCard
-          label="ML Model"
-          score={reasoning.ml_score}
-          description="Machine learning prediction"
-        />
-        <ScoreCard
-          label="Business Rules"
-          score={totalRuleImpact}
-          description={businessRulesNotUsed ? "No rules triggered" : `${heuristicAlerts.length} rule${heuristicAlerts.length === 1 ? '' : 's'} triggered`}
-          showNotUsed={businessRulesNotUsed}
-        />
-      </div>
-
-      {/* Responsive Additional Info Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-        <div className="p-3 bg-purple-50 border border-purple-200 rounded">
-          <div className="flex items-center gap-2 mb-1">
-            <Users className="w-4 h-4 text-purple-600 flex-shrink-0" />
-            <span className="font-medium text-purple-900">Behavioral Stage</span>
-          </div>
-          <p className="text-purple-800 font-semibold text-sm sm:text-base">{reasoning.stage || 'Unknown'}</p>
-          <p className="text-xs text-purple-600 mt-1">
-            Stage risk: {reasoning.stage_score != null ? Math.round(reasoning.stage_score * 100) : 0}%
-          </p>
-        </div>
-        <div className="p-3 bg-blue-50 border border-blue-200 rounded">
-          <div className="flex items-center gap-2 mb-1">
-            <BarChart3 className="w-4 h-4 text-blue-600 flex-shrink-0" />
-            <span className="font-medium text-blue-900">Confidence</span>
-          </div>
-          <p className="text-blue-800 font-semibold text-sm sm:text-base">
-            {reasoning.confidence_level != null
-              ? (reasoning.confidence_level > 1
-                  ? Math.round(reasoning.confidence_level)
-                  : Math.round(reasoning.confidence_level * 100))
-              : 70}%
-          </p>
-          <p className="text-xs text-blue-600 mt-1">
-            Model confidence level
-          </p>
-        </div>
-      </div>
-
-      {/* Responsive Calculation Details - Collapsible */}
-      {reasoning.calculation_breakdown && (
-        <div className="border border-gray-200 rounded-lg">
-          <button
-            onClick={() => setShowCalculation(!showCalculation)}
-            className="w-full p-3 sm:p-4 text-left flex items-center justify-between hover:bg-gray-50"
-          >
-            <div className="flex items-center gap-2">
-              <Calculator className="w-4 h-4 text-gray-600 flex-shrink-0" />
-              <span className="font-medium text-gray-900 text-sm sm:text-base">Score Calculation</span>
+      <div className="p-6 space-y-5">
+        {/* Risk Summary - Main insight */}
+        <div className={`${riskConfig.bg} ${riskConfig.border} border rounded-xl p-5`}>
+          <div className="flex items-start gap-4">
+            <div className="text-center">
+              <div className={`text-4xl font-bold ${riskConfig.text}`}>
+                {Math.round(riskScore * 100)}%
+              </div>
+              <div className={`text-xs font-medium ${riskConfig.text} mt-1`}>
+                {riskConfig.label}
+              </div>
             </div>
-            {showCalculation ? (
-              <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <div className="flex-1 border-l border-gray-200 pl-4">
+              <p className="text-sm text-gray-700 leading-relaxed">
+                {riskConfig.message}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Stats Row */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
+            <div className="text-2xl font-semibold text-gray-800">
+              {Math.round(reasoning.ml_score * 100)}%
+            </div>
+            <div className="text-xs text-gray-500 mt-1">Data Analysis</div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
+            <div className="text-2xl font-semibold text-gray-800">
+              {businessRulesNotUsed ? '0' : heuristicAlerts.length}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">Pattern Alerts</div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
+            <div className="text-2xl font-semibold text-gray-800">
+              {reasoning.confidence_level != null
+                ? (reasoning.confidence_level > 1
+                    ? Math.round(reasoning.confidence_level)
+                    : Math.round(reasoning.confidence_level * 100))
+                : 70}%
+            </div>
+            <div className="text-xs text-gray-500 mt-1">Confidence</div>
+          </div>
+        </div>
+
+        {/* Behavioral Stage with Action */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <div className="flex items-start gap-4">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+              stageInfo.urgency === 'high' ? 'bg-red-50' :
+              stageInfo.urgency === 'medium' ? 'bg-amber-50' : 'bg-emerald-50'
+            }`}>
+              <Users className={`w-5 h-5 ${
+                stageInfo.urgency === 'high' ? 'text-red-500' :
+                stageInfo.urgency === 'medium' ? 'text-amber-500' : 'text-emerald-500'
+              }`} />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-semibold text-gray-800">{reasoning.stage || 'Unknown'}</h3>
+                <span className="text-xs text-gray-400">
+                  {reasoning.stage_score != null ? `${Math.round(reasoning.stage_score * 100)}% stage risk` : ''}
+                </span>
+              </div>
+              <p className="text-sm text-gray-600">{stageInfo.description}</p>
+              <div className="mt-3 flex items-center gap-2 text-sm">
+                <Lightbulb className="w-4 h-4 text-blue-500" />
+                <span className="text-blue-600 font-medium">Recommended:</span>
+                <span className="text-gray-600">{stageInfo.action}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Score Breakdown - Collapsible */}
+        {reasoning.calculation_breakdown && (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <button
+              onClick={() => setShowCalculation(!showCalculation)}
+              className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors"
+            >
+              <div className="flex items-center gap-2 text-gray-600">
+                <Calculator className="w-4 h-4" />
+                <span className="text-sm font-medium">How the score is calculated</span>
+              </div>
+              {showCalculation ? (
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              )}
+            </button>
+
+            {showCalculation && (
+              <div className="px-5 pb-5 border-t border-gray-50">
+                <p className="text-xs text-gray-500 pt-4 pb-3">
+                  The risk score combines three weighted components to give a comprehensive view:
+                </p>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <div>
+                      <span className="text-gray-700 font-medium">Data Analysis</span>
+                      <span className="text-gray-400 ml-2">× {(reasoning.calculation_breakdown.weights.ml_weight * 100)}% weight</span>
+                    </div>
+                    <span className="font-medium text-gray-700">{(reasoning.calculation_breakdown.ml_contribution * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <div>
+                      <span className="text-gray-700 font-medium">Pattern Alerts</span>
+                      <span className="text-gray-400 ml-2">× {(reasoning.calculation_breakdown.weights.heuristic_weight * 100)}% weight</span>
+                    </div>
+                    <span className="font-medium text-gray-700">
+                      {businessRulesNotUsed ? '0%' : `${(reasoning.calculation_breakdown.heuristic_contribution * 100).toFixed(1)}%`}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <div>
+                      <span className="text-gray-700 font-medium">Stage Factor</span>
+                      <span className="text-gray-400 ml-2">× {(reasoning.calculation_breakdown.weights.stage_weight * 100)}% weight</span>
+                    </div>
+                    <span className="font-medium text-gray-700">{(reasoning.calculation_breakdown.stage_contribution * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm pt-3 border-t border-gray-100">
+                    <span className="font-semibold text-gray-800">Total Risk Score</span>
+                    <span className="font-bold text-gray-900">{(reasoning.churn_risk * 100).toFixed(1)}%</span>
+                  </div>
+                </div>
+              </div>
             )}
-          </button>
-          
-          {showCalculation && (
-            <div className="border-t border-gray-200 p-3 sm:p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-4">
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded">
-                  <div className="text-sm font-medium text-blue-900 mb-1">ML Model</div>
-                  <div className="text-xs font-mono text-blue-800 break-all">
-                    {(reasoning.ml_score * 100).toFixed(1)}% × {(reasoning.calculation_breakdown.weights.ml_weight * 100)}% = {(reasoning.calculation_breakdown.ml_contribution * 100).toFixed(1)}%
-                  </div>
-                </div>
-                <div className="p-3 bg-orange-50 border border-orange-200 rounded">
-                  <div className="text-sm font-medium text-orange-900 mb-1">Business Rules</div>
-                  <div className="text-xs font-mono text-orange-800 break-all">
-                    {businessRulesNotUsed ? 'Not Used' : 
-                      `${(reasoning.heuristic_score * 100).toFixed(1)}% × ${(reasoning.calculation_breakdown.weights.heuristic_weight * 100)}% = ${(reasoning.calculation_breakdown.heuristic_contribution * 100).toFixed(1)}%`
-                    }
-                  </div>
-                </div>
-                <div className="p-3 bg-purple-50 border border-purple-200 rounded">
-                  <div className="text-sm font-medium text-purple-900 mb-1">Behavioral Stage</div>
-                  <div className="text-xs font-mono text-purple-800 break-all">
-                    {(reasoning.stage_score * 100).toFixed(1)}% × {(reasoning.calculation_breakdown.weights.stage_weight * 100)}% = {(reasoning.calculation_breakdown.stage_contribution * 100).toFixed(1)}%
-                  </div>
-                </div>
-              </div>
-              <div className="border-t border-gray-200 pt-3">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                  <span className="font-medium text-gray-900">Final Risk Score:</span>
-                  <span className="font-mono text-gray-900 text-sm break-all">
-                    {(reasoning.calculation_breakdown.ml_contribution * 100).toFixed(1)}% + {businessRulesNotUsed ? '0' : (reasoning.calculation_breakdown.heuristic_contribution * 100).toFixed(1)}% + {(reasoning.calculation_breakdown.stage_contribution * 100).toFixed(1)}% = {(reasoning.churn_risk * 100).toFixed(1)}%
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
+          </div>
+        )}
+
+        {/* Factors & Alerts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card
+            title="Contributing Factors"
+            description="Data points that influence the risk score — see why each matters"
+            icon={<TrendingUp className="w-4 h-4" />}
+          >
+            <MLFactorsList contributors={mlContributors} />
+          </Card>
+          <Card
+            title="Pattern Alerts"
+            description="Known warning signs identified by HR experts"
+            icon={<AlertTriangle className="w-4 h-4" />}
+          >
+            <BusinessRulesList alerts={heuristicAlerts} />
+          </Card>
         </div>
-      )}
 
-      {/* Responsive ML Factors and Business Rules Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
-        <SimpleCard title="Top ML Risk Factors">
-          <MLFactorsList contributors={mlContributors} />
-        </SimpleCard>
-
-        <SimpleCard title="Business Rule Alerts">
-          <BusinessRulesList alerts={heuristicAlerts} />
-        </SimpleCard>
+        {/* Legend / Help */}
+        <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <div className="flex items-center gap-6 text-xs text-gray-500">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-3.5 h-3.5 text-red-400" />
+              <span>Increases risk</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <TrendingDown className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Decreases risk</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+              <span>Warning pattern</span>
+            </div>
+          </div>
+        </div>
       </div>
-
     </div>
   );
 };

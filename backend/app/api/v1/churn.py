@@ -17,7 +17,7 @@ from app.api.deps import get_current_user, get_db
 logger = logging.getLogger("churnvision")
 from app.core.audit import AuditLogger
 from app.models.dataset import Dataset as DatasetModel
-from app.models.churn import ChurnModel, ChurnOutput, ChurnReasoning
+from app.models.churn import ChurnModel, ChurnOutput, ChurnReasoning, TrainingJob
 from app.models.hr_data import HRDataInput
 from app.models.user import User
 from app.schemas.churn import (
@@ -56,7 +56,8 @@ async def predict_employee_churn(
     start_time = time.time()
 
     try:
-        prediction = await churn_service.predict_churn(request)
+        dataset = await _get_active_dataset_for_project(db)
+        prediction = await churn_service.predict_churn(request, dataset.dataset_id)
 
         # Calculate duration
         duration_ms = int((time.time() - start_time) * 1000)
@@ -108,7 +109,8 @@ async def predict_batch_churn(
     - Aggregated statistics (total, high/medium/low risk counts)
     """
     try:
-        predictions = await churn_service.predict_batch(request)
+        dataset = await _get_active_dataset_for_project(db)
+        predictions = await churn_service.predict_batch(request, dataset.dataset_id)
         return predictions
     except Exception as e:
         raise HTTPException(
@@ -152,6 +154,23 @@ def _normalize_value(value: Any) -> float:
         return float(value)
     except Exception:
         return 0.0
+
+
+async def _start_training_job(db: AsyncSession, dataset_id: str) -> TrainingJob:
+    job = TrainingJob(dataset_id=dataset_id, status="in_progress")
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+async def _complete_training_job(db: AsyncSession, job: TrainingJob, status: str = "complete", error_message: Optional[str] = None):
+    await db.execute(
+        update(TrainingJob)
+        .where(TrainingJob.job_id == job.job_id)
+        .values(status=status, finished_at=datetime.utcnow(), error_message=error_message)
+    )
+    await db.commit()
 
 
 def _build_training_frame(df: pd.DataFrame, mapping: Optional[Dict[str, Any]]) -> pd.DataFrame:
@@ -285,8 +304,11 @@ async def train_churn_model(
     """
     start_time = time.time()
 
+    dataset_used: Optional[DatasetModel] = None
+    dataset_id_for_training: Optional[str] = None
+    training_job: Optional[TrainingJob] = None
+
     try:
-        dataset_used: Optional[DatasetModel] = None
         # Determine data source: uploaded file takes precedence, otherwise use active dataset + mapping
         if file is not None:
             if not file.filename.endswith('.csv'):
@@ -305,8 +327,19 @@ async def train_churn_model(
         else:
             df, mapping, dataset_used = await _load_active_dataset_with_mapping(db)
 
+        if not dataset_used:
+            # Training must be tied to an active dataset so results stay isolated per upload
+            dataset_used = await _get_active_dataset_for_project(db)
+
+        dataset_id_for_training = dataset_used.dataset_id
+
+        # Track training progress and job lifecycle
+        training_job = await _start_training_job(db, dataset_id_for_training)
+        churn_service.update_training_progress(dataset_id_for_training, "in_progress", 5, "Preparing data", training_job.job_id)
+
         # Build feature frame using mapping/enrichment so any dataset with the DM-required columns can train
         df_features = _build_training_frame(df, mapping)
+        churn_service.update_training_progress(dataset_id_for_training, "in_progress", 15, "Features prepared", training_job.job_id if training_job else None)
 
         # Train model
         training_request = ModelTrainingRequest(
@@ -314,17 +347,22 @@ async def train_churn_model(
             use_existing_data=False
         )
 
-        result = await churn_service.train_model(training_request, df_features)
+        result = await churn_service.train_model(training_request, df_features, dataset_id_for_training)
+        churn_service.update_training_progress(dataset_id_for_training, "in_progress", 60, "Model trained, generating predictions", training_job.job_id if training_job else None)
 
         # Persist model metadata and mark active
         model_version = result.model_id
         await db.execute(
-            update(ChurnModel).values(is_active=0)
+            update(ChurnModel)
+            .where(ChurnModel.dataset_id == dataset_id_for_training)
+            .values(is_active=0)
         )
+        artifact_path, scaler_path, encoders_path = churn_service._artifact_paths(dataset_id_for_training)
+
         db.add(ChurnModel(
             model_name=model_type,
             model_version=model_version,
-            dataset_id=dataset_used.dataset_id if dataset_used else None,
+            dataset_id=dataset_id_for_training,
             parameters=training_request.hyperparameters or {},
             training_data_info=f"rows={len(df_features)}",
             performance_metrics=None,
@@ -334,9 +372,9 @@ async def train_churn_model(
                 "recall": result.recall,
                 "f1_score": result.f1_score,
             },
-            artifact_path=str(churn_service.model_path),
-            scaler_path=str(churn_service.scaler_path),
-            encoders_path=str(churn_service.encoders_path),
+            artifact_path=str(artifact_path),
+            scaler_path=str(scaler_path),
+            encoders_path=str(encoders_path),
             trained_at=result.trained_at,
             is_active=1,
             pipeline_generated=1,
@@ -344,7 +382,7 @@ async def train_churn_model(
         await db.commit()
 
         # Cache metrics so status checks reflect the trained model
-        churn_service.model_metrics = {
+        metrics_payload = {
             "accuracy": result.accuracy,
             "precision": result.precision,
             "recall": result.recall,
@@ -352,8 +390,13 @@ async def train_churn_model(
             "trained_at": result.trained_at,
             "model_version": model_version,
             "predictions_made": 0,
+            "dataset_id": dataset_id_for_training,
         }
+        cache_key = dataset_id_for_training or "default"
+        churn_service.model_metrics = metrics_payload
+        churn_service.model_metrics_by_dataset[cache_key] = metrics_payload
         churn_service.feature_importance = result.feature_importance
+        churn_service.feature_importance_by_dataset[cache_key] = result.feature_importance
 
         logger.info(f"[TRAINING] Model training complete. Accuracy: {result.accuracy:.2%}")
 
@@ -398,7 +441,7 @@ async def train_churn_model(
                     )
 
                     # Get prediction
-                    prediction = await churn_service.predict_churn(pred_request)
+                    prediction = await churn_service.predict_churn(pred_request, dataset_id_for_training)
 
                     # Build SHAP values dict from contributing factors
                     shap_dict = {}
@@ -499,6 +542,16 @@ async def train_churn_model(
                         ))
                     reasoning_made += 1
 
+                    if training_job:
+                        progress_pct = 60 + int(((idx + 1) / total_employees) * 35)
+                        churn_service.update_training_progress(
+                            dataset_id_for_training,
+                            "in_progress",
+                            progress_pct,
+                            f"Generating predictions ({idx + 1}/{total_employees})",
+                            training_job.job_id,
+                        )
+
                     # Log progress every 50 employees
                     if predictions_made % 50 == 0:
                         logger.info(f"[TRAINING] Progress: {predictions_made}/{total_employees} predictions generated")
@@ -510,8 +563,16 @@ async def train_churn_model(
             await db.commit()
             logger.info(f"[TRAINING] Completed: {predictions_made} predictions, {reasoning_made} reasoning records generated")
 
+        # Mark training as complete for this dataset
+        churn_service.update_training_progress(dataset_id_for_training, "complete", 100, "Training complete", training_job.job_id if training_job else None)
+        if training_job:
+            await _complete_training_job(db, training_job, status="complete")
+
         # Update predictions count
         churn_service.model_metrics["predictions_made"] = predictions_made
+        cache_key = dataset_id_for_training or "default"
+        if cache_key in churn_service.model_metrics_by_dataset:
+            churn_service.model_metrics_by_dataset[cache_key]["predictions_made"] = predictions_made
 
         # Calculate duration
         duration_ms = int((time.time() - start_time) * 1000)
@@ -540,8 +601,16 @@ async def train_churn_model(
         }
 
     except HTTPException as exc:
+        if dataset_id_for_training:
+            churn_service.update_training_progress(dataset_id_for_training, "error", 0, str(exc.detail), training_job.job_id if training_job else None)
+        if training_job:
+            await _complete_training_job(db, training_job, status="error", error_message=str(exc.detail))
         raise HTTPException(status_code=exc.status_code, detail=str(exc.detail))
     except pd.errors.EmptyDataError:
+        if dataset_id_for_training:
+            churn_service.update_training_progress(dataset_id_for_training, "error", 0, "Uploaded CSV file is empty", training_job.job_id if training_job else None)
+        if training_job:
+            await _complete_training_job(db, training_job, status="error", error_message="Uploaded CSV file is empty")
         await AuditLogger.log_error(
             db=db,
             action="train_model",
@@ -557,6 +626,10 @@ async def train_churn_model(
             detail="Uploaded CSV file is empty"
         )
     except Exception as e:
+        if dataset_id_for_training:
+            churn_service.update_training_progress(dataset_id_for_training, "error", 0, str(e), training_job.job_id if training_job else None)
+        if training_job:
+            await _complete_training_job(db, training_job, status="error", error_message=str(e))
         await AuditLogger.log_error(
             db=db,
             action="train_model",
@@ -589,21 +662,37 @@ async def get_model_metrics(
     - Number of predictions made
     """
     try:
+        dataset = await _get_active_dataset_for_project(db)
+        dataset_id = dataset.dataset_id
+        cache_key = dataset_id or "default"
+
         model_type = type(churn_service.model).__name__ if churn_service.model else "xgboost"
 
-        # Return cached metrics or load from database
-        metrics = churn_service.model_metrics or {}
+        # Prefer cached, dataset-scoped metrics
+        metrics = getattr(churn_service, "model_metrics_by_dataset", {}).get(cache_key, {}) or churn_service.model_metrics or {}
 
-        # If no cached metrics, try to load from database
+        # If no cached metrics, try to load from database for this dataset
         if not metrics or not metrics.get('trained_at'):
-            # Query the active model from database
             result = await db.execute(
-                select(ChurnModel).where(ChurnModel.is_active == 1).order_by(ChurnModel.trained_at.desc()).limit(1)
+                select(ChurnModel)
+                .where(ChurnModel.dataset_id == dataset_id)
+                .where(ChurnModel.is_active == 1)
+                .order_by(ChurnModel.trained_at.desc())
+                .limit(1)
             )
             active_model = result.scalar_one_or_none()
 
+            if not active_model:
+                # Fallback to latest model for dataset even if not marked active
+                result = await db.execute(
+                    select(ChurnModel)
+                    .where(ChurnModel.dataset_id == dataset_id)
+                    .order_by(ChurnModel.trained_at.desc())
+                    .limit(1)
+                )
+                active_model = result.scalar_one_or_none()
+
             if active_model:
-                # Load metrics from database
                 db_metrics = active_model.performance_metrics or active_model.metrics or {}
                 metrics = {
                     'accuracy': db_metrics.get('accuracy', 0.0),
@@ -613,17 +702,22 @@ async def get_model_metrics(
                     'trained_at': active_model.trained_at,
                     'model_version': active_model.model_version,
                     'predictions_made': 0,
+                    'dataset_id': dataset_id,
                 }
-                # Cache for future requests
+
+                # Cache for future requests and ensure the right artifacts are loaded
+                churn_service.model_metrics_by_dataset[cache_key] = metrics
                 churn_service.model_metrics = metrics
-                churn_service.feature_importance = db_metrics.get('feature_importance', {})
+                churn_service.feature_importance_by_dataset[cache_key] = db_metrics.get('feature_importance', {})
+                churn_service.feature_importance = churn_service.feature_importance_by_dataset[cache_key]
+                churn_service.ensure_model_for_dataset(dataset_id)
                 model_type = active_model.model_name or "xgboost"
 
         if not metrics or not metrics.get('trained_at'):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not trained")
 
         return ModelMetricsResponse(
-            model_id="current",
+            model_id=metrics.get('model_version', 'current'),
             model_type=model_type,
             accuracy=metrics.get('accuracy', 0.0),
             precision=metrics.get('precision', 0.0),
@@ -631,7 +725,7 @@ async def get_model_metrics(
             f1_score=metrics.get('f1_score', 0.0),
             last_trained=metrics.get('trained_at'),
             predictions_made=metrics.get('predictions_made', 0),
-            feature_importance=churn_service.feature_importance or {}
+            feature_importance=getattr(churn_service, 'feature_importance', {}) or {}
         )
 
     except HTTPException:
@@ -663,6 +757,102 @@ async def reset_model(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Model reset failed: {str(e)}"
+        )
+
+
+@router.get("/train/status")
+async def get_training_status(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Return training status for the active dataset, including progress if available."""
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        dataset_id = dataset.dataset_id
+        cache_key = dataset_id or "default"
+
+        # Prefer in-memory progress (live updates during training)
+        cached = getattr(churn_service, "training_progress", {}).get(dataset_id)
+        if cached:
+            return {
+                "status": cached.get("status", "in_progress"),
+                "progress": cached.get("progress", 0),
+                "message": cached.get("message", "Training in progress"),
+                "dataset_id": dataset_id,
+                "job_id": cached.get("job_id"),
+                "updated_at": cached.get("updated_at"),
+            }
+
+        # Check latest training job for this dataset
+        job_result = await db.execute(
+            select(TrainingJob)
+            .where(TrainingJob.dataset_id == dataset_id)
+            .order_by(TrainingJob.started_at.desc())
+            .limit(1)
+        )
+        job = job_result.scalar_one_or_none()
+
+        if job:
+            if job.status == "in_progress":
+                return {
+                    "status": "in_progress",
+                    "progress": 10,
+                    "message": "Training in progress",
+                    "dataset_id": dataset_id,
+                    "job_id": job.job_id,
+                    "started_at": job.started_at,
+                }
+            if job.status == "error":
+                return {
+                    "status": "error",
+                    "progress": 0,
+                    "message": job.error_message or "Training failed",
+                    "dataset_id": dataset_id,
+                    "job_id": job.job_id,
+                    "started_at": job.started_at,
+                    "finished_at": job.finished_at,
+                }
+
+        # If we have a trained model cached or persisted, surface as complete
+        metrics = getattr(churn_service, "model_metrics_by_dataset", {}).get(cache_key)
+        if (not metrics or not metrics.get("trained_at")):
+            db_model = await db.execute(
+                select(ChurnModel)
+                .where(ChurnModel.dataset_id == dataset_id)
+                .order_by(ChurnModel.trained_at.desc())
+                .limit(1)
+            )
+            active_model = db_model.scalar_one_or_none()
+            if active_model:
+                metrics = (active_model.performance_metrics or active_model.metrics or {})
+                metrics.update({
+                    "trained_at": active_model.trained_at,
+                    "model_version": active_model.model_version,
+                })
+                churn_service.model_metrics_by_dataset[cache_key] = metrics
+
+        if metrics and metrics.get("trained_at"):
+            return {
+                "status": "complete",
+                "progress": 100,
+                "message": "Model trained",
+                "dataset_id": dataset_id,
+                "model_version": metrics.get("model_version"),
+                "trained_at": metrics.get("trained_at"),
+            }
+
+        return {
+            "status": "idle",
+            "progress": 0,
+            "message": "No training started",
+            "dataset_id": dataset_id,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch training status: {e}"
         )
 
 
@@ -709,6 +899,7 @@ async def predict_all_employees(
         # Get active dataset
         dataset = await _get_active_dataset_for_project(db)
         df, mapping, _ = await _load_active_dataset_with_mapping(db)
+        churn_service.ensure_model_for_dataset(dataset.dataset_id)
 
         # Apply column mapping to get hr_code
         if mapping and isinstance(mapping, dict):
@@ -726,7 +917,10 @@ async def predict_all_employees(
         df_features = _build_training_frame(df, mapping)
 
         # Get model version
-        model_version = churn_service.model_metrics.get("model_version", "unknown") if churn_service.model_metrics else "unknown"
+        model_metrics = churn_service.model_metrics_by_dataset.get(dataset.dataset_id) if hasattr(churn_service, "model_metrics_by_dataset") else None
+        if not model_metrics:
+            model_metrics = churn_service.model_metrics
+        model_version = model_metrics.get("model_version", "unknown") if model_metrics else "unknown"
 
         predictions_made = 0
         reasoning_made = 0
@@ -759,7 +953,7 @@ async def predict_all_employees(
                 )
 
                 # Get prediction
-                prediction = await churn_service.predict_churn(pred_request)
+                prediction = await churn_service.predict_churn(pred_request, dataset.dataset_id)
 
                 # Build SHAP values dict from contributing factors
                 shap_dict = {}
@@ -784,15 +978,17 @@ async def predict_all_employees(
                     existing_row.shap_values = shap_dict
                     existing_row.model_version = model_version
                     existing_row.generated_at = datetime.utcnow()
-                    existing_row.confidence_score = getattr(prediction, 'confidence_score', None) or 70.0
+                    raw_confidence = getattr(prediction, 'confidence_score', None)
+                    existing_row.confidence_score = (raw_confidence * 100 if raw_confidence else 70.0)
                 else:
+                    raw_conf = getattr(prediction, 'confidence_score', None)
                     db.add(ChurnOutput(
                         hr_code=hr_code,
                         dataset_id=dataset.dataset_id,
                         resign_proba=prediction.churn_probability,
                         shap_values=shap_dict,
                         model_version=model_version,
-                        confidence_score=getattr(prediction, 'confidence_score', None) or 70.0,
+                        confidence_score=(raw_conf * 100 if raw_conf else 70.0),
                     ))
                 predictions_made += 1
 
@@ -824,7 +1020,7 @@ async def predict_all_employees(
                     existing_reasoning_row.ml_contributors = json.dumps(shap_dict) if shap_dict else None
                     existing_reasoning_row.reasoning = reasoning_text
                     existing_reasoning_row.recommendations = recommendations
-                    existing_reasoning_row.confidence_level = getattr(prediction, 'confidence_score', None) or 70.0
+                    existing_reasoning_row.confidence_level = getattr(prediction, 'confidence_score', None) or 0.7
                 else:
                     db.add(ChurnReasoning(
                         hr_code=hr_code,
@@ -835,7 +1031,7 @@ async def predict_all_employees(
                         ml_contributors=json.dumps(shap_dict) if shap_dict else None,
                         reasoning=reasoning_text,
                         recommendations=recommendations,
-                        confidence_level=getattr(prediction, 'confidence_score', None) or 70.0,
+                        confidence_level=getattr(prediction, 'confidence_score', None) or 0.7,
                     ))
                 reasoning_made += 1
 

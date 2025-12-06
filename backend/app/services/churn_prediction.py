@@ -31,47 +31,76 @@ class ChurnPredictionService:
         self.scaler = StandardScaler()
         self.label_encoders = {}
         self.feature_importance = {}
+        self.feature_importance_by_dataset: Dict[str, Dict[str, float]] = {}
         self.model_metrics = {}
+        self.model_metrics_by_dataset: Dict[str, Dict[str, Any]] = {}
+        self.training_progress: Dict[str, Dict[str, Any]] = {}
         self.active_version: Optional[str] = None
+        self.active_dataset_id: Optional[str] = None
+
         model_dir = Path(settings.MODELS_DIR)
         self.model_path = model_dir / "churn_model.pkl"
         self.scaler_path = model_dir / "scaler.pkl"
         self.encoders_path = model_dir / "encoders.pkl"
+        self.models_dir = model_dir
 
         # Ensure models directory exists
         self.model_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Load existing model if available
-        self._load_model()
+        # Load existing model if available (default/global)
+        self._load_model_for_dataset(None)
 
-    def _load_model(self) -> bool:
-        """Load saved model, scaler, and encoders"""
+    def _artifact_paths(self, dataset_id: Optional[str]) -> tuple[Path, Path, Path]:
+        """Return paths for model artifacts, scoped by dataset when provided."""
+        if dataset_id:
+            dataset_dir = self.models_dir / dataset_id
+            dataset_dir.mkdir(parents=True, exist_ok=True)
+            return (
+                dataset_dir / "churn_model.pkl",
+                dataset_dir / "scaler.pkl",
+                dataset_dir / "encoders.pkl",
+            )
+        return self.model_path, self.scaler_path, self.encoders_path
+
+    def _load_model_for_dataset(self, dataset_id: Optional[str]) -> bool:
+        """Load saved model, scaler, and encoders for a dataset (or global default)."""
+        model_path, scaler_path, encoders_path = self._artifact_paths(dataset_id)
         try:
-            if self.model_path.exists():
-                with open(self.model_path, 'rb') as f:
+            if model_path.exists():
+                with open(model_path, 'rb') as f:
                     self.model = pickle.load(f)
 
-                with open(self.scaler_path, 'rb') as f:
+                with open(scaler_path, 'rb') as f:
                     self.scaler = pickle.load(f)
 
-                with open(self.encoders_path, 'rb') as f:
+                with open(encoders_path, 'rb') as f:
                     self.label_encoders = pickle.load(f)
 
-                self.active_version = self.model_path.stem
+                self.active_version = model_path.stem
+                self.active_dataset_id = dataset_id
+                # Restore cached metrics if we have them
+                cache_key = dataset_id or "default"
+                if cache_key in self.model_metrics_by_dataset:
+                    self.model_metrics = self.model_metrics_by_dataset[cache_key]
+                if cache_key in self.feature_importance_by_dataset:
+                    self.feature_importance = self.feature_importance_by_dataset[cache_key]
                 return True
             else:
-                if settings.ENVIRONMENT == "production":
-                    raise RuntimeError(f"Model artifacts missing at {self.model_path}. Train a model before serving.")
-                # In development, initialize a default model for convenience
+                if settings.ENVIRONMENT == "production" and dataset_id:
+                    # If dataset-specific artifacts are missing in prod, fail fast
+                    raise RuntimeError(f"Model artifacts missing for dataset {dataset_id}. Train the model first.")
+                # In development or when no dataset provided, initialize default model
                 self._initialize_default_model()
                 self.active_version = "dev-default"
+                self.active_dataset_id = dataset_id
                 return False
         except Exception as e:
-            print(f"Error loading model: {e}")
+            print(f"Error loading model for dataset {dataset_id}: {e}")
             if settings.ENVIRONMENT == "production":
                 raise
             self._initialize_default_model()
             self.active_version = "dev-default"
+            self.active_dataset_id = dataset_id
             return False
 
     def _initialize_default_model(self):
@@ -97,19 +126,45 @@ class ChurnPredictionService:
         self.label_encoders['salary_level'].fit(['low', 'medium', 'high'])
         self.model_metrics = {}
 
-    def _save_model(self):
-        """Save model, scaler, and encoders to disk"""
+    def ensure_model_for_dataset(self, dataset_id: Optional[str]) -> None:
+        """Load the appropriate model artifacts for the given dataset if needed."""
+        target_dataset = dataset_id or None
+
+        # If already loaded for this dataset, nothing to do
+        if self.model is not None and self.active_dataset_id == target_dataset:
+            return
+
+        # Try loading dataset-scoped artifacts; fallback to default if missing
+        loaded = self._load_model_for_dataset(target_dataset)
+        if not loaded and settings.ENVIRONMENT != "production":
+            # In dev, ensure we at least have a default model ready
+            self._initialize_default_model()
+            self.active_dataset_id = target_dataset
+
+    def update_training_progress(self, dataset_id: str, status: str, progress: int, message: str, job_id: Optional[int] = None):
+        """Track training progress in memory for polling endpoints."""
+        self.training_progress[dataset_id] = {
+            "status": status,
+            "progress": max(0, min(progress, 100)),
+            "message": message,
+            "job_id": job_id,
+            "updated_at": datetime.utcnow(),
+        }
+
+    def _save_model(self, dataset_id: Optional[str] = None):
+        """Save model, scaler, and encoders to disk (scoped per dataset)."""
+        model_path, scaler_path, encoders_path = self._artifact_paths(dataset_id)
         try:
-            with open(self.model_path, 'wb') as f:
+            with open(model_path, 'wb') as f:
                 pickle.dump(self.model, f)
 
-            with open(self.scaler_path, 'wb') as f:
+            with open(scaler_path, 'wb') as f:
                 pickle.dump(self.scaler, f)
 
-            with open(self.encoders_path, 'wb') as f:
+            with open(encoders_path, 'wb') as f:
                 pickle.dump(self.label_encoders, f)
         except Exception as e:
-            print(f"Error saving model: {e}")
+            print(f"Error saving model for dataset {dataset_id}: {e}")
 
     def _prepare_features(self, features: EmployeeChurnFeatures) -> np.ndarray:
         """Convert employee features to model input format"""
@@ -378,8 +433,11 @@ class ChurnPredictionService:
 
         return recommendations[:5]  # Return top 5 recommendations
 
-    async def predict_churn(self, request: ChurnPredictionRequest) -> ChurnPredictionResponse:
+    async def predict_churn(self, request: ChurnPredictionRequest, dataset_id: Optional[str] = None) -> ChurnPredictionResponse:
         """Predict churn probability for a single employee"""
+
+        # Ensure the correct model is loaded for this dataset
+        self.ensure_model_for_dataset(dataset_id)
 
         # Prepare features
         features_array = self._prepare_features(request.features)
@@ -457,12 +515,12 @@ class ChurnPredictionService:
 
         return min(score, 1.0)
 
-    async def predict_batch(self, request: BatchChurnPredictionRequest) -> BatchChurnPredictionResponse:
+    async def predict_batch(self, request: BatchChurnPredictionRequest, dataset_id: Optional[str] = None) -> BatchChurnPredictionResponse:
         """Predict churn for multiple employees"""
         predictions = []
 
         for pred_request in request.predictions:
-            prediction = await self.predict_churn(pred_request)
+            prediction = await self.predict_churn(pred_request, dataset_id)
             predictions.append(prediction)
 
         # Count risk levels
@@ -478,8 +536,11 @@ class ChurnPredictionService:
             low_risk_count=low_risk
         )
 
-    async def train_model(self, request: ModelTrainingRequest, training_data: pd.DataFrame) -> ModelTrainingResponse:
-        """Train a new churn prediction model"""
+    async def train_model(self, request: ModelTrainingRequest, training_data: pd.DataFrame, dataset_id: Optional[str] = None) -> ModelTrainingResponse:
+        """Train a new churn prediction model, scoped to the provided dataset."""
+
+        # Remember which dataset this model belongs to
+        self.active_dataset_id = dataset_id
 
         # Prepare training data
         X, y = self._prepare_training_data(training_data)
@@ -533,20 +594,28 @@ class ChurnPredictionService:
                 'promotion_last_5years', 'department', 'salary_level'
             ]
             self.feature_importance = dict(zip(feature_names, self.model.feature_importances_.tolist()))
+        else:
+            self.feature_importance = {}
 
         trained_at = datetime.utcnow()
 
-        # Persist metrics for status checks
-        self.model_metrics = {
+        # Persist metrics for status checks (per dataset)
+        cache_key = dataset_id or "default"
+        model_id = f"{request.model_type}_{cache_key}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        metrics_payload = {
             **metrics,
             'trained_at': trained_at,
-            'predictions_made': 0
+            'predictions_made': 0,
+            'model_version': model_id,
+            'dataset_id': dataset_id,
         }
+        self.model_metrics_by_dataset[cache_key] = metrics_payload
+        self.model_metrics = metrics_payload
+        self.feature_importance_by_dataset[cache_key] = self.feature_importance
 
-        # Save model
-        self._save_model()
+        # Save model artifacts in dataset-scoped location
+        self._save_model(dataset_id)
 
-        model_id = f"{request.model_type}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
         self.active_version = model_id
 
         return ModelTrainingResponse(

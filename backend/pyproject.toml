@@ -21,6 +21,7 @@ dependencies = [
     "xgboost>=2.0.3",
     "langchain>=0.1.0",
     "langchain-community>=0.0.10",
+    "langchain-text-splitters>=0.0.1",
     "pandas>=2.2.0",
     "httpx>=0.26.0",
     "openai>=1.10.0",
@@ -28,7 +29,13 @@ dependencies = [
     "ollama>=0.1.0",
     "PyJWT>=2.8.0",
     "greenlet>=3.0.3",
-    "bcrypt==3.2.2",
+    "bcrypt>=4.0.1",
+    # RAG subsystem dependencies
+    "chromadb>=0.4.22",
+    "sentence-transformers>=2.2.2",
+    "PyMuPDF>=1.23.0",
+    "python-docx>=1.1.0",
+    "tiktoken>=0.5.0",
 ]
 
 [build-system]

@@ -3,7 +3,10 @@ import {
   getAutoAdjustmentConfig,
   initializeSmartThresholds,
   analyzeOptimalThresholds,
-  getCurrentThresholds
+  getCurrentThresholds,
+  updateRiskThresholds,
+  DEFAULT_RISK_THRESHOLDS,
+  RiskThresholds
 } from '../config/riskThresholds';
 
 /**
@@ -14,26 +17,36 @@ class AutoThresholdService {
   private adjustmentTimer: NodeJS.Timeout | null = null;
   private isRunning = false;
   private lastDataSnapshot: Array<{ churnProbability?: number }> = [];
+  private currentDatasetId: string | null = null;
+  private hasCalibratedForDataset = false;
 
   /**
    * Start automatic threshold adjustment monitoring
    */
-  start(employees: Array<{ churnProbability?: number }>): void {
-    if (this.isRunning) {
-      // Auto threshold service already running silently in production
+  start(employees: Array<{ churnProbability?: number }>, datasetId: string | null = null): void {
+    const key = datasetId || 'default';
+
+    // If switching datasets, reset to defaults and clear calibration state
+    if (this.currentDatasetId !== key) {
+      this.stop();
+      this.currentDatasetId = key;
+      this.hasCalibratedForDataset = false;
+      updateRiskThresholds(DEFAULT_RISK_THRESHOLDS, 'dataset-switch');
+      this.loadPersistedThresholds(key);
+    }
+
+    // If we already calibrated for this dataset (or loaded persisted thresholds), do nothing
+    if (this.hasCalibratedForDataset) {
       return;
     }
 
     this.isRunning = true;
     this.lastDataSnapshot = [...employees];
-    
-    // Auto threshold service started silently in production
-    
-    // Initialize smart thresholds on first run
-    this.initializeIfNeeded(employees);
-    
-    // Set up periodic adjustment checks
-    this.scheduleNextAdjustment();
+
+    // Run a single calibration when we have enough data
+    this.initializeIfNeeded(employees, key).then(() => {
+      this.calibrateOnceIfReady(employees, key);
+    });
   }
 
   /**
@@ -51,19 +64,23 @@ class AutoThresholdService {
   /**
    * Update employee data and trigger immediate analysis
    */
-  updateData(employees: Array<{ churnProbability?: number }>): void {
+  updateData(employees: Array<{ churnProbability?: number }>, datasetId: string | null = null): void {
     this.lastDataSnapshot = [...employees];
-    
-    // Check if immediate adjustment is needed based on significant data changes
-    this.checkForImmediateAdjustment(employees);
+    const key = datasetId || this.currentDatasetId || 'default';
+    this.calibrateOnceIfReady(employees, key);
   }
 
   /**
    * Force an immediate adjustment check
    */
-  async forceAdjustment(): Promise<{ adjusted: boolean; reason?: string; newThresholds?: any }> {
-    // Force adjustment triggered silently in production
-    return await autoAdjustThresholds(this.lastDataSnapshot, true);
+  async forceAdjustment(datasetId: string | null = null): Promise<{ adjusted: boolean; reason?: string; newThresholds?: any }> {
+    const key = datasetId || this.currentDatasetId || 'default';
+    const result = await autoAdjustThresholds(this.lastDataSnapshot, true);
+    if (result.adjusted && result.newThresholds) {
+      this.persistThresholds(key, result.newThresholds);
+      this.hasCalibratedForDataset = true;
+    }
+    return result;
   }
 
   /**
@@ -74,6 +91,8 @@ class AutoThresholdService {
     dataSize: number;
     config: any;
     lastAnalysis?: any;
+    datasetId?: string | null;
+    calibrated?: boolean;
   } {
     const config = getAutoAdjustmentConfig();
     const lastAnalysis = this.lastDataSnapshot.length > 0 ? 
@@ -84,18 +103,27 @@ class AutoThresholdService {
       isRunning: this.isRunning,
       dataSize: this.lastDataSnapshot.length,
       config,
-      lastAnalysis
+      lastAnalysis,
+      datasetId: this.currentDatasetId,
+      calibrated: this.hasCalibratedForDataset
     };
   }
 
   /**
    * Initialize smart thresholds if this is the first run
    */
-  private async initializeIfNeeded(employees: Array<{ churnProbability?: number }>): Promise<void> {
+  private async initializeIfNeeded(employees: Array<{ churnProbability?: number }>, datasetKey: string): Promise<void> {
     const config = getAutoAdjustmentConfig();
     
     if (!config.enabled) {
       // Auto-adjustment disabled, skipping initialization silently in production
+      return;
+    }
+
+    // If thresholds are already persisted for this dataset, load and mark calibrated
+    const persisted = this.loadPersistedThresholds(datasetKey);
+    if (persisted) {
+      this.hasCalibratedForDataset = true;
       return;
     }
 
@@ -116,96 +144,60 @@ class AutoThresholdService {
   /**
    * Schedule the next automatic adjustment check
    */
-  private scheduleNextAdjustment(): void {
+  private async calibrateOnceIfReady(employees: Array<{ churnProbability?: number }>, datasetKey: string): Promise<void> {
+    if (this.hasCalibratedForDataset) return;
+
     const config = getAutoAdjustmentConfig();
-    
-    if (!config.enabled || !this.isRunning) {
-      return;
-    }
+    if (!config.enabled) return;
+    if (employees.length < config.minSampleSize) return; // wait until enough data
 
-    const intervalMs = config.adjustmentInterval * 60 * 60 * 1000; // Convert hours to milliseconds
-    
-    this.adjustmentTimer = setTimeout(async () => {
-      await this.performScheduledAdjustment();
-      this.scheduleNextAdjustment(); // Schedule next check
-    }, intervalMs);
-
-    // Next auto-adjustment scheduled silently in production
-  }
-
-  /**
-   * Perform a scheduled automatic adjustment
-   */
-  private async performScheduledAdjustment(): Promise<void> {
-    if (!this.isRunning || this.lastDataSnapshot.length === 0) {
-      return;
-    }
-
-    // Performing scheduled threshold adjustment silently in production
-    
     try {
-      const result = await autoAdjustThresholds(this.lastDataSnapshot, false);
-      
-      if (result.adjusted) {
-        // Thresholds auto-adjusted silently in production
-        
-        // Emit event for UI components to update
-        window.dispatchEvent(new CustomEvent('thresholds-auto-adjusted', {
-          detail: result
-        }));
+      const result = await autoAdjustThresholds(employees, true);
+      if (result.adjusted && result.newThresholds) {
+        this.persistThresholds(datasetKey, result.newThresholds);
+        this.hasCalibratedForDataset = true;
+        window.dispatchEvent(new CustomEvent('thresholds-auto-adjusted', { detail: { ...result, datasetId: datasetKey } }));
       } else {
-        // No adjustment needed silently in production
+        // Even if no change was necessary, mark as calibrated to avoid endless attempts
+        this.hasCalibratedForDataset = true;
       }
     } catch (error) {
-      // Scheduled adjustment failed silently in production
+      console.warn('Calibration failed, will retry on next data update:', error);
     }
   }
 
-  /**
-   * Check if immediate adjustment is needed due to significant data changes
-   */
-  private async checkForImmediateAdjustment(employees: Array<{ churnProbability?: number }>): Promise<void> {
-    const config = getAutoAdjustmentConfig();
-    
-    if (!config.enabled || employees.length < config.minSampleSize) {
-      return;
+  private persistThresholds(datasetKey: string, thresholds: RiskThresholds): void {
+    try {
+      const payload = {
+        thresholds,
+        calibratedAt: new Date().toISOString(),
+        datasetId: datasetKey,
+      };
+      localStorage.setItem(this.storageKey(datasetKey), JSON.stringify(payload));
+      updateRiskThresholds(thresholds, 'auto-calibration');
+    } catch (error) {
+      console.warn('Failed to persist thresholds', error);
     }
+  }
 
-    // Check if data distribution has changed significantly
-    const currentAnalysis = analyzeOptimalThresholds(employees);
-    if (!currentAnalysis) {
-      return; // Cannot analyze without data
-    }
-    const currentDist = currentAnalysis.currentDistribution;
-    const targetDist = config.targetDistribution;
-
-    // Calculate deviation from target distribution
-    const highDeviation = Math.abs(currentDist.high - targetDist.high);
-    const mediumDeviation = Math.abs(currentDist.medium - targetDist.medium);
-    const lowDeviation = Math.abs(currentDist.low - targetDist.low);
-
-    // If any category deviates by more than 10%, trigger immediate adjustment
-    const maxAllowedDeviation = 10; // 10%
-    
-    if (highDeviation > maxAllowedDeviation || 
-        mediumDeviation > maxAllowedDeviation || 
-        lowDeviation > maxAllowedDeviation) {
-      
-      console.log('Significant distribution deviation detected, triggering immediate adjustment');
-      console.log('Current distribution:', currentDist);
-      console.log('Target distribution:', targetDist);
-      
-      const result = await autoAdjustThresholds(employees, true);
-      
-      if (result.adjusted) {
-        console.log('Immediate adjustment applied:', result.newThresholds);
-        
-        // Emit event for UI components to update
-        window.dispatchEvent(new CustomEvent('thresholds-auto-adjusted', {
-          detail: { ...result, immediate: true }
-        }));
+  private loadPersistedThresholds(datasetKey: string): RiskThresholds | null {
+    try {
+      const raw = localStorage.getItem(this.storageKey(datasetKey));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed?.thresholds) {
+        updateRiskThresholds(parsed.thresholds, 'auto-calibration-cache');
+        this.hasCalibratedForDataset = true;
+        return parsed.thresholds as RiskThresholds;
       }
+    } catch (error) {
+      console.warn('Failed to load persisted thresholds', error);
     }
+    return null;
+  }
+
+  private storageKey(datasetKey: string): string {
+    return `churnvision-thresholds-${datasetKey}`;
   }
 
   /**

@@ -83,8 +83,8 @@ class Settings(BaseSettings):
 
     # Chatbot / LLM settings
     # Default (local): Qwen 3 4B via Ollama - privacy-focused, offline
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "qwen2.5:0.5b"
+    OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
+    OLLAMA_MODEL: str = "qwen3:4b-instruct"
     DEFAULT_LLM_PROVIDER: str = "ollama"  # 'openai', 'azure', 'ollama', 'mistral', 'ibm' - default to local
 
     # OpenAI (GPT-5.1) - highest intelligence and speed
@@ -115,6 +115,24 @@ class Settings(BaseSettings):
     CHATBOT_MAX_HISTORY: int = 10  # Maximum number of previous messages to include in context
     CHATBOT_SYSTEM_PROMPT: str = "You are a helpful AI assistant for ChurnVision Enterprise, an employee churn prediction platform. You help users understand their workforce data, analyze employee turnover patterns, and make data-driven HR decisions."
     LLM_REQUEST_TIMEOUT: int = 30  # seconds
+
+    # RAG (Retrieval-Augmented Generation) Settings
+    RAG_ENABLED: bool = True
+    RAG_STORAGE_PATH: str = Field(
+        default="./churnvision_data/rag",
+        validation_alias=AliasChoices("RAG_STORAGE_PATH", "CHURNVISION_RAG_PATH"),
+    )
+    RAG_UPLOAD_PATH: str = Field(
+        default="./churnvision_data/uploads/rag",
+        validation_alias=AliasChoices("RAG_UPLOAD_PATH", "CHURNVISION_RAG_UPLOADS"),
+    )
+    RAG_CHUNK_SIZE: int = 500  # Characters per chunk
+    RAG_CHUNK_OVERLAP: int = 50  # Overlap between chunks
+    RAG_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    RAG_COLLECTION_NAME: str = "churnvision_docs"
+    RAG_TOP_K: int = 5  # Number of chunks to retrieve
+    RAG_SIMILARITY_THRESHOLD: float = 0.7  # Minimum similarity score
+    RAG_MAX_DOCUMENT_SIZE_MB: int = 50  # Maximum document size in MB
 
     @computed_field
     @property

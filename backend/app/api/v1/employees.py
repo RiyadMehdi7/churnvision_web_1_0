@@ -231,6 +231,7 @@ async def read_employees(
                 termination_date=str(row.termination_date) if row.termination_date else None,
                 reasoning_churn_risk=float(row.reasoning_churn_risk) if row.reasoning_churn_risk is not None else None,
                 reasoning_stage=row.reasoning_stage,
+                reasoning_confidence=float(row.reasoning_confidence) if row.reasoning_confidence is not None else None,
             ))
         return employees
     except Exception as e:

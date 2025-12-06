@@ -41,11 +41,12 @@ interface ApiEmployee {
 }
 
 // Cache key for local storage
-const getEmployeesCacheKey = (projectId: string | null): string => {
+const getEmployeesCacheKey = (projectId: string | null, datasetId: string | null = null): string => {
+  const datasetSuffix = datasetId ? `-${datasetId}` : '-no-dataset';
   if (!projectId) {
-    return 'churnvision-employees-cache-offline';
+    return `churnvision-employees-cache-offline${datasetSuffix}`;
   }
-  return `churnvision-employees-cache-${projectId}`;
+  return `churnvision-employees-cache-${projectId}${datasetSuffix}`;
 };
 const CACHE_EXPIRY_TIME = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 const OFFLINE_CACHE_KEY = 'churnvision-offline-employees';
@@ -54,6 +55,14 @@ const EMPLOYEE_FETCH_LIMIT = 'all' as const;
 class EmployeeService {
   private isOfflineMode = false;
   private currentProjectId: string | null = null;
+  private hashString(input: string): number {
+    let hash = 0;
+    for (let i = 0; i < input.length; i++) {
+      hash = ((hash << 5) - hash) + input.charCodeAt(i);
+      hash |= 0; // Convert to 32bit integer
+    }
+    return Math.abs(hash);
+  }
   // private activeRequests = new Map<string, AbortController>(); // Unused 
 
   private hasAccessToken(): boolean {
@@ -109,9 +118,9 @@ class EmployeeService {
   }
 
   // New function to fetch from a single endpoint
-  private async fetchEmployees(projectId: string | null, forceRefresh = false): Promise<ApiEmployee[]> {
+  private async fetchEmployees(projectId: string | null, datasetId: string | null, forceRefresh = false): Promise<ApiEmployee[]> {
     if (this.isOfflineMode) {
-      const cachedData = this.getFromCache(null);
+      const cachedData = this.getFromCache(null, datasetId);
       if (cachedData) {
         console.log('Using cached employee data in offline mode');
         return cachedData;
@@ -125,7 +134,7 @@ class EmployeeService {
 
     // Check cache first if not forcing refresh
     if (!forceRefresh) {
-      const cachedData = this.getFromCache(projectId);
+      const cachedData = this.getFromCache(projectId, datasetId);
       if (cachedData) {
         console.log('Using cached employee data from local storage for project:', projectId);
         return cachedData;
@@ -200,11 +209,11 @@ class EmployeeService {
         console.log(`Processed ${normalizedEmployees.length} employees via API for project ${projectId}`);
 
         // Save to cache
-        this.saveToCache(projectId, normalizedEmployees);
+        this.saveToCache(projectId, normalizedEmployees, datasetId);
         return normalizedEmployees;
       } else {
         console.warn(`No employees found in the API response for project ${projectId}`);
-        this.clearCache(projectId);
+        this.clearCache(projectId, datasetId);
         return [];
       }
     } catch (error) {
@@ -215,7 +224,7 @@ class EmployeeService {
   }
 
   // Save employee data to cache
-  private saveToCache(projectId: string | null, employees: ApiEmployee[]): void {
+  private saveToCache(projectId: string | null, employees: ApiEmployee[], datasetId: string | null): void {
     if (!employees || employees.length === 0) {
       console.log('Skipping cache save for empty employee list.');
       return;
@@ -227,26 +236,26 @@ class EmployeeService {
         data: employees
       };
 
-      localStorage.setItem(getEmployeesCacheKey(projectId), JSON.stringify(cacheData));
-      console.log(`Saved employees to cache with key: ${getEmployeesCacheKey(projectId)}`);
+      localStorage.setItem(getEmployeesCacheKey(projectId, datasetId), JSON.stringify(cacheData));
+      console.log(`Saved employees to cache with key: ${getEmployeesCacheKey(projectId, datasetId)}`);
     } catch (error) {
       console.error('Error saving employees to cache:', error);
     }
   }
 
   // Clear cached data for a project (used when we get empty responses)
-  private clearCache(projectId: string | null): void {
+  private clearCache(projectId: string | null, datasetId: string | null): void {
     try {
-      localStorage.removeItem(getEmployeesCacheKey(projectId));
+      localStorage.removeItem(getEmployeesCacheKey(projectId, datasetId));
     } catch (error) {
       console.error('Error clearing employees cache:', error);
     }
   }
 
   // Get employee data from cache
-  private getFromCache(projectId: string | null): ApiEmployee[] | null {
+  private getFromCache(projectId: string | null, datasetId: string | null): ApiEmployee[] | null {
     try {
-      const cacheKeyToUse = getEmployeesCacheKey(projectId);
+      const cacheKeyToUse = getEmployeesCacheKey(projectId, datasetId);
       const cachedData = localStorage.getItem(cacheKeyToUse);
       console.log(`Attempting to get from cache with key: ${cacheKeyToUse}`);
 
@@ -275,7 +284,7 @@ class EmployeeService {
 
   // Second parameter allows forcing a refresh from API instead of cache
   // It now requires projectId
-  async getEmployees(projectId: string | null, forceRefresh = false): Promise<Employee[]> {
+  async getEmployees(projectId: string | null, datasetId: string | null = null, forceRefresh = false): Promise<Employee[]> {
     // Short-circuit when not authenticated to avoid repeated 401 spam
     if (!this.hasAccessToken()) {
       console.warn('getEmployees skipped: no access token found (user not authenticated).');
@@ -302,9 +311,9 @@ class EmployeeService {
     }
 
     try {
-      console.log(`Fetching employees for project ${projectIdToUse}...`);
+      console.log(`Fetching employees for project ${projectIdToUse} (dataset: ${datasetId || 'none'})...`);
 
-      const apiEmployees = await this.fetchEmployees(projectIdToUse, forceRefresh);
+      const apiEmployees = await this.fetchEmployees(projectIdToUse, datasetId, forceRefresh);
 
       if (!apiEmployees || apiEmployees.length === 0) {
         console.warn('No employees found from API');
@@ -321,9 +330,9 @@ class EmployeeService {
         // Generate deterministic probabilities
         for (let i = 0; i < apiEmployees.length; i++) {
           const emp = apiEmployees[i];
-          const hrCode = parseInt(emp.hr_code.replace(/\D/g, '')) || i;
-          const seed = hrCode % 100;
-          const deterministicRandom = (seed / 100) * 0.8 + 0.1; // Value between 0.1-0.9
+          const seedSource = emp.hr_code || String(i);
+          const seed = this.hashString(seedSource) % 1000;
+          const deterministicRandom = (seed / 1000) * 0.8 + 0.1; // Value between 0.1-0.9, stable per hr_code
           emp.resign_proba = deterministicRandom;
         }
       }
@@ -637,16 +646,17 @@ class EmployeeService {
     // and not globally unique by employeeId across projects.
     // For now, assuming employeeId is globally unique or context is handled elsewhere.
     const projectId = this.currentProjectId; // Use stored projectId
+    const datasetId = localStorage.getItem('activeDatasetId');
 
     if (!projectId) {
       console.warn("Cannot get employee details without an active project ID.");
       return null;
     }
 
-    let employees = this.getFromCache(projectId); // Try to get from project-specific cache
+    let employees = this.getFromCache(projectId, datasetId); // Try to get from project-specific cache
 
     if (!employees) {
-      employees = await this.fetchEmployees(projectId, false); // Fetch if not in cache
+      employees = await this.fetchEmployees(projectId, datasetId, false); // Fetch if not in cache
     }
 
     if (!employees || employees.length === 0) {

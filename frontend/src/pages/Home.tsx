@@ -1885,8 +1885,10 @@ export function Home(): React.ReactElement {
   */
 
   useEffect(() => {
+    const datasetId = trainingStatus?.datasetId || (typeof window !== 'undefined' ? localStorage.getItem('activeDatasetId') : null);
+
     if (isModelReady && homeEmployees && homeEmployees.length > 0) {
-      autoThresholdService.start(homeEmployees);
+      autoThresholdService.start(homeEmployees, datasetId);
     } else {
       autoThresholdService.stop();
     }
@@ -1894,7 +1896,7 @@ export function Home(): React.ReactElement {
     return () => {
       autoThresholdService.stop();
     };
-  }, [isModelReady, homeEmployees]);
+  }, [isModelReady, homeEmployees, trainingStatus?.datasetId]);
 
   if (!activeProject) {
     return (

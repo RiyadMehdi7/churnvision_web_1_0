@@ -17,7 +17,9 @@ interface ModelTrainingStatus {
     error?: string;
     startTime?: Date;
     endTime?: Date;
-    companyId: string;
+    companyId: string; // legacy naming, now holds active datasetId for caching
+    datasetId?: string;
+    modelVersion?: string;
 }
 
 // Enhanced Employee interface that includes reasoning data
@@ -54,14 +56,15 @@ interface GlobalCacheState {
     trainingStatus: ModelTrainingStatus | null;
     isTrainingComplete: boolean; // Flag to track completion transition
     pollingIntervalId: NodeJS.Timeout | null; // Store interval ID
+    activeDatasetId: string | null;
 
     // Actions
     fetchHomeData: (projectId: string | null, forceRefresh?: boolean) => Promise<void>;
     fetchAIAssistantData: (projectId: string | null, forceRefresh?: boolean) => Promise<void>;
     fetchPlaygroundData: (projectId: string | null, forceRefresh?: boolean) => Promise<void>;
     resetCache: () => void;
-    fetchTrainingStatus: (projectId: string | null) => Promise<void>;
-    startPollingTrainingStatus: (projectId: string | null, intervalMs?: number) => void;
+    fetchTrainingStatus: (projectId: string | null, datasetId?: string | null) => Promise<void>;
+    startPollingTrainingStatus: (projectId: string | null, datasetId?: string | null, intervalMs?: number) => void;
     stopPollingTrainingStatus: () => void;
 }
 
@@ -168,6 +171,7 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
         trainingStatus: null,
         isTrainingComplete: false, // Initialize as false
         pollingIntervalId: null,
+        activeDatasetId: null,
 
         // Reasoning enhancement progress
         isEnhancingWithReasoning: false,
@@ -198,7 +202,7 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
             console.log(`[fetchHomeData] Triggered for projectId: ${projectId}. ForceRefresh: ${forceRefresh}.`);
 
             const currentTrainingStatus = get().trainingStatus;
-            if (!currentTrainingStatus || currentTrainingStatus.companyId !== projectId) {
+            if (!currentTrainingStatus || (currentTrainingStatus.datasetId && currentTrainingStatus.datasetId !== get().activeDatasetId)) {
                 try {
                     get().fetchTrainingStatus(projectId);
                 } catch (statusError) {
@@ -207,9 +211,17 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
             }
             let modelReady = currentTrainingStatus?.status === 'complete';
 
-            // Generate cache keys based on projectId
-            const employeeCacheKey = `home_employees_${projectId}`;
-            const metricsCacheKey = `home_metrics_${projectId}`;
+            // Resolve active dataset for cache scoping
+            const storedDatasetId = localStorage.getItem('activeDatasetId');
+            const datasetId = currentTrainingStatus?.datasetId || get().activeDatasetId || storedDatasetId || null;
+            const datasetKey = datasetId || 'no-dataset';
+            if (datasetId && datasetId !== get().activeDatasetId) {
+                set({ activeDatasetId: datasetId });
+            }
+
+            // Generate cache keys based on projectId + datasetId
+            const employeeCacheKey = `home_employees_${projectId}_${datasetKey}`;
+            const metricsCacheKey = `home_metrics_${projectId}_${datasetKey}`;
 
             // If forcing refresh, clear sessionStorage for this project
             if (forceRefresh) {
@@ -223,7 +235,7 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
             }
 
             // Check store state cache first (only if not forcing refresh)
-            if (!forceRefresh && get().homeEmployees && get().homeEmployees!.length > 0 && get().homeMetrics) {
+            if (!forceRefresh && get().homeEmployees && get().homeEmployees!.length > 0 && get().homeMetrics && get().activeDatasetId === datasetId) {
                 console.log(`[fetchHomeData] Using existing store cache for projectId: ${projectId}`);
                 return;
             }
@@ -241,6 +253,7 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
                     isLoadingHomeData: false,
                     isLoadingAIAssistantData: false,
                     isLoadingPlaygroundData: false,
+                    activeDatasetId: datasetId || null,
                 });
                 return;
             }
@@ -251,8 +264,8 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
 
             try {
                 console.log(`[fetchHomeData] Fetching fresh data from employeeService for projectId: ${projectId}`);
-                // Pass projectId to getEmployees as the service now requires it.
-                const data = await employeeService.getEmployees(projectId, forceRefresh);
+                // Pass projectId and datasetId to keep caches scoped correctly
+                const data = await employeeService.getEmployees(projectId, datasetId, forceRefresh);
                 console.log(`[fetchHomeData] Received ${data?.length ?? 0} employees for projectId: ${projectId}`);
 
                 if (!data || data.length === 0) {
@@ -382,6 +395,7 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
                         playgroundEmployees: enhancedEmployees,
                         isEnhancingWithReasoning: false,
                         reasoningEnhancementProgress: modelReady ? 100 : 0,
+                        activeDatasetId: datasetId || null,
                     }));
 
                     saveToSessionStorage(employeeCacheKey, enhancedEmployees);
@@ -475,6 +489,7 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
                 isLoadingHomeData: false,
                 isLoadingAIAssistantData: false,
                 isLoadingPlaygroundData: false,
+                activeDatasetId: null,
                 // Don't reset trainingStatus here as it might be independent of project data
                 // or handled elsewhere if needed.
                 // trainingStatus: null, 
@@ -522,103 +537,112 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
         },
 
         // --- Model Training Status Actions - Modified ---
-        fetchTrainingStatus: async (projectId) => {
+        fetchTrainingStatus: async (projectId, datasetIdOverride = null) => {
             if (!projectId) {
                 console.log('[fetchTrainingStatus] No projectId, skipping status fetch.');
                 return;
             }
 
-            // Avoid 401 spam when user is not authenticated
             const hasToken = !!(localStorage.getItem('access_token') || localStorage.getItem('churnvision_access_token'));
             if (!hasToken) {
                 console.log('[fetchTrainingStatus] No access token found, skipping status fetch.');
                 return;
             }
+
+            const fallbackDatasetId = datasetIdOverride || localStorage.getItem('activeDatasetId') || undefined;
+
             try {
-                // Use API to check model status
-                // We use /churn/model/metrics to check if a model exists and is trained
-                try {
-                    const response = await api.get('/churn/model/metrics');
-                    const metrics = response.data || {};
+                const response = await api.get('/churn/train/status');
+                const statusPayload = response.data || {};
 
-                    // Require a last_trained timestamp to treat the model as trained
-                    if (!metrics.last_trained) {
-                        set({
-                            trainingStatus: {
-                                status: 'idle',
-                                progress: 0,
-                                message: 'No model trained',
-                                companyId: projectId
-                            },
-                            isTrainingComplete: false
-                        });
-                        return;
-                    }
+                const status = (statusPayload.status as ModelTrainingStatus['status']) || 'idle';
+                const progress = typeof statusPayload.progress === 'number' ? statusPayload.progress : 0;
+                const datasetId = statusPayload.dataset_id || statusPayload.datasetId || datasetIdOverride || localStorage.getItem('activeDatasetId') || projectId;
 
-                    const currentStatus = get().trainingStatus;
-                    const newStatus: ModelTrainingStatus = {
-                        status: 'complete',
-                        progress: 100,
-                        message: 'Model trained successfully',
-                        companyId: projectId,
-                        startTime: metrics.last_trained ? new Date(metrics.last_trained) : undefined,
-                        endTime: metrics.last_trained ? new Date(metrics.last_trained) : undefined
-                    };
-
-                    const justCompleted = currentStatus?.status !== 'complete';
-
-                    set({ trainingStatus: newStatus, isTrainingComplete: justCompleted });
-
-                    if (justCompleted) {
-                        console.log(`[DataCache] Model training completed for projectId: ${projectId}. Forcing data refresh.`);
-                        setTimeout(() => get().fetchHomeData(projectId, true), 100);
-                    }
-                } catch (error: any) {
-                    // If 404, model is not trained yet
-                    if (error.response && error.response.status === 404) {
-                        if (DEBUG) console.info('[fetchTrainingStatus] Model not trained yet, setting idle.');
-                        set({
-                            trainingStatus: {
-                                status: 'idle',
-                                progress: 0,
-                                message: 'No model trained',
-                                companyId: projectId
-                            },
-                            isTrainingComplete: false
-                        });
-                    } else {
-                        console.error(`[DataCache] Failed to get training status:`, error);
-                        set({
-                            trainingStatus: {
-                                status: 'error',
-                                progress: 0,
-                                message: 'Failed to fetch status',
-                                error: error.message,
-                                companyId: projectId
-                            },
-                            isTrainingComplete: false
-                        });
-                    }
+                if (statusPayload.dataset_id) {
+                    try { localStorage.setItem('activeDatasetId', statusPayload.dataset_id); } catch { /* ignore */ }
                 }
-            } catch (error) {
-                console.error(`[DataCache] Error fetching training status for projectId: ${projectId}:`, error);
+
+                const newStatus: ModelTrainingStatus = {
+                    status,
+                    progress,
+                    message: statusPayload.message || (status === 'complete' ? 'Model trained successfully' : 'Checking training status'),
+                    companyId: datasetId || projectId,
+                    datasetId: datasetId || undefined,
+                    modelVersion: statusPayload.model_version,
+                    startTime: statusPayload.started_at ? new Date(statusPayload.started_at) : undefined,
+                    endTime: statusPayload.finished_at ? new Date(statusPayload.finished_at) : undefined,
+                };
+
+                if (status === 'error' && statusPayload.message) {
+                    newStatus.error = statusPayload.message;
+                }
+
+                set({ trainingStatus: newStatus, isTrainingComplete: status === 'complete', activeDatasetId: datasetId || null });
+
+                if (status === 'complete') {
+                    console.log(`[DataCache] Model training completed for dataset ${datasetId || 'unknown'}. Forcing data refresh.`);
+                    setTimeout(() => {
+                        get().fetchHomeData(projectId, true);
+                        get().fetchAIAssistantData(projectId, true);
+                        get().fetchPlaygroundData(projectId, true);
+                    }, 100);
+                }
+            } catch (error: any) {
+                if (error.response && error.response.status === 404) {
+                    if (DEBUG) console.info('[fetchTrainingStatus] Model not trained yet, setting idle.');
+                    set({
+                        trainingStatus: {
+                            status: 'idle',
+                            progress: 0,
+                            message: 'No model trained',
+                            companyId: fallbackDatasetId || projectId,
+                            datasetId: fallbackDatasetId,
+                        },
+                        isTrainingComplete: false,
+                    });
+                } else {
+                    console.error(`[DataCache] Failed to get training status:`, error);
+                    set({
+                        trainingStatus: {
+                            status: 'error',
+                            progress: 0,
+                            message: 'Failed to fetch status',
+                            error: error.message,
+                            companyId: fallbackDatasetId || projectId,
+                            datasetId: fallbackDatasetId,
+                        },
+                        isTrainingComplete: false,
+                    });
+                }
             }
         },
 
-        startPollingTrainingStatus: (projectId, intervalMs = 5000) => {
+        startPollingTrainingStatus: (projectId, datasetId = null, intervalMs = 5000) => {
             if (!projectId) {
                 console.log('[startPollingTrainingStatus] No projectId, cannot start polling.');
                 return;
             }
             get().stopPollingTrainingStatus();
             console.log(`[DataCache] Starting training status polling for projectId: ${projectId} every ${intervalMs}ms`);
-            // Fetch immediately first time, passing projectId
-            get().fetchTrainingStatus(projectId);
+
+            // Seed UI with immediate in-progress status so users see progress bar instantly
+            const optimisticStatus: ModelTrainingStatus = {
+                status: 'queued',
+                progress: 5,
+                message: 'Starting model training...',
+                companyId: datasetId || projectId,
+                datasetId: datasetId || undefined,
+            };
+            set({ trainingStatus: optimisticStatus, activeDatasetId: datasetId || null });
+
+            // Fetch immediately first time
+            get().fetchTrainingStatus(projectId, datasetId);
 
             const intervalId = setInterval(() => {
                 const currentStatus = get().trainingStatus?.status;
                 if (currentStatus !== 'complete' && currentStatus !== 'error') {
-                    get().fetchTrainingStatus(projectId); // Pass projectId
+                    get().fetchTrainingStatus(projectId, datasetId);
                 } else {
                     console.log(`[DataCache] Training status for projectId ${projectId} is ${currentStatus}, stopping polling.`);
                     get().stopPollingTrainingStatus();

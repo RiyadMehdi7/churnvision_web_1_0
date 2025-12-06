@@ -86,7 +86,16 @@ class AuthService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Registration failed');
+        const detail = error.response?.data?.detail;
+        // Handle Pydantic validation errors (array of objects)
+        if (Array.isArray(detail)) {
+          const messages = detail.map((err: { msg?: string; loc?: string[] }) => {
+            const field = err.loc?.slice(-1)[0] || 'field';
+            return `${field}: ${err.msg}`;
+          });
+          throw new Error(messages.join(', '));
+        }
+        throw new Error(detail || 'Registration failed');
       }
       throw error;
     }

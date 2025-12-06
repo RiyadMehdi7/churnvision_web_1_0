@@ -63,9 +63,12 @@ export const AgentContextPanel = memo<AgentContextPanelProps>(({
   return (
     <div className="rounded-lg border border-gray-100 dark:border-gray-700 bg-white dark:bg-slate-800 overflow-hidden">
       {/* Header - always visible */}
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsExpanded(!isExpanded); }}
+        className="w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
       >
         <div className="flex items-center gap-2">
           <Brain size={14} className="text-emerald-500" />
@@ -95,7 +98,7 @@ export const AgentContextPanel = memo<AgentContextPanelProps>(({
             <ChevronDown size={14} className="text-gray-400" />
           )}
         </div>
-      </button>
+      </div>
 
       {/* Expanded content */}
       <AnimatePresence>

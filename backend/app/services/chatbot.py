@@ -4,7 +4,10 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from openai import AsyncOpenAI, AsyncAzureOpenAI
 from ollama import AsyncClient
+from openai import AsyncOpenAI, AsyncAzureOpenAI
+from ollama import AsyncClient
 import httpx
+import asyncio
 
 from app.core.config import settings
 from app.models.chatbot import Conversation, Message
@@ -249,13 +252,18 @@ class ChatbotService:
     ) -> tuple[str, Dict[str, Any]]:
         """Call local Ollama API"""
         client = AsyncClient(host=settings.OLLAMA_BASE_URL)
-        response = await client.chat(
-            model=model or settings.OLLAMA_MODEL,
-            messages=messages,
-            options={
-                "temperature": temperature,
-                "num_predict": max_tokens if max_tokens else -1
-            }
+        
+        # Wrap Ollama call in timeout to prevent indefinite hanging
+        response = await asyncio.wait_for(
+            client.chat(
+                model=model or settings.OLLAMA_MODEL,
+                messages=messages,
+                options={
+                    "temperature": temperature,
+                    "num_predict": max_tokens if max_tokens else -1
+                }
+            ),
+            timeout=settings.LLM_REQUEST_TIMEOUT
         )
 
         message = response.get("message", {}) if isinstance(response, dict) else {}

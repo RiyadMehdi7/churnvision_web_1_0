@@ -3,7 +3,6 @@ import chatbotService from '../services/chatbot';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  Bot,
   Search,
   Send,
   AlertTriangle,
@@ -16,8 +15,8 @@ import {
   User,
   ChevronDown,
   ChevronUp,
-  Expand, // Added Expand icon for full-screen view
-  X, // Added X icon for close button
+  Expand,
+  X,
   MessageSquare,
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
@@ -165,12 +164,35 @@ const normalizeChatMessage = (msg: GlobalChatMessage, index: number, hasEmployee
   };
 };
 
+// +++ Echo AI Avatar Component - ChurnVision branded +++
+const EchoAvatar = ({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) => {
+  const sizeConfig = {
+    sm: { container: 'w-7 h-7', svg: 20 },
+    md: { container: 'w-8 h-8', svg: 24 },
+    lg: { container: 'w-16 h-16', svg: 48 },
+  };
+  const { container, svg } = sizeConfig[size];
+
+  return (
+    <div className={`${container} rounded-xl bg-[#75caa9] flex items-center justify-center flex-shrink-0 shadow-md`}>
+      <svg width={svg} height={svg} viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="8" fill="white" />
+        <path
+          d="M8 12L11 15L16 9"
+          stroke="#75caa9"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
+};
+
 // +++ Add TypingIndicator Component +++
 const TypingIndicator = () => (
   <div className="p-4 mb-4 ml-2 mr-12 flex items-center space-x-2">
-    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 flex items-center justify-center text-white flex-shrink-0">
-      <Bot size={16} />
-    </div>
+    <EchoAvatar size="md" />
     <div className="flex space-x-1">
       <div className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
       <div className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
@@ -572,9 +594,7 @@ const ChatMessageComponent = memo<{ message: ExtendedChatMessage; isContinuation
         <div className={`flex items-start gap-3 p-3 ${isBot ? '' : 'flex-row-reverse'}`}>
           <div className={`flex-shrink-0 mt-0.5 ${isContinuation ? 'invisible' : ''}`}>
             {isBot ? (
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 flex items-center justify-center text-white shadow-md">
-                <Bot size={14} />
-              </div>
+              <EchoAvatar size="sm" />
             ) : (
               <div className="w-7 h-7 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white shadow-md">
                 <User size={14} />
@@ -748,9 +768,7 @@ const AnalysisInProgressIndicator: React.FC<AnalysisInProgressIndicatorProps> = 
 
   return (
     <div className="p-4 mb-4 ml-2 mr-12 flex items-start space-x-3">
-      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 flex items-center justify-center text-white flex-shrink-0 mt-0.5">
-        <Bot size={16} />
-      </div>
+      <EchoAvatar size="md" />
       <div>
         <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Performing Analysis...</p>
         <AnalysisStep text="Accessing employee data..." isComplete={step >= 1} />
@@ -795,32 +813,43 @@ export function AIAssistant(): React.ReactElement {
   const thresholds = getCurrentThresholds();
 
   // Helper function to get reasoning data for an employee
+  // Uses the reasoning data already loaded with the employee from the API
   const getEmployeeReasoning = useCallback((hrCode: string | undefined | null): ChurnReasoning | undefined => {
     if (!hrCode) return undefined;
-    return reasoningData?.find(r => r && r.hr_code === hrCode);
-  }, [reasoningData]);
+    // First check if we have fresh data from batch fetch
+    const batchData = reasoningData?.find(r => r && r.hr_code === hrCode);
+    if (batchData) return batchData;
+    // Otherwise, construct from employee's pre-loaded reasoning fields
+    const emp = safeEmployees.find(e => e.hr_code === hrCode);
+    if (emp && typeof emp.reasoningChurnRisk === 'number') {
+      return {
+        hr_code: hrCode,
+        churn_risk: emp.reasoningChurnRisk,
+        stage: emp.reasoningStage || 'Unknown',
+        confidence_level: emp.reasoningConfidence || 0.7,
+      } as ChurnReasoning;
+    }
+    return undefined;
+  }, [reasoningData, safeEmployees]);
 
   // Helper function to get risk score from reasoning data
   const getEmployeeRiskScore = useCallback((employee: Employee): number => {
-    const reasoning = getEmployeeReasoning(employee.hr_code);
-    return reasoning?.churn_risk ?? employee.churnProbability ?? 0;
-  }, [getEmployeeReasoning]);
-  
-  // Fetch reasoning data when employees are selected OR when all employees are loaded
+    // Use pre-loaded reasoning data from employee object first
+    return employee.reasoningChurnRisk ?? employee.churnProbability ?? 0;
+  }, []);
+
+  // Only fetch detailed reasoning when specific employees are selected (on-demand)
+  // Don't fetch for ALL employees - that data already comes from the employees API
   useEffect(() => {
-    if (selectedEmployees.length > 0) {
+    if (selectedEmployees.length > 0 && selectedEmployees.length <= 5) {
+      // Only fetch detailed reasoning for small selections (on-demand)
       const hrCodes = selectedEmployees
         .map(emp => emp?.hr_code)
         .filter((code): code is string => Boolean(code));
       fetchBatchReasoning(hrCodes);
-    } else if (safeEmployees.length > 0) {
-      // Fetch reasoning data for all employees to ensure we have proper risk scores
-      const allHrCodes = safeEmployees
-        .map(emp => emp.hr_code)
-        .filter((code): code is string => Boolean(code));
-      fetchBatchReasoning(allHrCodes);
     }
-  }, [selectedEmployees, safeEmployees, fetchBatchReasoning]);
+    // Removed: bulk fetching for all employees - data already in employee objects
+  }, [selectedEmployees, fetchBatchReasoning]);
   
   const [chatState, setChatState] = useState<ChatState>(() => ({
     messages: [],
@@ -983,6 +1012,8 @@ export function AIAssistant(): React.ReactElement {
       department: hasEmployeeContext ? selectedEmployees[0]?.department : undefined,
     };
 
+    const datasetId = trainingStatus?.datasetId || (typeof window !== 'undefined' ? localStorage.getItem('activeDatasetId') : null);
+
     // Determine pattern type from the message for agent execution
     const patternType = pendingKind === 'analysis'
       ? detectPatternFromMessage(userMessage, hasEmployeeContext)
@@ -998,14 +1029,19 @@ export function AIAssistant(): React.ReactElement {
       const response = await chatbotService.sendMessage({
         sessionId,
         content: userMessage, // Send raw message - backend handles context gathering
-        employeeId: hasEmployeeContext ? selectedEmployees[0]?.hr_code : undefined
+        employeeId: hasEmployeeContext ? selectedEmployees[0]?.hr_code : undefined,
+        datasetId,
       });
 
       // Build assistant message with structured data if available
       const assistantMessage: ExtendedChatMessage = {
         id: response.botMessageId || `bot-${uuidv4()}`,
         role: 'assistant',
-        message: typeof response.response?.message === 'string' ? response.response.message : String(response.response?.message ?? ''),
+        message: (() => {
+          if (typeof response.response === 'string') return response.response;
+          if (typeof response.response?.message === 'string') return response.response.message;
+          return 'No response available.';
+        })(),
         timestamp: new Date(),
         sessionId,
         intent: response.response?.intent,
@@ -1589,7 +1625,9 @@ export function AIAssistant(): React.ReactElement {
   if (!activeProject) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-gray-50 dark:bg-gray-900">
-        <Bot className="mx-auto h-16 w-16 text-gray-400 dark:text-gray-600 mb-4" />
+        <div className="mb-4">
+          <EchoAvatar size="lg" />
+        </div>
         <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
           No Project Active
         </h2>
@@ -1606,22 +1644,24 @@ export function AIAssistant(): React.ReactElement {
   }
 
   return (
-    <div className="min-h-full flex flex-col">
-      <PageHeader
-        title="AI Assistant"
-        subtitle="AI-driven assistant for talent retention analysis and actionable insights"
-        icon={MessageSquare}
-        badges={[
-          { label: 'AI-Powered', variant: 'emerald', pulse: true },
-          { label: 'Echo', variant: 'purple' },
-        ]}
-      />
+    <div className="h-full flex flex-col overflow-hidden">
+      <div className="flex-none">
+        <PageHeader
+          title="AI Assistant"
+          subtitle="AI-driven assistant for talent retention analysis and actionable insights"
+          icon={MessageSquare}
+          badges={[
+            { label: 'AI-Powered', variant: 'emerald', pulse: true },
+            { label: 'Echo', variant: 'purple' },
+          ]}
+        />
+      </div>
 
-      <div className="px-6 md:px-8 py-4">
+      <div className="flex-none px-6 md:px-8 py-4">
         <TrainingReminderBanner />
       </div>
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         <aside className="w-[340px] flex-none flex flex-col bg-white border-r border-gray-200 dark:bg-gray-900 dark:border-gray-700">
           <div className="flex-none p-4 border-b border-gray-100 dark:border-gray-800">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Team Members</h2>

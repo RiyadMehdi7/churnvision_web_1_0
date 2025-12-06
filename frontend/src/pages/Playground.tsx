@@ -756,7 +756,8 @@ export function Playground() {
     const checkProjectData = async () => {
       try {
         if (!activeProject) return;
-        const employees = await employeeService.getEmployees(activeProject.name);
+        const datasetId = typeof window !== 'undefined' ? localStorage.getItem('activeDatasetId') : null;
+        const employees = await employeeService.getEmployees(activeProject.name, datasetId);
         setHasDBConnection(employees && employees.length > 0);
       } catch (_error) {
         setHasDBConnection(false);
@@ -766,7 +767,7 @@ export function Playground() {
     checkProjectData();
     const interval = setInterval(checkProjectData, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [activeProject]);
 
   // Scenario comparison state
   const [scenarios, setScenarios] = useState<ScenarioData[]>([]);
@@ -2365,7 +2366,7 @@ const ScenarioComparisonTab = memo(({
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800/80 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700/50 flex flex-col h-full min-h-0">
+      <div className="bg-white dark:bg-gray-800/80 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700/50 flex flex-col overflow-hidden h-full min-h-0">
         <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <h3 className="text-base font-medium text-gray-700 dark:text-gray-200">
             AI-Generated Treatments
@@ -2375,7 +2376,7 @@ const ScenarioComparisonTab = memo(({
         {/* Disclaimer removed; presentation is now governed by global data mode in Settings */}
 
         {treatmentSuggestions.length > 0 ? (
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent dark:scrollbar-thumb-gray-600" style={{ minHeight: '300px' }}>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent dark:scrollbar-thumb-gray-600">
             {treatmentSuggestions
               .filter(treatment => {
                 if (budget === null) return true;

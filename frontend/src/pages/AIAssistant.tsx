@@ -40,7 +40,7 @@ import { TrainingReminderBanner } from '../components/TrainingReminderBanner';
 import { ModelTrainingRequired } from '../components/ModelTrainingRequired';
 
 // Import agentic AI components
-import { AgentExecutionPanel, AgentContextPanel, ActionProposalCard } from '../components/agent';
+import { AgentExecutionPanel, AgentContextPanel, ActionProposalCard, EmailComposer, TeamsComposer } from '../components/agent';
 import { useAgentExecution } from '../hooks/useAgentExecution';
 import { useActionProposals } from '../hooks/useActionProposals';
 import { useAgentMemory } from '../hooks/useAgentMemory';
@@ -525,6 +525,80 @@ const ChatMessageComponent = memo<{ message: ExtendedChatMessage; isContinuation
             return <PeerRetentionComparisonRenderer data={structuredData as any} />;
           case 'exitPatternMining':
             return <LegacyExitPatternRenderer data={structuredData as any} />;
+          case 'email_action':
+            // Render EmailComposer for email action responses
+            return (
+              <div className="w-full">
+                <EmailComposer
+                  to={structuredData.emailData?.to || []}
+                  cc={structuredData.emailData?.cc || []}
+                  subject={structuredData.emailData?.subject || ''}
+                  body={structuredData.emailData?.body || ''}
+                  employeeName={structuredData.targetEmployeeName}
+                />
+              </div>
+            );
+          case 'meeting_action':
+            // Render TeamsComposer for meeting action responses
+            return (
+              <div className="w-full">
+                <TeamsComposer
+                  subject={structuredData.meetingData?.title || ''}
+                  attendees={structuredData.meetingData?.attendees || []}
+                  duration={structuredData.meetingData?.duration || 30}
+                  message={structuredData.meetingData?.agenda || ''}
+                  employeeName={structuredData.targetEmployeeName}
+                  mode="meeting"
+                />
+              </div>
+            );
+          case 'employee_info':
+            // Render employee info summary as a nice card
+            return (
+              <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center text-white font-semibold">
+                    {structuredData.targetEmployeeName?.split(' ').map((n: string) => n[0]).join('') || '?'}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg text-gray-900 dark:text-white">{structuredData.targetEmployeeName}</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">{structuredData.profile?.position} • {structuredData.profile?.department}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="bg-white dark:bg-slate-700 rounded-lg p-2">
+                    <span className="text-gray-500 dark:text-gray-400">Tenure</span>
+                    <p className="font-medium text-gray-900 dark:text-white">{structuredData.profile?.tenure?.toFixed(1) || 0} years</p>
+                  </div>
+                  <div className="bg-white dark:bg-slate-700 rounded-lg p-2">
+                    <span className="text-gray-500 dark:text-gray-400">Risk Level</span>
+                    <p className={`font-medium ${structuredData.riskAssessment?.riskLevel === 'High' ? 'text-red-600' : structuredData.riskAssessment?.riskLevel === 'Medium' ? 'text-yellow-600' : 'text-green-600'}`}>
+                      {structuredData.riskAssessment?.riskLevel} ({(structuredData.riskAssessment?.overallRisk * 100)?.toFixed(0)}%)
+                    </p>
+                  </div>
+                  <div className="bg-white dark:bg-slate-700 rounded-lg p-2">
+                    <span className="text-gray-500 dark:text-gray-400">Stage</span>
+                    <p className="font-medium text-gray-900 dark:text-white">{structuredData.riskAssessment?.stage}</p>
+                  </div>
+                  <div className="bg-white dark:bg-slate-700 rounded-lg p-2">
+                    <span className="text-gray-500 dark:text-gray-400">HR Code</span>
+                    <p className="font-medium text-gray-900 dark:text-white">{structuredData.targetHrCode}</p>
+                  </div>
+                </div>
+                {structuredData.riskAssessment?.topRiskFactors?.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">Top Risk Factors</span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {structuredData.riskAssessment.topRiskFactors.map((factor: string, idx: number) => (
+                        <span key={idx} className="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded text-xs">
+                          {factor}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
         default:
           return (
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>

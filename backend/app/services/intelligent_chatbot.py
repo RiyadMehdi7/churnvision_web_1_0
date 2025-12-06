@@ -32,6 +32,9 @@ class PatternType:
     SHAP_EXPLANATION = "shap_explanation"
     WORKFORCE_TRENDS = "workforce_trends"
     DEPARTMENT_ANALYSIS = "department_analysis"
+    EMAIL_ACTION = "email_action"  # For composing emails to employees
+    MEETING_ACTION = "meeting_action"  # For scheduling meetings with employees
+    EMPLOYEE_INFO = "employee_info"  # For general "tell me about" employee queries
     GENERAL_CHAT = "general_chat"
 
 
@@ -59,6 +62,42 @@ class IntelligentChatbotService:
         # If employee_id provided, use it
         if employee_id:
             entities["hr_code"] = employee_id
+
+        # Pattern: Email Action (must check early - higher priority)
+        # "Write email to John", "Send mail to him", "Draft an email about meeting"
+        if any(keyword in message_lower for keyword in [
+            "write email", "send email", "draft email", "compose email",
+            "write mail", "send mail", "draft mail", "compose mail",
+            "email to", "mail to", "email about", "mail about",
+            "write a message", "send a message"
+        ]):
+            if not entities.get("hr_code"):
+                entities["employee_name"] = self._extract_employee_name(message)
+                entities["hr_code"] = self._extract_hr_code(message)
+            # Extract email context/topic
+            entities["email_context"] = self._extract_email_context(message)
+            return PatternType.EMAIL_ACTION, entities
+
+        # Pattern: Meeting Action
+        # "Schedule a meeting with John", "Set up a call", "Book a meeting"
+        if any(keyword in message_lower for keyword in [
+            "schedule meeting", "set up meeting", "book meeting", "arrange meeting",
+            "schedule a call", "set up a call", "meeting with", "call with",
+            "one on one", "1:1", "check-in meeting", "sync with"
+        ]):
+            if not entities.get("hr_code"):
+                entities["employee_name"] = self._extract_employee_name(message)
+                entities["hr_code"] = self._extract_hr_code(message)
+            entities["meeting_context"] = self._extract_meeting_context(message)
+            return PatternType.MEETING_ACTION, entities
+
+        # Pattern: Employee Info (general questions about a selected employee)
+        # "Tell me about James", "What do you know about this employee", "Who is James Scott"
+        if employee_id and any(keyword in message_lower for keyword in [
+            "tell me about", "what about", "who is", "info about", "information about",
+            "what do you know", "details about", "profile", "summary of"
+        ]):
+            return PatternType.EMPLOYEE_INFO, entities
 
         # Pattern: Workforce Trends / Overall Analysis
         # "Show overall churn trends", "What are the workforce trends?"
@@ -170,11 +209,36 @@ class IntelligentChatbotService:
             r"(?:analyze|check|show|how is)\s+(?:the\s+)?([A-Za-z]+)\s+(?:department|team)",
             r"([A-Za-z]+)\s+department",
             r"department[:\s]+([A-Za-z]+)",
+            r"(?:the\s+)?([A-Za-z]+)\s+(?:team|group|division)",
         ]
         for pattern in patterns:
             match = re.search(pattern, message, re.IGNORECASE)
             if match:
                 return match.group(1)
+        return None
+
+    def _extract_email_context(self, message: str) -> Optional[str]:
+        """Extract email context/topic from message"""
+        patterns = [
+            r"(?:email|mail|message)\s+(?:about|regarding|concerning|for)\s+(.+?)(?:\.|$)",
+            r"(?:about|regarding|concerning)\s+(?:a\s+)?(.+?)(?:\s+to\s+|\s+for\s+|$)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, message, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        return None
+
+    def _extract_meeting_context(self, message: str) -> Optional[str]:
+        """Extract meeting context/topic from message"""
+        patterns = [
+            r"(?:meeting|call|sync)\s+(?:about|regarding|concerning|for)\s+(.+?)(?:\.|$)",
+            r"(?:to discuss|discussing)\s+(.+?)(?:\.|$)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, message, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
         return None
 
     async def _resolve_dataset_id(self, dataset_id: Optional[str]) -> str:
@@ -228,7 +292,10 @@ class IntelligentChatbotService:
             PatternType.RETENTION_PLAN,
             PatternType.SHAP_EXPLANATION,
             PatternType.EMPLOYEE_COMPARISON,
-            PatternType.EMPLOYEE_COMPARISON_STAYED
+            PatternType.EMPLOYEE_COMPARISON_STAYED,
+            PatternType.EMAIL_ACTION,
+            PatternType.MEETING_ACTION,
+            PatternType.EMPLOYEE_INFO
         ]:
             employee = await self._get_employee_data(
                 hr_code=entities.get("hr_code"),
@@ -314,6 +381,12 @@ class IntelligentChatbotService:
                 elif pattern_type == PatternType.EMPLOYEE_COMPARISON_STAYED:
                     similar = await self._get_similar_employees(employee, dataset_id, resigned=False)
                     context["similar_employees"] = similar
+
+                # Pass through email/meeting context for action patterns
+                if pattern_type == PatternType.EMAIL_ACTION:
+                    context["email_context"] = entities.get("email_context")
+                elif pattern_type == PatternType.MEETING_ACTION:
+                    context["meeting_context"] = entities.get("meeting_context")
 
         # Workforce trends
         if pattern_type == PatternType.WORKFORCE_TRENDS:
@@ -1274,6 +1347,160 @@ class IntelligentChatbotService:
                 "availableDepartments": [d["department"] for d in departments]
             }
 
+    async def _generate_email_action(self, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Generate email action data for EmailComposer component"""
+        if "employee" not in context:
+            return None
+
+        emp = context["employee"]
+        churn = context.get("churn", {})
+        reasoning = context.get("reasoning", {})
+        email_context = context.get("email_context", "")
+
+        risk = churn.get("resign_proba", reasoning.get("churn_risk", 0))
+        risk_level = "High" if risk >= 0.6 else "Medium" if risk >= 0.3 else "Low"
+
+        # Generate appropriate email subject and body based on context
+        if email_context and "meeting" in email_context.lower():
+            subject = f"Meeting Request - Let's Connect"
+            body = f"""Hi {emp['full_name'].split()[0]},
+
+I hope this message finds you well. I'd like to schedule some time to catch up and discuss how things are going.
+
+Would you be available for a brief meeting this week? Please let me know what works best for your schedule.
+
+Looking forward to connecting,
+[Your Name]"""
+        elif email_context and any(word in email_context.lower() for word in ["check", "follow"]):
+            subject = f"Quick Check-in"
+            body = f"""Hi {emp['full_name'].split()[0]},
+
+I wanted to reach out and see how things are going for you. It's been a while since we connected, and I'd love to hear how your projects are progressing.
+
+Is there anything you need support with, or any topics you'd like to discuss?
+
+Best,
+[Your Name]"""
+        else:
+            # Default professional check-in
+            subject = f"Let's Connect"
+            body = f"""Hi {emp['full_name'].split()[0]},
+
+I wanted to reach out and schedule some time to connect. I'd love to hear about how things are going with your work and discuss any support you might need.
+
+Please let me know your availability this week.
+
+Best regards,
+[Your Name]"""
+
+        return {
+            "type": "email_action",
+            "targetEmployeeName": emp["full_name"],
+            "targetHrCode": emp["hr_code"],
+            "emailData": {
+                "to": [emp["full_name"]],
+                "cc": [],
+                "subject": subject,
+                "body": body
+            },
+            "employeeContext": {
+                "position": emp.get("position"),
+                "department": emp.get("structure_name"),
+                "tenure": emp.get("tenure"),
+                "riskLevel": risk_level,
+                "riskScore": risk
+            },
+            "suggestedContext": email_context
+        }
+
+    async def _generate_meeting_action(self, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Generate meeting action data for meeting composer"""
+        if "employee" not in context:
+            return None
+
+        emp = context["employee"]
+        churn = context.get("churn", {})
+        reasoning = context.get("reasoning", {})
+        meeting_context = context.get("meeting_context", "")
+
+        risk = churn.get("resign_proba", reasoning.get("churn_risk", 0))
+        risk_level = "High" if risk >= 0.6 else "Medium" if risk >= 0.3 else "Low"
+
+        # Generate appropriate meeting details
+        title = f"1:1 with {emp['full_name']}"
+        agenda = """• Check-in on current projects and workload
+• Discuss any challenges or concerns
+• Career development and goals
+• Open discussion"""
+
+        if meeting_context:
+            title = f"Meeting: {meeting_context.title()}"
+
+        return {
+            "type": "meeting_action",
+            "targetEmployeeName": emp["full_name"],
+            "targetHrCode": emp["hr_code"],
+            "meetingData": {
+                "title": title,
+                "attendees": [emp["full_name"], "You"],
+                "duration": 30,
+                "agenda": agenda
+            },
+            "employeeContext": {
+                "position": emp.get("position"),
+                "department": emp.get("structure_name"),
+                "tenure": emp.get("tenure"),
+                "riskLevel": risk_level,
+                "riskScore": risk
+            },
+            "suggestedContext": meeting_context
+        }
+
+    async def _generate_employee_info(self, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Generate employee info summary"""
+        if "employee" not in context:
+            return None
+
+        emp = context["employee"]
+        churn = context.get("churn", {})
+        reasoning = context.get("reasoning", {})
+
+        risk = churn.get("resign_proba", reasoning.get("churn_risk", 0))
+        risk_level = "High" if risk >= 0.6 else "Medium" if risk >= 0.3 else "Low"
+
+        # Format ML contributors
+        ml_contributors = []
+        raw_contributors = reasoning.get("ml_contributors", [])
+        if isinstance(raw_contributors, list):
+            for contrib in raw_contributors[:3]:
+                if isinstance(contrib, dict):
+                    ml_contributors.append(contrib.get("feature", "Unknown"))
+
+        return {
+            "type": "employee_info",
+            "targetEmployeeName": emp["full_name"],
+            "targetHrCode": emp["hr_code"],
+            "profile": {
+                "fullName": emp["full_name"],
+                "hrCode": emp["hr_code"],
+                "position": emp.get("position"),
+                "department": emp.get("structure_name"),
+                "tenure": emp.get("tenure"),
+                "status": emp.get("status"),
+                "employeeCost": emp.get("employee_cost")
+            },
+            "riskAssessment": {
+                "overallRisk": risk,
+                "riskLevel": risk_level,
+                "stage": reasoning.get("stage", "Unknown"),
+                "mlScore": reasoning.get("ml_score", 0),
+                "heuristicScore": reasoning.get("heuristic_score", 0),
+                "confidenceLevel": reasoning.get("confidence_level", 0.7),
+                "topRiskFactors": ml_contributors
+            },
+            "summary": f"{emp['full_name']} is a {emp.get('position', 'employee')} in {emp.get('structure_name', 'the organization')} with {emp.get('tenure', 0):.1f} years of tenure. Current churn risk: {risk_level} ({risk:.0%})."
+        }
+
     # ===== Main Chat Method =====
 
     async def generate_response(
@@ -1334,6 +1561,30 @@ class IntelligentChatbotService:
                 text_response = f"Risk factors analyzed for {structured_data.get('targetEmployeeName', 'employee')}."
             else:
                 text_response = "Unable to find SHAP values for this employee."
+
+        elif pattern_type == PatternType.EMAIL_ACTION:
+            # Generate email action data for EmailComposer
+            structured_data = await self._generate_email_action(context)
+            if structured_data:
+                text_response = f"I've prepared an email draft for {structured_data.get('targetEmployeeName', 'the employee')}. You can review and customize it before sending."
+            else:
+                text_response = "I couldn't generate an email. Please select an employee first."
+
+        elif pattern_type == PatternType.MEETING_ACTION:
+            # Generate meeting action data
+            structured_data = await self._generate_meeting_action(context)
+            if structured_data:
+                text_response = f"I've prepared a meeting request for {structured_data.get('targetEmployeeName', 'the employee')}. You can review and schedule it."
+            else:
+                text_response = "I couldn't generate a meeting request. Please select an employee first."
+
+        elif pattern_type == PatternType.EMPLOYEE_INFO:
+            # Generate employee info response
+            structured_data = await self._generate_employee_info(context)
+            if structured_data:
+                text_response = f"Here's what I know about {structured_data.get('targetEmployeeName', 'this employee')}."
+            else:
+                text_response = "I couldn't find information about this employee."
 
         else:
             # General chat - use LLM

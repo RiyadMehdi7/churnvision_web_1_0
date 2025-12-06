@@ -1649,7 +1649,7 @@ export function Playground() {
   }
 
   return (
-    <div className="min-h-full w-full flex flex-col bg-gray-50 dark:bg-gray-900">
+    <div className="h-screen w-full flex flex-col bg-gray-50 dark:bg-gray-900 overflow-hidden">
       <PageHeader
         title={isPerformanceMode ? 'RVI Playground' : 'ELTV Playground'}
         subtitle={isPerformanceMode
@@ -1662,13 +1662,13 @@ export function Playground() {
         ]}
       />
 
-      <div className="px-6 md:px-8 py-4">
+      <div className="px-6 md:px-8 py-4 flex-shrink-0">
         <TrainingReminderBanner />
       </div>
 
-      <main className="flex-1 flex min-h-0">
+      <main className="flex-1 flex min-h-0 overflow-hidden">
         {/* Sidebar matching AI Assistant styling */}
-        <aside className="w-[340px] flex-none flex flex-col bg-white border-r border-gray-200 dark:bg-gray-900 dark:border-gray-700">
+        <aside className="w-[340px] flex-none flex flex-col bg-white border-r border-gray-200 dark:bg-gray-900 dark:border-gray-700 overflow-hidden">
           <div className="flex-none p-4 border-b border-gray-100 dark:border-gray-800">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Team Members</h2>
             <p className="text-xs text-gray-500 mt-1">
@@ -1811,8 +1811,8 @@ export function Playground() {
           </div>
         </aside>
 
-        <div className="flex-1 flex flex-col min-w-0 bg-gray-100/50 dark:bg-gray-800/30">
-          <div className="flex flex-col p-4 md:p-6 space-y-4 h-full">
+        <div className="flex-1 flex flex-col min-w-0 bg-gray-100/50 dark:bg-gray-800/30 overflow-hidden">
+          <div className="flex flex-col p-4 md:p-6 space-y-4 h-full overflow-y-auto">
             {isLoadingPlaygroundData ? (
               <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400">
                 <Loader2 className="w-8 h-8 animate-spin mb-3" />
@@ -2209,9 +2209,9 @@ const ScenarioComparisonTab = memo(({
   // }, [scenarios]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0 overflow-hidden">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
       <div className="lg:col-span-2 bg-white dark:bg-gray-800/80 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700/50 flex flex-col overflow-hidden h-full min-h-0">
-        <div className="flex flex-col p-4 h-full min-h-0">
+        <div className="flex flex-col p-4 h-full min-h-0 overflow-y-auto">
           {/* Chart Title and Controls */}
           <div className="mb-3 pb-2 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
             <div className="flex items-center justify-between mb-3">

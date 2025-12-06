@@ -286,8 +286,9 @@ class IntelligentChatbotService:
         # Always include company-level overview so general/company queries are grounded
         context["company_overview"] = await self._get_company_overview(dataset_id)
 
-        # Employee-specific patterns
-        if pattern_type in [
+        # Employee-specific patterns OR when employee_id is provided (user selected an employee)
+        # Always fetch employee context when employee is selected, regardless of pattern
+        needs_employee_context = pattern_type in [
             PatternType.CHURN_RISK_DIAGNOSIS,
             PatternType.RETENTION_PLAN,
             PatternType.SHAP_EXPLANATION,
@@ -296,7 +297,9 @@ class IntelligentChatbotService:
             PatternType.EMAIL_ACTION,
             PatternType.MEETING_ACTION,
             PatternType.EMPLOYEE_INFO
-        ]:
+        ] or entities.get("hr_code")  # Also fetch if employee is selected
+
+        if needs_employee_context:
             employee = await self._get_employee_data(
                 hr_code=entities.get("hr_code"),
                 full_name=entities.get("employee_name"),
@@ -320,6 +323,9 @@ class IntelligentChatbotService:
                     "additional_data": additional_data,
                     "performance_rating_latest": additional_data.get("performance_rating_latest") or additional_data.get("performance_rating")
                 }
+
+                # Also add additional_data at top level for easier LLM context access
+                context["additional_data"] = additional_data
 
                 # Manager/team and department rollups for richer context
                 if employee.manager_id:
@@ -1601,25 +1607,104 @@ Best regards,
         message: str,
         context: Dict[str, Any]
     ) -> str:
-        """Generate general response using LLM"""
+        """Generate general response using LLM with comprehensive employee context"""
         # Build context-aware prompt
         employee = context.get("employee")
         churn = context.get("churn", {})
         reasoning = context.get("reasoning", {})
+        additional_data = context.get("additional_data", {})
+        company_overview = context.get("company_overview", {})
 
         employee_context = ""
         if employee:
             risk = churn.get("resign_proba", reasoning.get("churn_risk", 0))
             risk_level = "High" if risk >= 0.6 else "Medium" if risk >= 0.3 else "Low"
+
+            # Basic employee info (employee is a dict from context)
             employee_context = f"""
-Current employee context:
-- Name: {employee.full_name}
-- HR Code: {employee.hr_code}
-- Position: {employee.position}
-- Department: {employee.structure_name}
-- Tenure: {employee.tenure:.1f} years
-- Churn Risk: {risk:.1%} ({risk_level})
-- Stage: {reasoning.get('stage', 'Unknown')}
+=== SELECTED EMPLOYEE ===
+Name: {employee.get('full_name', 'Unknown')}
+HR Code: {employee.get('hr_code', 'N/A')}
+Position: {employee.get('position', 'N/A')}
+Department: {employee.get('structure_name', 'N/A')}
+Tenure: {employee.get('tenure', 0):.1f} years
+Status: {employee.get('status', 'Active')}
+
+=== CHURN RISK ASSESSMENT ===
+Overall Risk: {risk:.1%} ({risk_level})
+Behavioral Stage: {reasoning.get('stage', 'Unknown')}
+ML Score: {reasoning.get('ml_score', 0):.2f}
+Heuristic Score: {reasoning.get('heuristic_score', 0):.2f}
+Confidence Level: {reasoning.get('confidence_level', 0.7):.0%}
+"""
+
+            # Add ML risk factors
+            ml_contributors = reasoning.get('ml_contributors', [])
+            if ml_contributors and isinstance(ml_contributors, list):
+                employee_context += "\n=== TOP RISK FACTORS (ML Model) ===\n"
+                for contrib in ml_contributors[:5]:
+                    if isinstance(contrib, dict):
+                        feature = contrib.get('feature', 'Unknown')
+                        importance = contrib.get('importance', 0)
+                        value = contrib.get('value', 'N/A')
+                        employee_context += f"- {feature}: {value} (impact: {importance:.2f})\n"
+
+            # Add heuristic alerts
+            heuristic_alerts = reasoning.get('heuristic_alerts', [])
+            if heuristic_alerts and isinstance(heuristic_alerts, list):
+                employee_context += "\n=== BEHAVIORAL ALERTS ===\n"
+                for alert in heuristic_alerts[:5]:
+                    if isinstance(alert, dict):
+                        msg = alert.get('message', alert.get('rule_name', 'Alert'))
+                        employee_context += f"⚠ {msg}\n"
+
+            # Add recommendations if available
+            recommendations = reasoning.get('recommendations', [])
+            if recommendations:
+                employee_context += "\n=== AI RECOMMENDATIONS ===\n"
+                if isinstance(recommendations, list):
+                    for rec in recommendations[:3]:
+                        rec_text = rec.get('recommendation', str(rec)) if isinstance(rec, dict) else str(rec)
+                        employee_context += f"→ {rec_text}\n"
+                elif isinstance(recommendations, str):
+                    employee_context += f"→ {recommendations}\n"
+
+            # Add additional employee data if available
+            if additional_data:
+                employee_context += "\n=== EMPLOYEE DETAILS ===\n"
+                if additional_data.get('age'):
+                    employee_context += f"Age: {additional_data['age']}\n"
+                if additional_data.get('education'):
+                    employee_context += f"Education: {additional_data['education']}\n"
+                if additional_data.get('performance_rating'):
+                    employee_context += f"Performance Rating: {additional_data['performance_rating']}/5\n"
+                if additional_data.get('job_satisfaction'):
+                    employee_context += f"Job Satisfaction: {additional_data['job_satisfaction']}/4\n"
+                if additional_data.get('work_life_balance'):
+                    employee_context += f"Work-Life Balance: {additional_data['work_life_balance']}/4\n"
+                if additional_data.get('environment_satisfaction'):
+                    employee_context += f"Environment Satisfaction: {additional_data['environment_satisfaction']}/4\n"
+                if additional_data.get('relationship_satisfaction'):
+                    employee_context += f"Relationship Satisfaction: {additional_data['relationship_satisfaction']}/4\n"
+                if additional_data.get('years_since_last_promotion'):
+                    employee_context += f"Years Since Last Promotion: {additional_data['years_since_last_promotion']}\n"
+                if additional_data.get('years_in_current_role'):
+                    employee_context += f"Years in Current Role: {additional_data['years_in_current_role']}\n"
+                if additional_data.get('training_times_last_year'):
+                    employee_context += f"Training Sessions (Last Year): {additional_data['training_times_last_year']}\n"
+                if additional_data.get('over_time'):
+                    employee_context += f"Works Overtime: {additional_data['over_time']}\n"
+                if additional_data.get('business_travel'):
+                    employee_context += f"Business Travel: {additional_data['business_travel']}\n"
+
+        # Add company context for comparison
+        company_context = ""
+        if company_overview:
+            company_context = f"""
+=== COMPANY OVERVIEW ===
+Total Employees: {company_overview.get('total_employees', 'N/A')}
+High Risk: {company_overview.get('high_risk_count', 'N/A')}
+Average Risk: {company_overview.get('avg_risk', 0):.1%}
 """
 
         system_prompt = f"""{settings.CHATBOT_SYSTEM_PROMPT}
@@ -1627,6 +1712,7 @@ Current employee context:
 You are ChurnVision AI Assistant, helping HR professionals with employee retention and churn analytics.
 Provide concise, actionable insights based on the data available.
 {employee_context}
+{company_context}
 """
 
         messages = [
@@ -1671,9 +1757,9 @@ Provide concise, actionable insights based on the data available.
                 risk = churn.get("resign_proba", reasoning.get("churn_risk", 0))
                 risk_level = "High" if risk >= 0.6 else "Medium" if risk >= 0.3 else "Low"
                 return (
-                    f"I'm analyzing {employee.full_name} ({employee.hr_code}). "
+                    f"I'm analyzing {employee.get('full_name', 'this employee')} ({employee.get('hr_code', 'N/A')}). "
                     f"They have a {risk:.0%} churn risk ({risk_level} priority) "
-                    f"and have been with the company for {employee.tenure:.1f} years. "
+                    f"and have been with the company for {employee.get('tenure', 0):.1f} years. "
                     "What would you like to know about this employee?"
                 )
 

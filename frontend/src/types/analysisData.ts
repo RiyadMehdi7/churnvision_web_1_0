@@ -501,9 +501,77 @@ export interface DepartmentAnalysisData {
   message?: string;
 }
 
+// Email Action Data for EmailComposer
+export interface EmailActionData {
+  type: 'email_action';
+  targetEmployeeName: string;
+  targetHrCode: string;
+  emailData: {
+    to: string[];
+    cc: string[];
+    subject: string;
+    body: string;
+  };
+  employeeContext: {
+    position?: string;
+    department?: string;
+    tenure?: number;
+    riskLevel: string;
+    riskScore: number;
+  };
+  suggestedContext?: string;
+}
+
+// Meeting Action Data for TeamsComposer
+export interface MeetingActionData {
+  type: 'meeting_action';
+  targetEmployeeName: string;
+  targetHrCode: string;
+  meetingData: {
+    title: string;
+    attendees: string[];
+    duration: number;
+    agenda: string;
+  };
+  employeeContext: {
+    position?: string;
+    department?: string;
+    tenure?: number;
+    riskLevel: string;
+    riskScore: number;
+  };
+  suggestedContext?: string;
+}
+
+// Employee Info Data for employee summary display
+export interface EmployeeInfoData {
+  type: 'employee_info';
+  targetEmployeeName: string;
+  targetHrCode: string;
+  profile: {
+    fullName: string;
+    hrCode: string;
+    position?: string;
+    department?: string;
+    tenure?: number;
+    status?: string;
+    employeeCost?: number;
+  };
+  riskAssessment: {
+    overallRisk: number;
+    riskLevel: string;
+    stage: string;
+    mlScore: number;
+    heuristicScore: number;
+    confidenceLevel: number;
+    topRiskFactors: string[];
+  };
+  summary: string;
+}
+
 // Union Type for All Structured Data (Enhanced Only)
-export type PossibleStructuredData = 
-  | SimilarityAnalysisData 
+export type PossibleStructuredData =
+  | SimilarityAnalysisData
   | EnhancedSimilarityAnalysisData
   | EnhancedChurnRiskDiagnosisData
   | EnhancedRetentionPlaybookData
@@ -514,6 +582,9 @@ export type PossibleStructuredData =
   | LegacyRetentionPlaybookData
   | PeerRetentionComparisonData
   | LegacyExitPatternData
+  | EmailActionData
+  | MeetingActionData
+  | EmployeeInfoData
   | null;
 
 // Legacy/simple retention playbook format support

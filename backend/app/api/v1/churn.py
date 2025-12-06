@@ -1073,3 +1073,263 @@ def _determine_stage(tenure: float) -> str:
         return "Senior"
     else:
         return "Veteran"
+
+
+# ============================================================================
+# MODEL INTELLIGENCE ENDPOINTS
+# ============================================================================
+
+from app.services.model_intelligence_service import model_intelligence_service
+from app.services.risk_alert_service import risk_alert_service
+
+
+@router.get("/model/backtesting")
+async def get_backtesting_results(
+    periods: int = 6,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get backtesting results showing historical prediction accuracy.
+
+    Returns:
+    - Period-by-period accuracy metrics
+    - Aggregate statistics (precision, recall, catch rate)
+    - Historical trend data
+    """
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        results = await model_intelligence_service.get_backtesting_results(
+            db, dataset.dataset_id, periods
+        )
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get backtesting results: {str(e)}"
+        )
+
+
+@router.get("/model/prediction-outcomes")
+async def get_prediction_outcomes(
+    limit: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get individual prediction outcomes - what we predicted vs what happened.
+
+    Returns:
+    - List of predictions with actual outcomes
+    - Summary statistics
+    """
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        results = await model_intelligence_service.get_prediction_outcomes(
+            db, dataset.dataset_id, limit
+        )
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get prediction outcomes: {str(e)}"
+        )
+
+
+@router.get("/timeline/{hr_code}")
+async def get_departure_timeline(
+    hr_code: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get predicted departure timeline for an employee.
+
+    Returns:
+    - Probability of departure at different time horizons (30d, 60d, 90d, 180d)
+    - Predicted departure window
+    - Urgency level
+    """
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        timeline = await model_intelligence_service.get_departure_timeline(
+            db, hr_code, dataset.dataset_id
+        )
+        if not timeline:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Employee {hr_code} not found"
+            )
+        return timeline.__dict__
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get departure timeline: {str(e)}"
+        )
+
+
+@router.get("/timelines/batch")
+async def get_batch_departure_timelines(
+    limit: int = 100,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get departure timelines for multiple high-risk employees.
+    """
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        timelines = await model_intelligence_service.get_batch_departure_timelines(
+            db, dataset.dataset_id, limit
+        )
+        return {"timelines": timelines}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get batch timelines: {str(e)}"
+        )
+
+
+@router.get("/cohort/{hr_code}")
+async def get_cohort_analysis(
+    hr_code: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get cohort comparison analysis for an employee.
+
+    Returns:
+    - Similar employees who left
+    - Similar employees who stayed
+    - Common risk factors
+    - Retention insights
+    """
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        analysis = await model_intelligence_service.get_cohort_analysis(
+            db, hr_code, dataset.dataset_id
+        )
+        if not analysis:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Employee {hr_code} not found"
+            )
+        return {
+            "target_employee": analysis.target_employee,
+            "similar_who_left": analysis.similar_who_left,
+            "similar_who_stayed": analysis.similar_who_stayed,
+            "common_risk_factors": analysis.common_risk_factors,
+            "retention_insights": analysis.retention_insights,
+            "recommended_actions": analysis.recommended_actions
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get cohort analysis: {str(e)}"
+        )
+
+
+@router.get("/cohorts/overview")
+async def get_cohort_overview(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get cohort overview for the dashboard.
+
+    Returns:
+    - Department cohort statistics
+    - Tenure cohort statistics
+    """
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        overview = await model_intelligence_service.get_cohort_overview(
+            db, dataset.dataset_id
+        )
+        return overview
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get cohort overview: {str(e)}"
+        )
+
+
+# ============================================================================
+# ALERT ENDPOINTS
+# ============================================================================
+
+
+@router.get("/alerts")
+async def get_risk_alerts(
+    limit: int = 20,
+    include_read: bool = False,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get recent risk alerts.
+
+    Returns:
+    - List of alerts with severity and context
+    - Unread count
+    - Severity breakdown
+    """
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        alerts = await risk_alert_service.get_recent_alerts(
+            db, dataset.dataset_id, limit, include_read
+        )
+        return alerts
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get alerts: {str(e)}"
+        )
+
+
+@router.post("/alerts/{alert_id}/read")
+async def mark_alert_read(
+    alert_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Mark a specific alert as read."""
+    try:
+        await risk_alert_service.mark_alert_read(db, alert_id)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to mark alert as read: {str(e)}"
+        )
+
+
+@router.post("/alerts/read-all")
+async def mark_all_alerts_read(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Mark all alerts as read."""
+    try:
+        count = await risk_alert_service.mark_all_read(db)
+        return {"success": True, "count": count}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to mark alerts as read: {str(e)}"
+        )

@@ -6,6 +6,7 @@ import {
   ChevronDown,
   FolderKanban,
   Brain,
+  Clock,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -21,6 +22,9 @@ import { AnalysisResultVisualization } from '../components/AnalysisResultVisuali
 import EmployeeNetworkGraph from '../components/EmployeeNetworkGraph';
 import { ModelTrainingRequired } from '../components/ModelTrainingRequired';
 import { TrainingReminderBanner } from '../components/TrainingReminderBanner';
+import { ModelIntelligenceTab } from '../components/ModelIntelligenceTab';
+import { CohortAnalysisTab } from '../components/CohortAnalysisTab';
+import { modelIntelligenceService, DepartureTimeline } from '../services/modelIntelligence';
 
 import {
   Select,
@@ -1213,13 +1217,15 @@ const EmployeeTableRow = memo(({
   onReasoningClick,
   style,
   getRiskLevel,
-  getRiskLevelWithStyles
+  getRiskLevelWithStyles,
+  departureTimeline
 }: {
   employee: Employee;
   onReasoningClick: (employee: Employee) => void;
   style?: React.CSSProperties;
   getRiskLevel: (probability: number) => 'High' | 'Medium' | 'Low';
   getRiskLevelWithStyles: (probability: number) => any;
+  departureTimeline?: DepartureTimeline;
 }) => {
   // Handle potential NaN in churnProbability
   const probability = isNaN(employee.churnProbability) ? 0 : employee.churnProbability;
@@ -1261,20 +1267,20 @@ const EmployeeTableRow = memo(({
       onClick={() => onReasoningClick(employee)}
     >
       {/* Inner elements are divs with widths and padding matching TH */}
-      <div className="px-6 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 truncate w-[20%]">
+      <div className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 truncate w-[18%]">
         {employee.full_name || (
           <span className="text-red-500 dark:text-red-400 flex items-center gap-1">
             {/* SVG */} Missing Name
           </span>
         )}
       </div>
-      <div className="px-6 py-3 text-sm text-gray-600 dark:text-gray-400 truncate w-[15%]">
+      <div className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 truncate w-[13%]">
         {employee.structure_name || 'Unassigned'}
       </div>
-      <div className="px-6 py-3 text-sm text-gray-600 dark:text-gray-400 truncate w-[15%]">
+      <div className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 truncate w-[13%]">
         {employee.position || 'Unassigned'}
       </div>
-      <div className="px-6 py-3 w-[10%]">
+      <div className="px-4 py-3 w-[9%]">
         <span className={cn(
           'px-2.5 py-0.5 text-xs font-medium rounded-full inline-block',
           `${riskInfo.color} ${riskInfo.bgColor} ${riskInfo.darkColor} ${riskInfo.darkBgColor}`
@@ -1282,7 +1288,7 @@ const EmployeeTableRow = memo(({
           {riskLevel}
         </span>
       </div>
-      <div className="px-6 py-3 w-[15%]">
+      <div className="px-4 py-3 w-[13%]">
         <div className="flex items-center gap-2">
           <div className="text-sm font-medium text-gray-900 dark:text-gray-200">
             {(probability * 100).toFixed(1)}%
@@ -1290,15 +1296,35 @@ const EmployeeTableRow = memo(({
           <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800">
             <div className={`w-2 h-2 rounded-full ${confidenceColor}`}></div>
             <span className="text-xs text-blue-700 dark:text-blue-300 whitespace-nowrap font-medium">
-              {confidence}% conf.
+              {confidence}%
             </span>
           </div>
         </div>
       </div>
-      <div className="px-6 py-3 text-sm text-gray-600 dark:text-gray-400 w-[10%]">
+      <div className="px-4 py-3 w-[12%]">
+        {departureTimeline ? (
+          <div className="flex flex-col gap-0.5">
+            <span className={cn(
+              'text-xs font-medium px-2 py-0.5 rounded-full inline-block w-fit',
+              departureTimeline.urgency === 'critical' && 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+              departureTimeline.urgency === 'high' && 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+              departureTimeline.urgency === 'medium' && 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+              departureTimeline.urgency === 'low' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+            )}>
+              {departureTimeline.predicted_departure_window}
+            </span>
+            <span className="text-[10px] text-gray-500 dark:text-gray-400">
+              {Math.round(departureTimeline.confidence * 100)}% confidence
+            </span>
+          </div>
+        ) : (
+          <span className="text-xs text-gray-400 dark:text-gray-500">-</span>
+        )}
+      </div>
+      <div className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 w-[9%]">
         {employee.status || 'Active'}
       </div>
-      <div className="px-6 py-3 w-[15%]">
+      <div className="px-4 py-3 w-[13%]">
         <div className="flex items-center gap-2">
           <button
             onClick={handleReasoningClick}
@@ -1398,12 +1424,37 @@ export function Home(): React.ReactElement {
   const [thresholdVersion, setThresholdVersion] = useState(0);
 
   // Tab state management
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'deep-analysis' | 'network'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'deep-analysis' | 'network' | 'model-intelligence' | 'cohort-analysis'>('dashboard');
 
   // Wrapper function to prevent access to insights tab
-  const setActiveTabSafe = (tab: 'dashboard' | 'deep-analysis' | 'network') => {
+  const setActiveTabSafe = (tab: 'dashboard' | 'deep-analysis' | 'network' | 'model-intelligence' | 'cohort-analysis') => {
     setActiveTab(tab);
   };
+
+  // Departure timelines for Time to Leave column
+  const [departureTimelines, setDepartureTimelines] = useState<Map<string, DepartureTimeline>>(new Map());
+  const [isLoadingTimelines, setIsLoadingTimelines] = useState(false);
+
+  // Fetch departure timelines for high-risk employees
+  useEffect(() => {
+    const fetchTimelines = async () => {
+      if (!homeEmployees || homeEmployees.length === 0) return;
+
+      setIsLoadingTimelines(true);
+      try {
+        const result = await modelIntelligenceService.getBatchDepartureTimelines(100);
+        const timelinesMap = new Map<string, DepartureTimeline>();
+        result.timelines.forEach(t => timelinesMap.set(t.hr_code, t));
+        setDepartureTimelines(timelinesMap);
+      } catch (err) {
+        console.error('Error fetching departure timelines:', err);
+      } finally {
+        setIsLoadingTimelines(false);
+      }
+    };
+
+    fetchTimelines();
+  }, [homeEmployees]);
 
   // Deep Analysis state
   const [selectedAnalysisType, setSelectedAnalysisType] = useState<string>('');
@@ -1990,6 +2041,54 @@ export function Home(): React.ReactElement {
             )}
           </button>
 
+          <button
+            onClick={() => setActiveTabSafe('model-intelligence')}
+            className={cn(
+              'relative py-2 px-1 text-sm font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+              activeTab === 'model-intelligence'
+                ? 'text-blue-600 dark:text-blue-400'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            )}
+          >
+            <span className="font-semibold">Model Intelligence</span>
+            {activeTab === 'model-intelligence' && (
+              <motion.div
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400"
+                layoutId="activeTabIndicator"
+                initial={false}
+                transition={{
+                  type: "spring",
+                  stiffness: 500,
+                  damping: 30
+                }}
+              />
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTabSafe('cohort-analysis')}
+            className={cn(
+              'relative py-2 px-1 text-sm font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+              activeTab === 'cohort-analysis'
+                ? 'text-blue-600 dark:text-blue-400'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            )}
+          >
+            <span className="font-semibold">Cohort Analysis</span>
+            {activeTab === 'cohort-analysis' && (
+              <motion.div
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400"
+                layoutId="activeTabIndicator"
+                initial={false}
+                transition={{
+                  type: "spring",
+                  stiffness: 500,
+                  damping: 30
+                }}
+              />
+            )}
+          </button>
+
         </div>
       </div>
 
@@ -2153,37 +2252,43 @@ export function Home(): React.ReactElement {
                   <thead className="bg-gray-50 dark:bg-gray-700/50 sticky top-0 z-10">
                     <tr>
                       {/* TH elements - Removed uppercase and tracking-wider */}
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[20%]">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[18%]">
                         <div className="flex items-center" onClick={() => handleSort('full_name')}>
                           Name <SortIcon field="full_name" />
                         </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[15%]">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[13%]">
                         <div className="flex items-center" onClick={() => handleSort('structure_name')}>
                           Department <SortIcon field="structure_name" />
                         </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[15%]">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[13%]">
                         <div className="flex items-center" onClick={() => handleSort('position')}>
                           Position <SortIcon field="position" />
                         </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[10%]">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[9%]">
                         <div className="flex items-center" onClick={() => handleSort('riskLevel')}>
                           Risk <SortIcon field="riskLevel" />
                         </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[15%]">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[13%]">
                         <div className="flex items-center" onClick={() => handleSort('churnProbability')}>
                           Churn % <SortIcon field="churnProbability" />
                         </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[10%]">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 w-[12%]">
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          Time to Leave
+                        </div>
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors w-[9%]">
                         <div className="flex items-center" onClick={() => handleSort('status')}>
                           Status <SortIcon field="status" />
                         </div>
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 w-[15%]">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 w-[13%]">
                         Actions
                       </th>
                     </tr>
@@ -2205,6 +2310,7 @@ export function Home(): React.ReactElement {
                         onReasoningClick={handleReasoningClick}
                         getRiskLevel={getRiskLevel}
                         getRiskLevelWithStyles={getRiskLevelWithStyles}
+                        departureTimeline={departureTimelines.get(employee.hr_code)}
                         style={{
                           position: 'absolute',
                           top: 0,
@@ -2236,6 +2342,16 @@ export function Home(): React.ReactElement {
             ignored.
           </p>
         </div>
+      )}
+
+      {/* Model Intelligence Tab Content */}
+      {activeTab === 'model-intelligence' && (
+        <ModelIntelligenceTab />
+      )}
+
+      {/* Cohort Analysis Tab Content */}
+      {activeTab === 'cohort-analysis' && (
+        <CohortAnalysisTab />
       )}
 
       {/* Deep Analysis Tab Content */}

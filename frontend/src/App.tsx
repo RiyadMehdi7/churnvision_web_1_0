@@ -30,6 +30,17 @@ import { KeepAliveRoutes } from './components/KeepAliveRoutes';
 import { useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+// Create a stable QueryClient instance
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      retry: 1,
+    },
+  },
+});
 
 
 // Web application - not running in Electron
@@ -644,10 +655,12 @@ export const App: React.FC = (): React.ReactElement => {
         <LicenseProvider>
           <ErrorBoundary level="page" showDetails={process.env.NODE_ENV === 'development'}>
             <ProjectProvider>
-              <ErrorBoundary level="component">
-                <AppContent />
-              </ErrorBoundary>
-              <Toaster />
+              <QueryClientProvider client={queryClient}>
+                <ErrorBoundary level="component">
+                  <AppContent />
+                </ErrorBoundary>
+                <Toaster />
+              </QueryClientProvider>
             </ProjectProvider>
           </ErrorBoundary>
         </LicenseProvider>

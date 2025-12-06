@@ -501,7 +501,7 @@ const CustomizableHomeContent: React.FC<CustomizableHomeContentProps> = ({ onTog
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
                 ChurnVision Dashboard
               </h1>
               <p className="text-gray-600 dark:text-gray-400">

@@ -4,8 +4,6 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from openai import AsyncOpenAI, AsyncAzureOpenAI
 from ollama import AsyncClient
-from openai import AsyncOpenAI, AsyncAzureOpenAI
-from ollama import AsyncClient
 import httpx
 import asyncio
 
@@ -266,12 +264,26 @@ class ChatbotService:
             timeout=settings.LLM_REQUEST_TIMEOUT
         )
 
-        message = response.get("message", {}) if isinstance(response, dict) else {}
-        content = message.get("content", "")
+        # Handle both dict (older ollama versions) and ChatResponse object (newer versions)
+        if isinstance(response, dict):
+            message = response.get("message", {})
+            content = message.get("content", "") if isinstance(message, dict) else ""
+            eval_count = response.get('eval_count', 0)
+            prompt_eval_count = response.get('prompt_eval_count', 0)
+        else:
+            # Newer ollama-python versions return ChatResponse object with attributes
+            message = getattr(response, 'message', None)
+            if message:
+                content = getattr(message, 'content', '') or ''
+            else:
+                content = ''
+            eval_count = getattr(response, 'eval_count', 0) or 0
+            prompt_eval_count = getattr(response, 'prompt_eval_count', 0) or 0
+
         return content, {
-            "tokens_used": response.get('eval_count', 0) + response.get('prompt_eval_count', 0) if isinstance(response, dict) else None,
-            "prompt_tokens": response.get('prompt_eval_count', 0) if isinstance(response, dict) else None,
-            "completion_tokens": response.get('eval_count', 0) if isinstance(response, dict) else None
+            "tokens_used": eval_count + prompt_eval_count,
+            "prompt_tokens": prompt_eval_count,
+            "completion_tokens": eval_count
         }
 
     async def generate_response(

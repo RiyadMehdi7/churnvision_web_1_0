@@ -109,7 +109,7 @@ async def upload_document(
             document_type=document_type,
             tags=tags,
             project_id=project_id,
-            user_id=current_user.id,
+            user_id=str(current_user.id),
         )
 
         return DocumentUploadResponse(
@@ -243,7 +243,7 @@ async def create_custom_rule(
         category=request.category.value if request.category else None,
         priority=request.priority,
         project_id=request.project_id,
-        user_id=current_user.id,
+        user_id=str(current_user.id),
     )
 
     return CustomRuleResponse(
@@ -507,7 +507,7 @@ async def get_rag_settings(
     rag_service = RAGService(db)
     settings_record = await rag_service.get_settings(
         project_id=project_id,
-        user_id=current_user.id,
+        user_id=str(current_user.id),
     )
 
     return KnowledgeBaseSettingsResponse(
@@ -543,7 +543,7 @@ async def update_rag_settings(
     settings_record = await rag_service.update_settings(
         updates=updates,
         project_id=project_id,
-        user_id=current_user.id,
+        user_id=str(current_user.id),
     )
 
     return KnowledgeBaseSettingsResponse(

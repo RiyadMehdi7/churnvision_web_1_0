@@ -2507,8 +2507,11 @@ export function DataManagement(): React.ReactElement {
 
     // Add a TrainingStatusDisplay component - reads from global trainingStatus now
     const TrainingStatusDisplay = () => {
+        // Subscribe directly to the store for proper reactivity
+        const currentTrainingStatus = useGlobalDataCache(state => state.trainingStatus);
+
         // Use global trainingStatus, check if null before accessing properties
-        if (!trainingStatus || trainingStatus.status === 'idle') return null;
+        if (!currentTrainingStatus || currentTrainingStatus.status === 'idle') return null;
 
         let statusColor = 'gray';
         let statusIcon = <Loader2 className="w-4 h-4 animate-spin" />;
@@ -2516,19 +2519,19 @@ export function DataManagement(): React.ReactElement {
         let borderColor = 'border-gray-200 dark:border-slate-600';
         let textColor = 'text-gray-700 dark:text-slate-200';
 
-        if (trainingStatus.status === 'in_progress' || trainingStatus.status === 'queued') {
+        if (currentTrainingStatus.status === 'in_progress' || currentTrainingStatus.status === 'queued') {
             statusColor = 'blue';
             statusIcon = <Loader2 className="w-4 h-4 animate-spin" />;
             bgColor = 'bg-blue-50 dark:bg-blue-950/50';
             borderColor = 'border-blue-300 dark:border-blue-800';
             textColor = 'text-blue-700 dark:text-blue-300';
-        } else if (trainingStatus.status === 'complete') {
+        } else if (currentTrainingStatus.status === 'complete') {
             statusColor = 'green';
             statusIcon = <Check className="w-4 h-4" />;
             bgColor = 'bg-green-50 dark:bg-emerald-950/50';
             borderColor = 'border-green-300 dark:border-emerald-800';
             textColor = 'text-green-700 dark:text-emerald-300';
-        } else if (trainingStatus.status === 'error') {
+        } else if (currentTrainingStatus.status === 'error') {
             statusColor = 'red';
             statusIcon = <X className="w-4 h-4" />;
             bgColor = 'bg-red-50 dark:bg-red-950/50';
@@ -2537,40 +2540,35 @@ export function DataManagement(): React.ReactElement {
         }
 
         return (
-            <div className={`mt-4 p-4 border rounded-lg ${bgColor} ${borderColor}`}> {/* Use dynamic bg and border */}
-                <div className={`flex items-center gap-2 mb-2 ${textColor}`}> {/* Use dynamic text color */}
+            <div className={`mt-4 p-4 border rounded-lg ${bgColor} ${borderColor}`}>
+                <div className={`flex items-center gap-2 mb-2 ${textColor}`}>
                     {statusIcon}
                     <span className="font-medium">
-                        {/* Add null check */}
-                        Model Training: {trainingStatus?.status ? (trainingStatus.status.charAt(0).toUpperCase() + trainingStatus.status.slice(1)) : 'Loading...'}
+                        Model Training: {currentTrainingStatus.status.charAt(0).toUpperCase() + currentTrainingStatus.status.slice(1)}
                     </span>
                 </div>
 
-                {/* Check trainingStatus before accessing message */}
-                <p className={`text-sm mb-2 ${textColor}`}> {/* Use dynamic text color */}
-                    {trainingStatus?.message || 'Loading status...'}
+                <p className={`text-sm mb-2 ${textColor}`}>
+                    {currentTrainingStatus.message || 'Loading status...'}
                 </p>
 
-                {/* Add helpful message for completed training */}
-                {trainingStatus?.status === 'complete' && (
+                {currentTrainingStatus.status === 'complete' && (
                     <p className={`text-xs ${textColor} opacity-75`}>
                         Model is ready for predictions. You can retrain with new data if needed.
                     </p>
                 )}
 
-                {/* Check trainingStatus before accessing status/progress */}
-                {(trainingStatus?.status === 'in_progress' || trainingStatus?.status === 'queued') && (
-                    <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 mb-2"> {/* Consistent progress bar bg */}
+                {(currentTrainingStatus.status === 'in_progress' || currentTrainingStatus.status === 'queued') && (
+                    <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2.5 mb-2">
                         <div
-                            className={`h-2.5 rounded-full ${statusColor === 'blue' ? 'bg-blue-600 dark:bg-blue-500' : 'bg-gray-500'}`} /* Consistent progress bar fill */
-                            style={{ width: `${trainingStatus?.progress || 0}%` }} // Default progress to 0 if null
+                            className={`h-2.5 rounded-full ${statusColor === 'blue' ? 'bg-blue-600 dark:bg-blue-500' : 'bg-gray-500'}`}
+                            style={{ width: `${currentTrainingStatus.progress || 0}%` }}
                         ></div>
                     </div>
                 )}
 
-                {/* Check trainingStatus before accessing error */}
-                {trainingStatus?.error && (
-                    <p className={`text-sm mt-2 ${statusColor === 'red' ? 'text-red-600 dark:text-red-400' : textColor}`}>{trainingStatus.error}</p> /* Specific error color */
+                {currentTrainingStatus.error && (
+                    <p className={`text-sm mt-2 ${statusColor === 'red' ? 'text-red-600 dark:text-red-400' : textColor}`}>{currentTrainingStatus.error}</p>
                 )}
             </div>
         );

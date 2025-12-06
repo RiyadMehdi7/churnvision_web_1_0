@@ -1,11 +1,8 @@
 from datetime import datetime, timedelta
 from typing import Any, Optional
-from passlib.context import CryptContext
+import bcrypt
 from jose import jwt
 from app.core.config import settings
-
-# Password hashing context using bcrypt
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def create_access_token(subject: str | Any, expires_delta: Optional[timedelta] = None) -> str:
@@ -31,6 +28,19 @@ def create_access_token(subject: str | Any, expires_delta: Optional[timedelta] =
     return encoded_jwt
 
 
+def _prepare_password(password: str) -> bytes:
+    """
+    Prepare password for bcrypt by encoding and truncating to 72 bytes.
+
+    Args:
+        password: Plain text password
+
+    Returns:
+        Password bytes truncated to 72 bytes (bcrypt limit)
+    """
+    return password.encode('utf-8')[:72]
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Verify a plain password against a hashed password.
@@ -42,7 +52,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         True if password matches, False otherwise
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    return bcrypt.checkpw(
+        _prepare_password(plain_password),
+        hashed_password.encode('utf-8')
+    )
 
 
 def get_password_hash(password: str) -> str:
@@ -55,4 +68,6 @@ def get_password_hash(password: str) -> str:
     Returns:
         Hashed password
     """
-    return pwd_context.hash(password)
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(_prepare_password(password), salt)
+    return hashed.decode('utf-8')

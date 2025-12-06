@@ -83,8 +83,8 @@ const getSessionStorageData = (key: string, forceRefresh = false): any[] | null 
         const parsed = JSON.parse(cached);
         if (!parsed || !parsed.data || !parsed.timestamp) return null;
 
-        // Consider data valid for 3 minutes (reduced for better freshness)
-        if (Date.now() - parsed.timestamp < 3 * 60 * 1000) {
+        // Consider data valid for 15 minutes to reduce unnecessary re-enhancement
+        if (Date.now() - parsed.timestamp < 15 * 60 * 1000) {
             return parsed.data;
         }
 
@@ -296,6 +296,8 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
                 const activeEmployees = filterActiveEmployees(data);
 
                 const hasCachedReasoning = activeEmployees.some(emp => emp && typeof emp.reasoningChurnRisk === 'number');
+                const allHaveReasoning = hasCachedReasoning &&
+                    activeEmployees.filter(emp => emp && typeof emp.reasoningChurnRisk === 'number').length >= activeEmployees.length * 0.9;
                 modelReady = modelReady || hasCachedReasoning;
 
                 // Calculate basic metrics only if the churn model is ready
@@ -354,6 +356,35 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
 
                 console.log(`[fetchHomeData] Basic data displayed. Starting reasoning enhancement in background...`);
 
+                // Skip enhancement if 90%+ of employees already have reasoning data
+                if (allHaveReasoning) {
+                    console.log(`[fetchHomeData] Skipping enhancement - ${activeEmployees.length} employees already have reasoning data`);
+
+                    // Use the existing data with reasoning as final
+                    const enhancedEmployees = activeEmployees.map(emp => ({
+                        ...emp,
+                        tenure_years: emp.tenure || 0,
+                        hasReasoningData: typeof emp.reasoningChurnRisk === 'number',
+                        churnProbability: emp.reasoningChurnRisk ?? emp.churnProbability ?? emp.resign_proba ?? 0,
+                    }));
+
+                    set({
+                        homeEmployees: enhancedEmployees,
+                        homeMetrics: basicMetrics,
+                        aiAssistantEmployees: enhancedEmployees,
+                        playgroundEmployees: enhancedEmployees,
+                        isEnhancingWithReasoning: false,
+                        reasoningEnhancementProgress: 100,
+                        activeDatasetId: datasetId || null,
+                    });
+
+                    saveToSessionStorage(employeeCacheKey, enhancedEmployees);
+                    if (modelReady && basicMetrics) {
+                        saveToSessionStorage(metricsCacheKey, basicMetrics);
+                    }
+                    return;
+                }
+
                 // Enhance with reasoning data in the background (non-blocking)
                 if (modelReady) {
                     set({ isEnhancingWithReasoning: true, reasoningEnhancementProgress: 0 });
@@ -364,9 +395,8 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
                         activeEmployees,
                         progress => {
                             console.log(`[fetchHomeData] Background reasoning enhancement progress: ${progress}%`);
-                            if (progress % 20 === 0 || progress === 100) {
-                                set({ reasoningEnhancementProgress: progress });
-                            }
+                            // Update progress on every callback to ensure UI reflects actual state
+                            set({ reasoningEnhancementProgress: progress });
                         },
                         { modelReady }
                     )
@@ -578,10 +608,14 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
                     newStatus.error = statusPayload.message;
                 }
 
+                const previousStatus = get().trainingStatus?.status;
+                const justCompleted = status === 'complete' && previousStatus !== 'complete';
+
                 set({ trainingStatus: newStatus, isTrainingComplete: status === 'complete', activeDatasetId: datasetId || null });
 
-                if (status === 'complete') {
-                    console.log(`[DataCache] Model training completed for dataset ${datasetId || 'unknown'}. Forcing data refresh.`);
+                // Only trigger data refresh when training JUST completed (status transitions to complete)
+                if (justCompleted) {
+                    console.log(`[DataCache] Model training just completed for dataset ${datasetId || 'unknown'}. Forcing data refresh.`);
                     setTimeout(() => {
                         get().fetchHomeData(projectId, true);
                         get().fetchAIAssistantData(projectId, true);
@@ -809,8 +843,8 @@ const enhanceEmployeesWithReasoning = async (
             completedBatches++;
             const progress = Math.min(95, 5 + (completedBatches / batches.length) * 90);
 
-            // Throttle progress updates to reduce re-renders
-            if (completedBatches % 2 === 0 || completedBatches === batches.length) {
+            // Report progress: first batch, every 2nd batch, and final batch
+            if (completedBatches === 1 || completedBatches % 2 === 0 || completedBatches === batches.length) {
                 onProgress?.(progress);
             }
         }

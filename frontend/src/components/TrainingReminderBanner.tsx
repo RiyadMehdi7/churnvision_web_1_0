@@ -22,7 +22,7 @@ export function TrainingReminderBanner(): React.ReactElement | null {
     : 'No churn model has been trained for this project yet.';
 
   return (
-    <div className="w-full px-4 py-3 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-900 flex flex-col md:flex-row gap-3 items-start md:items-center shadow-sm">
+    <div className="w-full px-4 py-3 mb-6 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-900 flex flex-col md:flex-row gap-3 items-start md:items-center shadow-sm">
       <div className="flex items-center gap-2 flex-1">
         <AlertTriangle className="w-5 h-5 text-amber-600" />
         <div>

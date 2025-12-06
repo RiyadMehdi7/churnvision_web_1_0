@@ -1959,9 +1959,7 @@ export function Home(): React.ReactElement {
 
       {/* Main Content with padding */}
       <div className="flex-1 flex flex-col p-6">
-        <div className="mb-6">
-          <TrainingReminderBanner />
-        </div>
+        <TrainingReminderBanner />
 
       {/* Tab Navigation */}
       <div className="flex border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-t-lg mb-6">

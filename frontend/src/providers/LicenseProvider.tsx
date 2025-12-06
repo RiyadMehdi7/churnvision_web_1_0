@@ -21,8 +21,8 @@ export type LicenseTier = 'starter' | 'pro' | 'enterprise';
 // Define feature access by license tier
 const FEATURE_ACCESS: Record<LicenseTier, string[]> = {
     starter: ['home', 'data-management', 'settings'],
-    pro: ['home', 'data-management', 'settings', 'ai-assistant'],
-    enterprise: ['home', 'data-management', 'settings', 'ai-assistant', 'playground']
+    pro: ['home', 'data-management', 'settings', 'ai-assistant', 'knowledge-base'],
+    enterprise: ['home', 'data-management', 'settings', 'ai-assistant', 'playground', 'knowledge-base']
 };
 
 // Dev override: always grant enterprise in development to unlock all pages

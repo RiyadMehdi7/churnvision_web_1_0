@@ -61,7 +61,7 @@ class RAGService:
         document_type: str = "general",
         tags: str = None,
         project_id: str = None,
-        user_id: int = None,
+        user_id: str = None,
     ) -> RAGDocument:
         """
         Full document ingestion pipeline.
@@ -266,7 +266,7 @@ class RAGService:
         category: str = None,
         priority: int = 5,
         project_id: str = None,
-        user_id: int = None,
+        user_id: str = None,
     ) -> CustomHRRule:
         """
         Create a new custom HR rule.
@@ -488,7 +488,7 @@ class RAGService:
         project_id: str = None,
         document_type: str = None,
         status: str = None,
-        user_id: int = None,
+        user_id: str = None,
     ) -> List[RAGDocument]:
         """
         List documents with optional filters.
@@ -553,7 +553,7 @@ class RAGService:
     async def get_settings(
         self,
         project_id: str = None,
-        user_id: int = None,
+        user_id: str = None,
     ) -> KnowledgeBaseSettings:
         """
         Get knowledge base settings, creating defaults if needed.
@@ -603,7 +603,7 @@ class RAGService:
         self,
         updates: Dict[str, Any],
         project_id: str = None,
-        user_id: int = None,
+        user_id: str = None,
     ) -> KnowledgeBaseSettings:
         """
         Update knowledge base settings.

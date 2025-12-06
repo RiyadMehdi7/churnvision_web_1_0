@@ -22,9 +22,9 @@ import {
   Search,
   Filter,
   RefreshCw,
-  Info,
-  ChevronRight,
+  Database,
 } from 'lucide-react';
+import { PageHeader } from '../components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -749,15 +749,19 @@ export default function KnowledgeBase() {
   const [activeTab, setActiveTab] = useState<Tab>('documents');
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Knowledge Base</h1>
-          <p className="text-muted-foreground">Manage company documents, rules, and AI behavior</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Knowledge Base"
+        subtitle="Manage company documents, rules, and AI behavior"
+        icon={Database}
+        badges={[
+          { label: 'RAG', variant: 'emerald' },
+          { label: 'AI Context', variant: 'purple' },
+        ]}
+      />
 
+      <div className="container mx-auto py-6 space-y-6">
       {/* Tab Navigation */}
       <div className="flex gap-2 border-b pb-2">
         {tabs.map((tab) => (
@@ -787,6 +791,7 @@ export default function KnowledgeBase() {
           {activeTab === 'settings' && <SettingsSection />}
         </motion.div>
       </AnimatePresence>
+      </div>
     </div>
   );
 }

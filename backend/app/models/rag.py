@@ -33,8 +33,8 @@ class RAGDocument(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Multi-tenancy
-    user_id = Column(String(100), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
+    # Multi-tenancy (no FK - different user table used in auth)
+    user_id = Column(String(100), nullable=True)
     project_id = Column(String(100), nullable=True)
 
     # Document classification
@@ -99,8 +99,8 @@ class CustomHRRule(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Multi-tenancy
-    user_id = Column(String(100), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
+    # Multi-tenancy (no FK - different user table used in auth)
+    user_id = Column(String(100), nullable=True)
     project_id = Column(String(100), nullable=True)
 
     def __repr__(self):
@@ -132,8 +132,8 @@ class KnowledgeBaseSettings(Base):
     use_general_hr_knowledge = Column(Boolean, default=True)
     strict_policy_mode = Column(Boolean, default=False)  # Only allow documented policies
 
-    # Multi-tenancy
-    user_id = Column(String(100), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
+    # Multi-tenancy (no FK - different user table used in auth)
+    user_id = Column(String(100), nullable=True)
     project_id = Column(String(100), nullable=True)
 
     # Timestamps

@@ -652,7 +652,7 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
             }
         },
 
-        startPollingTrainingStatus: (projectId, datasetId = null, intervalMs = 5000) => {
+        startPollingTrainingStatus: (projectId, datasetId = null, intervalMs = 1000) => {
             if (!projectId) {
                 console.log('[startPollingTrainingStatus] No projectId, cannot start polling.');
                 return;

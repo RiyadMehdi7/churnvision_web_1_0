@@ -87,6 +87,7 @@ const AIAssistant = preloadComponent(() => import('./pages/AIAssistant').then(mo
 const Playground = preloadComponent(() => import('./pages/Playground').then(module => ({ default: module.Playground })));
 const Diagnostics = preloadComponent(() => import('./pages/Diagnostics').then(module => ({ default: module.default })));
 const KnowledgeBase = preloadComponent(() => import('./pages/KnowledgeBase').then(module => ({ default: module.default })));
+const Admin = preloadComponent(() => import('./pages/admin/Admin').then(module => ({ default: module.Admin })));
 
 // Start preloading main components in the background
 Home.preload();
@@ -412,6 +413,16 @@ function AppContent(): ReactElement {
         <AuthProtectedRoute>
           <PageTransition>
             <KnowledgeBase />
+          </PageTransition>
+        </AuthProtectedRoute>
+      ),
+    },
+    {
+      path: '/admin',
+      element: (
+        <AuthProtectedRoute>
+          <PageTransition>
+            <Admin />
           </PageTransition>
         </AuthProtectedRoute>
       ),

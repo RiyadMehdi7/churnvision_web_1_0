@@ -148,11 +148,17 @@ async def _hydrate_hr_data_from_active_dataset(db: AsyncSession) -> Optional[str
 
     if records:
         # Use PostgreSQL INSERT ... ON CONFLICT DO NOTHING to handle duplicates gracefully
+        # Batch inserts to avoid exceeding PostgreSQL's parameter limit (32,767)
         from sqlalchemy.dialects.postgresql import insert as pg_insert
-        stmt = pg_insert(HRDataInput).values(records).on_conflict_do_nothing(
-            index_elements=['hr_code', 'dataset_id']
-        )
-        await db.execute(stmt)
+        BATCH_SIZE = 500  # 500 records * ~12 columns = ~6000 params per batch (safe margin)
+
+        for i in range(0, len(records), BATCH_SIZE):
+            batch = records[i:i + BATCH_SIZE]
+            stmt = pg_insert(HRDataInput).values(batch).on_conflict_do_nothing(
+                index_elements=['hr_code', 'dataset_id']
+            )
+            await db.execute(stmt)
+
         await db.commit()
 
     return dataset_id

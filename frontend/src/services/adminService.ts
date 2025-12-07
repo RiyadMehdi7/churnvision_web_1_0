@@ -1,6 +1,6 @@
-import { api } from './api';
+import api from './api';
 
-const ADMIN_ENDPOINT = '/api/v1/admin';
+const ADMIN_ENDPOINT = '/admin';
 
 // ============ Types ============
 

@@ -82,8 +82,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = useCallback(async (credentials: LoginCredentials) => {
     setIsLoading(true);
     try {
-      const { user: userData } = await authService.login(credentials);
-      setUser(userData);
+      await authService.login(credentials);
+      // Fetch extended user info with role and permissions after login
+      const extendedUser = await authService.getCurrentUserExtended();
+      setUser(extendedUser);
     } catch (error) {
       console.error('Login error:', error);
       throw error;

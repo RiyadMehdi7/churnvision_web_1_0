@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, Text, Index, Boolean
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, Text, Index
 from sqlalchemy.sql import func
 from app.db.base_class import Base
 
@@ -79,25 +79,3 @@ class ModelAlert(Base):
 
 
 Index('idx_model_alerts_type', ModelAlert.alert_type, ModelAlert.resolved)
-
-
-class AuditLog(Base):
-    """Audit log for tracking user actions"""
-    __tablename__ = "audit_logs"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    user_id = Column(Integer, nullable=True)
-    username = Column(String, nullable=True, index=True)
-    tenant_id = Column(String, nullable=True, index=True)
-    action = Column(String, nullable=False, index=True)
-    resource_type = Column(String, nullable=True, index=True)
-    resource_id = Column(String, nullable=True, index=True)
-    method = Column(String, nullable=True)
-    endpoint = Column(String, nullable=True)
-    ip_address = Column(String, nullable=True)
-    user_agent = Column(String, nullable=True)
-    status_code = Column(Integer, nullable=True)
-    duration_ms = Column(Integer, nullable=True)
-    metadata = Column(Text, nullable=True)
-    error_message = Column(Text, nullable=True)

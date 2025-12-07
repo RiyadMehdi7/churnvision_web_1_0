@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 import logging
@@ -13,6 +14,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.db.session import AsyncSessionLocal
 from app.core.security_utils import sanitize_error_message
 
 logger = logging.getLogger("churnvision")
@@ -279,6 +281,317 @@ def _build_training_frame(df: pd.DataFrame, mapping: Optional[Dict[str, Any]]) -
     return df[required_columns]
 
 
+async def _run_training_background(
+    df: pd.DataFrame,
+    mapping: Optional[Dict[str, Any]],
+    dataset_id: str,
+    job_id: int,
+    model_type: str,
+    user_id: int,
+    username: str,
+    tenant_id: Optional[str]
+):
+    """
+    Run model training in the background with its own database session.
+    This allows the /train endpoint to return immediately while training continues.
+    """
+    start_time = time.time()
+
+    async with AsyncSessionLocal() as db:
+        try:
+            # Update status to in_progress
+            churn_service.update_training_progress(dataset_id, "in_progress", 5, "Preparing data", job_id)
+            await asyncio.sleep(0.1)  # Allow status to be polled
+
+            # Build feature frame
+            df_features = _build_training_frame(df, mapping)
+            churn_service.update_training_progress(dataset_id, "in_progress", 15, "Features prepared", job_id)
+            await asyncio.sleep(0.1)
+
+            # Train model
+            training_request = ModelTrainingRequest(
+                model_type=model_type,
+                use_existing_data=False
+            )
+
+            result = await churn_service.train_model(training_request, df_features, dataset_id)
+            churn_service.update_training_progress(dataset_id, "in_progress", 60, "Model trained, generating predictions", job_id)
+            await asyncio.sleep(0.1)
+
+            # Persist model metadata and mark active
+            model_version = result.model_id
+            await db.execute(
+                update(ChurnModel)
+                .where(ChurnModel.dataset_id == dataset_id)
+                .values(is_active=0)
+            )
+            artifact_path, scaler_path, encoders_path = churn_service._artifact_paths(dataset_id)
+
+            db.add(ChurnModel(
+                model_name=model_type,
+                model_version=model_version,
+                dataset_id=dataset_id,
+                parameters=training_request.hyperparameters or {},
+                training_data_info=f"rows={len(df_features)}",
+                performance_metrics=None,
+                metrics={
+                    "accuracy": result.accuracy,
+                    "precision": result.precision,
+                    "recall": result.recall,
+                    "f1_score": result.f1_score,
+                },
+                artifact_path=str(artifact_path),
+                scaler_path=str(scaler_path),
+                encoders_path=str(encoders_path),
+                trained_at=result.trained_at,
+                is_active=1,
+                pipeline_generated=1,
+            ))
+            await db.commit()
+
+            # Cache metrics
+            metrics_payload = {
+                "accuracy": result.accuracy,
+                "precision": result.precision,
+                "recall": result.recall,
+                "f1_score": result.f1_score,
+                "trained_at": result.trained_at,
+                "model_version": model_version,
+                "predictions_made": 0,
+                "dataset_id": dataset_id,
+            }
+            cache_key = dataset_id or "default"
+            churn_service.model_metrics = metrics_payload
+            churn_service.model_metrics_by_dataset[cache_key] = metrics_payload
+            churn_service.feature_importance = result.feature_importance
+            churn_service.feature_importance_by_dataset[cache_key] = result.feature_importance
+
+            logger.info(f"[TRAINING] Model training complete. Accuracy: {result.accuracy:.2%}")
+
+            # === AUTO-GENERATE PREDICTIONS AND REASONING FOR ALL EMPLOYEES ===
+            logger.info("[TRAINING] Starting prediction generation for all employees...")
+            predictions_made = 0
+            reasoning_made = 0
+
+            # Apply column mapping to get hr_code
+            if mapping and isinstance(mapping, dict):
+                id_col = mapping.get("identifier")
+                if id_col and id_col in df.columns:
+                    df = df.rename(columns={id_col: "hr_code"})
+
+            # Get dataset for predictions
+            dataset_result = await db.execute(
+                select(DatasetModel).where(DatasetModel.dataset_id == dataset_id)
+            )
+            dataset_used = dataset_result.scalar_one_or_none()
+
+            if "hr_code" in df.columns and dataset_used:
+                total_employees = len(df)
+                for idx, row in df.iterrows():
+                    hr_code = str(row.get("hr_code", ""))
+                    if not hr_code:
+                        continue
+
+                    try:
+                        # Build prediction request from row features
+                        features = df_features.iloc[idx].to_dict() if idx < len(df_features) else {}
+
+                        # Create prediction request with nested features
+                        from app.schemas.churn import EmployeeChurnFeatures
+                        employee_features = EmployeeChurnFeatures(
+                            satisfaction_level=float(features.get("satisfaction_level", 0.5)),
+                            last_evaluation=float(features.get("last_evaluation", 0.5)),
+                            number_project=int(float(features.get("number_project", 3))),
+                            average_monthly_hours=float(features.get("average_monthly_hours", 160)),
+                            time_spend_company=int(float(features.get("time_spend_company", 3))),
+                            work_accident=bool(int(float(features.get("work_accident", 0)))),
+                            promotion_last_5years=bool(int(float(features.get("promotion_last_5years", 0)))),
+                            department=str(features.get("department", "general")),
+                            salary_level=str(features.get("salary_level", "medium")),
+                        )
+                        pred_request = ChurnPredictionRequest(
+                            employee_id=None,
+                            features=employee_features,
+                        )
+
+                        # Get prediction
+                        prediction = await churn_service.predict_churn(pred_request, dataset_id)
+
+                        # Build SHAP values dict from contributing factors
+                        shap_dict = {}
+                        if prediction.contributing_factors:
+                            for factor in prediction.contributing_factors:
+                                feature_name = factor.get("feature", "unknown")
+                                impact_value = factor.get("impact", 0)
+                                shap_dict[feature_name] = impact_value
+
+                        # Upsert into churn_output
+                        existing = await db.execute(
+                            select(ChurnOutput).where(
+                                ChurnOutput.hr_code == hr_code,
+                                ChurnOutput.dataset_id == dataset_used.dataset_id
+                            )
+                        )
+                        existing_row = existing.scalar_one_or_none()
+
+                        # Convert confidence from 0-1 to 0-100 scale for storage
+                        confidence_pct = prediction.confidence_score * 100
+
+                        if existing_row:
+                            existing_row.resign_proba = prediction.churn_probability
+                            existing_row.shap_values = shap_dict
+                            existing_row.model_version = model_version
+                            existing_row.generated_at = datetime.utcnow()
+                            existing_row.confidence_score = confidence_pct
+                        else:
+                            db.add(ChurnOutput(
+                                hr_code=hr_code,
+                                dataset_id=dataset_used.dataset_id,
+                                resign_proba=prediction.churn_probability,
+                                shap_values=shap_dict,
+                                model_version=model_version,
+                                confidence_score=confidence_pct,
+                            ))
+                        predictions_made += 1
+
+                        # Upsert into churn_reasoning
+                        stage = _determine_stage(float(features.get("time_spend_company", 3)))
+
+                        # Build reasoning text from factors
+                        reasoning_parts = []
+                        if prediction.contributing_factors:
+                            for factor in prediction.contributing_factors[:3]:
+                                feature_name = factor.get("feature", "unknown")
+                                description = factor.get("description", factor.get("impact", ""))
+                                reasoning_parts.append(f"{feature_name}: {description}")
+                        reasoning_text = "; ".join(reasoning_parts) if reasoning_parts else "No significant factors identified."
+
+                        # Build recommendations
+                        recommendations = "; ".join(prediction.recommendations[:3]) if prediction.recommendations else ""
+
+                        # Build ml_contributors as list of dicts
+                        ml_contributors_list = []
+                        if prediction.contributing_factors:
+                            for factor in prediction.contributing_factors:
+                                ml_contributors_list.append({
+                                    "feature": factor.get("feature", "unknown"),
+                                    "value": factor.get("value"),
+                                    "importance": factor.get("impact", 0) if isinstance(factor.get("impact"), (int, float)) else 0.5,
+                                    "message": factor.get("message", "")
+                                })
+
+                        existing_reasoning = await db.execute(
+                            select(ChurnReasoning).where(ChurnReasoning.hr_code == hr_code)
+                        )
+                        existing_reasoning_row = existing_reasoning.scalar_one_or_none()
+
+                        # Serialize lists to JSON strings for Text columns
+                        ml_contributors_json = json.dumps(ml_contributors_list) if ml_contributors_list else "[]"
+                        heuristic_alerts_json = "[]"
+
+                        if existing_reasoning_row:
+                            existing_reasoning_row.churn_risk = prediction.churn_probability
+                            existing_reasoning_row.stage = stage
+                            existing_reasoning_row.stage_score = 0.5
+                            existing_reasoning_row.ml_score = prediction.churn_probability
+                            existing_reasoning_row.heuristic_score = 0.0
+                            existing_reasoning_row.ml_contributors = ml_contributors_json
+                            existing_reasoning_row.heuristic_alerts = heuristic_alerts_json
+                            existing_reasoning_row.reasoning = reasoning_text
+                            existing_reasoning_row.recommendations = recommendations
+                            existing_reasoning_row.confidence_level = prediction.confidence_score
+                        else:
+                            db.add(ChurnReasoning(
+                                hr_code=hr_code,
+                                churn_risk=prediction.churn_probability,
+                                stage=stage,
+                                stage_score=0.5,
+                                ml_score=prediction.churn_probability,
+                                heuristic_score=0.0,
+                                ml_contributors=ml_contributors_json,
+                                heuristic_alerts=heuristic_alerts_json,
+                                reasoning=reasoning_text,
+                                recommendations=recommendations,
+                                confidence_level=prediction.confidence_score,
+                            ))
+                        reasoning_made += 1
+
+                        # Update progress periodically
+                        if predictions_made % 10 == 0 or predictions_made == total_employees:
+                            progress_pct = 60 + int((predictions_made / total_employees) * 35)
+                            churn_service.update_training_progress(
+                                dataset_id,
+                                "in_progress",
+                                progress_pct,
+                                f"Generating predictions ({predictions_made}/{total_employees})",
+                                job_id,
+                            )
+                            await asyncio.sleep(0.05)  # Small yield to allow polling
+
+                    except Exception as e:
+                        logger.warning(f"[TRAINING] Error predicting for {hr_code}: {e}")
+                        continue
+
+                await db.commit()
+                logger.info(f"[TRAINING] Completed: {predictions_made} predictions, {reasoning_made} reasoning records generated")
+
+            # Mark training as complete
+            churn_service.update_training_progress(dataset_id, "complete", 100, "Training complete", job_id)
+
+            # Update training job status
+            await db.execute(
+                update(TrainingJob)
+                .where(TrainingJob.job_id == job_id)
+                .values(status="complete", finished_at=datetime.utcnow())
+            )
+            await db.commit()
+
+            # Update predictions count in metrics
+            churn_service.model_metrics["predictions_made"] = predictions_made
+            if cache_key in churn_service.model_metrics_by_dataset:
+                churn_service.model_metrics_by_dataset[cache_key]["predictions_made"] = predictions_made
+
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            # Log to audit trail
+            await AuditLogger.log_model_training(
+                db=db,
+                user_id=user_id,
+                username=username,
+                tenant_id=tenant_id,
+                model_type=model_type,
+                accuracy=result.accuracy,
+                duration_ms=duration_ms,
+                samples_count=len(df_features)
+            )
+
+            logger.info(f"[TRAINING] Total time: {duration_ms}ms")
+
+        except Exception as e:
+            logger.error(f"[TRAINING] Background training failed: {e}")
+            churn_service.update_training_progress(dataset_id, "error", 0, str(e), job_id)
+
+            # Update training job with error
+            await db.execute(
+                update(TrainingJob)
+                .where(TrainingJob.job_id == job_id)
+                .values(status="error", finished_at=datetime.utcnow(), error_message=str(e))
+            )
+            await db.commit()
+
+            # Log error to audit trail
+            await AuditLogger.log_error(
+                db=db,
+                action="train_model",
+                user_id=user_id,
+                username=username,
+                tenant_id=tenant_id,
+                error_message=str(e),
+                endpoint="/api/v1/churn/train",
+                status_code=500
+            )
+
+
 @router.post("/train")
 async def train_churn_model(
     file: UploadFile | None = File(None),
@@ -287,7 +600,10 @@ async def train_churn_model(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Train a new churn prediction model with uploaded data
+    Train a new churn prediction model with uploaded data.
+
+    Training runs asynchronously in the background. This endpoint returns immediately
+    with status "queued". Poll /train/status to track progress.
 
     Upload a CSV file with the following columns:
     - satisfaction_level (0-1)
@@ -301,10 +617,8 @@ async def train_churn_model(
     - salary_level (low, medium, high)
     - left (0 or 1, target variable)
 
-    Returns model performance metrics and feature importance.
+    Returns immediately with job status. Use /train/status to track progress.
     """
-    start_time = time.time()
-
     dataset_used: Optional[DatasetModel] = None
     dataset_id_for_training: Optional[str] = None
     training_job: Optional[TrainingJob] = None
@@ -334,271 +648,44 @@ async def train_churn_model(
 
         dataset_id_for_training = dataset_used.dataset_id
 
-        # Track training progress and job lifecycle
-        training_job = await _start_training_job(db, dataset_id_for_training)
-        churn_service.update_training_progress(dataset_id_for_training, "in_progress", 5, "Preparing data", training_job.job_id)
-
-        # Build feature frame using mapping/enrichment so any dataset with the DM-required columns can train
-        df_features = _build_training_frame(df, mapping)
-        churn_service.update_training_progress(dataset_id_for_training, "in_progress", 15, "Features prepared", training_job.job_id if training_job else None)
-
-        # Train model
-        training_request = ModelTrainingRequest(
-            model_type=model_type,
-            use_existing_data=False
-        )
-
-        result = await churn_service.train_model(training_request, df_features, dataset_id_for_training)
-        churn_service.update_training_progress(dataset_id_for_training, "in_progress", 60, "Model trained, generating predictions", training_job.job_id if training_job else None)
-
-        # Persist model metadata and mark active
-        model_version = result.model_id
-        await db.execute(
-            update(ChurnModel)
-            .where(ChurnModel.dataset_id == dataset_id_for_training)
-            .values(is_active=0)
-        )
-        artifact_path, scaler_path, encoders_path = churn_service._artifact_paths(dataset_id_for_training)
-
-        db.add(ChurnModel(
-            model_name=model_type,
-            model_version=model_version,
-            dataset_id=dataset_id_for_training,
-            parameters=training_request.hyperparameters or {},
-            training_data_info=f"rows={len(df_features)}",
-            performance_metrics=None,
-            metrics={
-                "accuracy": result.accuracy,
-                "precision": result.precision,
-                "recall": result.recall,
-                "f1_score": result.f1_score,
-            },
-            artifact_path=str(artifact_path),
-            scaler_path=str(scaler_path),
-            encoders_path=str(encoders_path),
-            trained_at=result.trained_at,
-            is_active=1,
-            pipeline_generated=1,
-        ))
+        # Create training job with "queued" status
+        training_job = TrainingJob(dataset_id=dataset_id_for_training, status="queued")
+        db.add(training_job)
         await db.commit()
+        await db.refresh(training_job)
 
-        # Cache metrics so status checks reflect the trained model
-        metrics_payload = {
-            "accuracy": result.accuracy,
-            "precision": result.precision,
-            "recall": result.recall,
-            "f1_score": result.f1_score,
-            "trained_at": result.trained_at,
-            "model_version": model_version,
-            "predictions_made": 0,
-            "dataset_id": dataset_id_for_training,
-        }
-        cache_key = dataset_id_for_training or "default"
-        churn_service.model_metrics = metrics_payload
-        churn_service.model_metrics_by_dataset[cache_key] = metrics_payload
-        churn_service.feature_importance = result.feature_importance
-        churn_service.feature_importance_by_dataset[cache_key] = result.feature_importance
-
-        logger.info(f"[TRAINING] Model training complete. Accuracy: {result.accuracy:.2%}")
-
-        # === AUTO-GENERATE PREDICTIONS AND REASONING FOR ALL EMPLOYEES ===
-        logger.info("[TRAINING] Starting prediction generation for all employees...")
-        predictions_made = 0
-        reasoning_made = 0
-
-        # Apply column mapping to get hr_code
-        if mapping and isinstance(mapping, dict):
-            id_col = mapping.get("identifier")
-            if id_col and id_col in df.columns:
-                df = df.rename(columns={id_col: "hr_code"})
-
-        if "hr_code" in df.columns and dataset_used:
-            total_employees = len(df)
-            for idx, row in df.iterrows():
-                hr_code = str(row.get("hr_code", ""))
-                if not hr_code:
-                    continue
-
-                try:
-                    # Build prediction request from row features
-                    features = df_features.iloc[idx].to_dict() if idx < len(df_features) else {}
-
-                    # Create prediction request with nested features
-                    from app.schemas.churn import EmployeeChurnFeatures
-                    employee_features = EmployeeChurnFeatures(
-                        satisfaction_level=float(features.get("satisfaction_level", 0.5)),
-                        last_evaluation=float(features.get("last_evaluation", 0.5)),
-                        number_project=int(float(features.get("number_project", 3))),
-                        average_monthly_hours=float(features.get("average_monthly_hours", 160)),
-                        time_spend_company=int(float(features.get("time_spend_company", 3))),
-                        work_accident=bool(int(float(features.get("work_accident", 0)))),
-                        promotion_last_5years=bool(int(float(features.get("promotion_last_5years", 0)))),
-                        department=str(features.get("department", "general")),
-                        salary_level=str(features.get("salary_level", "medium")),
-                    )
-                    pred_request = ChurnPredictionRequest(
-                        employee_id=None,
-                        features=employee_features,
-                    )
-
-                    # Get prediction
-                    prediction = await churn_service.predict_churn(pred_request, dataset_id_for_training)
-
-                    # Build SHAP values dict from contributing factors
-                    shap_dict = {}
-                    if prediction.contributing_factors:
-                        for factor in prediction.contributing_factors:
-                            feature_name = factor.get("feature", "unknown")
-                            impact_value = factor.get("impact", 0)
-                            shap_dict[feature_name] = impact_value
-
-                    # Upsert into churn_output
-                    existing = await db.execute(
-                        select(ChurnOutput).where(
-                            ChurnOutput.hr_code == hr_code,
-                            ChurnOutput.dataset_id == dataset_used.dataset_id
-                        )
-                    )
-                    existing_row = existing.scalar_one_or_none()
-
-                    # Convert confidence from 0-1 to 0-100 scale for storage
-                    confidence_pct = prediction.confidence_score * 100
-
-                    if existing_row:
-                        existing_row.resign_proba = prediction.churn_probability
-                        existing_row.shap_values = shap_dict
-                        existing_row.model_version = model_version
-                        existing_row.generated_at = datetime.utcnow()
-                        existing_row.confidence_score = confidence_pct
-                    else:
-                        db.add(ChurnOutput(
-                            hr_code=hr_code,
-                            dataset_id=dataset_used.dataset_id,
-                            resign_proba=prediction.churn_probability,
-                            shap_values=shap_dict,
-                            model_version=model_version,
-                            confidence_score=confidence_pct,
-                        ))
-                    predictions_made += 1
-
-                    # Upsert into churn_reasoning
-                    stage = _determine_stage(float(features.get("time_spend_company", 3)))
-
-                    # Build reasoning text from factors
-                    reasoning_parts = []
-                    if prediction.contributing_factors:
-                        for factor in prediction.contributing_factors[:3]:
-                            feature_name = factor.get("feature", "unknown")
-                            description = factor.get("description", factor.get("impact", ""))
-                            reasoning_parts.append(f"{feature_name}: {description}")
-                    reasoning_text = "; ".join(reasoning_parts) if reasoning_parts else "No significant factors identified."
-
-                    # Build recommendations
-                    recommendations = "; ".join(prediction.recommendations[:3]) if prediction.recommendations else ""
-
-                    # Build ml_contributors as list of dicts (not JSON string)
-                    ml_contributors_list = []
-                    if prediction.contributing_factors:
-                        for factor in prediction.contributing_factors:
-                            ml_contributors_list.append({
-                                "feature": factor.get("feature", "unknown"),
-                                "value": factor.get("value"),
-                                "importance": factor.get("impact", 0) if isinstance(factor.get("impact"), (int, float)) else 0.5,
-                                "message": factor.get("message", "")
-                            })
-
-                    existing_reasoning = await db.execute(
-                        select(ChurnReasoning).where(ChurnReasoning.hr_code == hr_code)
-                    )
-                    existing_reasoning_row = existing_reasoning.scalar_one_or_none()
-
-                    # Serialize lists to JSON strings for Text columns
-                    ml_contributors_json = json.dumps(ml_contributors_list) if ml_contributors_list else "[]"
-                    heuristic_alerts_json = "[]"
-
-                    if existing_reasoning_row:
-                        existing_reasoning_row.churn_risk = prediction.churn_probability
-                        existing_reasoning_row.stage = stage
-                        existing_reasoning_row.stage_score = 0.5  # Default stage score
-                        existing_reasoning_row.ml_score = prediction.churn_probability
-                        existing_reasoning_row.heuristic_score = 0.0
-                        existing_reasoning_row.ml_contributors = ml_contributors_json
-                        existing_reasoning_row.heuristic_alerts = heuristic_alerts_json
-                        existing_reasoning_row.reasoning = reasoning_text
-                        existing_reasoning_row.recommendations = recommendations
-                        existing_reasoning_row.confidence_level = prediction.confidence_score
-                    else:
-                        db.add(ChurnReasoning(
-                            hr_code=hr_code,
-                            churn_risk=prediction.churn_probability,
-                            stage=stage,
-                            stage_score=0.5,
-                            ml_score=prediction.churn_probability,
-                            heuristic_score=0.0,
-                            ml_contributors=ml_contributors_json,
-                            heuristic_alerts=heuristic_alerts_json,
-                            reasoning=reasoning_text,
-                            recommendations=recommendations,
-                            confidence_level=prediction.confidence_score,
-                        ))
-                    reasoning_made += 1
-
-                    if training_job:
-                        progress_pct = 60 + int(((idx + 1) / total_employees) * 35)
-                        churn_service.update_training_progress(
-                            dataset_id_for_training,
-                            "in_progress",
-                            progress_pct,
-                            f"Generating predictions ({idx + 1}/{total_employees})",
-                            training_job.job_id,
-                        )
-
-                    # Log progress every 50 employees
-                    if predictions_made % 50 == 0:
-                        logger.info(f"[TRAINING] Progress: {predictions_made}/{total_employees} predictions generated")
-
-                except Exception as e:
-                    logger.warning(f"[TRAINING] Error predicting for {hr_code}: {e}")
-                    continue
-
-            await db.commit()
-            logger.info(f"[TRAINING] Completed: {predictions_made} predictions, {reasoning_made} reasoning records generated")
-
-        # Mark training as complete for this dataset
-        churn_service.update_training_progress(dataset_id_for_training, "complete", 100, "Training complete", training_job.job_id if training_job else None)
-        if training_job:
-            await _complete_training_job(db, training_job, status="complete")
-
-        # Update predictions count
-        churn_service.model_metrics["predictions_made"] = predictions_made
-        cache_key = dataset_id_for_training or "default"
-        if cache_key in churn_service.model_metrics_by_dataset:
-            churn_service.model_metrics_by_dataset[cache_key]["predictions_made"] = predictions_made
-
-        # Calculate duration
-        duration_ms = int((time.time() - start_time) * 1000)
-
-        # Log model training to audit trail
-        await AuditLogger.log_model_training(
-            db=db,
-            user_id=current_user.id,
-            username=current_user.username,
-            tenant_id=getattr(current_user, 'tenant_id', None),
-            model_type=model_type,
-            accuracy=result.accuracy,
-            duration_ms=duration_ms,
-            samples_count=len(df_features)
+        # Set initial progress status
+        churn_service.update_training_progress(
+            dataset_id_for_training,
+            "queued",
+            0,
+            "Training queued, starting soon...",
+            training_job.job_id
         )
 
-        logger.info(f"[TRAINING] Total time: {duration_ms}ms")
+        # Start background training task
+        asyncio.create_task(
+            _run_training_background(
+                df=df,
+                mapping=mapping,
+                dataset_id=dataset_id_for_training,
+                job_id=training_job.job_id,
+                model_type=model_type,
+                user_id=current_user.id,
+                username=current_user.username,
+                tenant_id=getattr(current_user, 'tenant_id', None)
+            )
+        )
 
-        # Return shape expected by frontend (success/status)
+        logger.info(f"[TRAINING] Background training task started for dataset {dataset_id_for_training}")
+
+        # Return immediately with queued status
         return {
             "success": True,
-            "status": "complete",
-            "metrics": result,
-            "predictions_generated": predictions_made,
-            "reasoning_generated": reasoning_made
+            "status": "queued",
+            "message": "Training started in background. Poll /train/status for progress.",
+            "job_id": training_job.job_id,
+            "dataset_id": dataset_id_for_training
         }
 
     except HTTPException as exc:

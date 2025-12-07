@@ -60,7 +60,9 @@ interface SendMessagePayload {
   employeeId?: string | number | null;
   content: string;
   datasetId?: string | null;
-  // userId?: number; // Removed userId
+  // Quick action type - when provided, returns structured data cards
+  // Options: 'diagnose', 'retention_plan', 'compare_resigned', 'compare_stayed', 'exit_patterns', 'workforce_trends', 'department_analysis'
+  actionType?: string | null;
 }
 
 class ChatbotService {
@@ -223,15 +225,15 @@ class ChatbotService {
 
     try {
       // Use intelligent-chat endpoint for context-aware responses
-      // This endpoint automatically:
-      // - Detects query patterns (company-level vs employee-specific)
-      // - Retrieves pre-computed company metrics when no employee selected
-      // - Retrieves employee-specific data when employee_id is provided
+      // Two modes:
+      // 1. Quick Action (actionType provided): Returns structured data cards
+      // 2. Chat (no actionType): Uses LLM with full employee context
       const response = await api.post('/intelligent-chat/chat', {
         message: payload.content,
         session_id: payload.sessionId,
-        employee_id: payload.employeeId || null, // Pass employee context if selected
+        employee_id: payload.employeeId || null,
         dataset_id: payload.datasetId || null,
+        action_type: payload.actionType || null, // Quick action type for structured responses
       });
 
       if (!response || !response.data) {

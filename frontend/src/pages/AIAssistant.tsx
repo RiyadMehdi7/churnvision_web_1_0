@@ -1052,12 +1052,22 @@ export function AIAssistant(): React.ReactElement {
     }
   };
 
-  const handleSendMessage = async () => {
+  // Quick action handler - sends message with specific action type for structured cards
+  const handleQuickAction = async (actionType: string, displayMessage: string) => {
+    if (chatState.isLoading || !selectedEmployees[0]) return;
+
+    // Set the display message and trigger send with action type
+    setChatState(prev => ({ ...prev, input: displayMessage }));
+    // Small delay to allow state update, then send
+    setTimeout(() => handleSendMessage(actionType), 50);
+  };
+
+  const handleSendMessage = async (actionType?: string) => {
     if (!chatState.input.trim() || chatState.isLoading) return;
 
     const userMessage = chatState.input.trim();
     const hasEmployeeContext = selectedEmployees.length > 0;
-    const pendingKind = inferResponseKind(userMessage, hasEmployeeContext);
+    const pendingKind = actionType ? 'analysis' : inferResponseKind(userMessage, hasEmployeeContext);
     const sessionId = chatState.sessionId;
     const userMessageId = `user-${uuidv4()}`;
     const optimisticUserMessage: ExtendedChatMessage = {
@@ -1096,15 +1106,15 @@ export function AIAssistant(): React.ReactElement {
     startExecution(userMessage, patternType, agentContextData);
 
     try {
-      // The intelligent-chat backend automatically handles:
-      // - Company-level queries (when no employee selected): retrieves workforce trends, exit patterns, department analysis
-      // - Employee-specific queries (when employee selected): retrieves employee data, churn reasoning, treatments
-      // We just need to pass the employee_id when one is selected
+      // Two modes:
+      // 1. Quick Action (actionType provided): Returns structured data cards
+      // 2. Chat (no actionType): Uses LLM with full employee context for natural responses
       const response = await chatbotService.sendMessage({
         sessionId,
-        content: userMessage, // Send raw message - backend handles context gathering
+        content: userMessage,
         employeeId: hasEmployeeContext ? selectedEmployees[0]?.hr_code : undefined,
         datasetId,
+        actionType: actionType || undefined, // Quick action type for structured responses
       });
 
       // Build assistant message with structured data if available
@@ -1436,10 +1446,7 @@ export function AIAssistant(): React.ReactElement {
                 <>
                   {/* Diagnose Risk Button */}
                   <button
-                    onClick={() => {
-                      const standardized = standardizePrompt('diagnose', selectedEmployees[0].name);
-                      setInputFromSuggestion(standardized.prompt);
-                    }}
+                    onClick={() => handleQuickAction('diagnose', `Analyze risk for ${selectedEmployees[0].name}`)}
                     className="group relative overflow-hidden bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-700/50 rounded-lg p-3 text-left transition-all duration-300 hover:shadow-md hover:shadow-red-500/20 dark:hover:shadow-red-400/20 hover:-translate-y-0.5"
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-red-500/5 to-red-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -1458,10 +1465,7 @@ export function AIAssistant(): React.ReactElement {
 
                   {/* Create Plan Button */}
                   <button
-                    onClick={() => {
-                      const standardized = standardizePrompt('retention', selectedEmployees[0].name);
-                      setInputFromSuggestion(standardized.prompt);
-                    }}
+                    onClick={() => handleQuickAction('retention_plan', `Create retention plan for ${selectedEmployees[0].name}`)}
                     className="group relative overflow-hidden bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border border-purple-200 dark:border-purple-700/50 rounded-lg p-3 text-left transition-all duration-300 hover:shadow-md hover:shadow-purple-500/20 dark:hover:shadow-purple-400/20 hover:-translate-y-0.5"
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -1480,10 +1484,7 @@ export function AIAssistant(): React.ReactElement {
 
                   {/* Compare (Resigned) Button */}
                   <button
-                    onClick={() => {
-                      const standardized = standardizePrompt('similarity_resigned', selectedEmployees[0].name);
-                      setInputFromSuggestion(standardized.prompt);
-                    }}
+                    onClick={() => handleQuickAction('compare_resigned', `Compare ${selectedEmployees[0].name} with resigned employees`)}
                     className="group relative overflow-hidden bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 border border-orange-200 dark:border-orange-700/50 rounded-lg p-3 text-left transition-all duration-300 hover:shadow-md hover:shadow-orange-500/20 dark:hover:shadow-orange-400/20 hover:-translate-y-0.5"
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-orange-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -1502,10 +1503,7 @@ export function AIAssistant(): React.ReactElement {
 
                   {/* Compare (Stayed) Button */}
                   <button
-                    onClick={() => {
-                      const standardized = standardizePrompt('similarity_stayed', selectedEmployees[0].name);
-                      setInputFromSuggestion(standardized.prompt);
-                    }}
+                    onClick={() => handleQuickAction('compare_stayed', `Compare ${selectedEmployees[0].name} with retained employees`)}
                     className="group relative overflow-hidden bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 border border-emerald-200 dark:border-emerald-700/50 rounded-lg p-3 text-left transition-all duration-300 hover:shadow-md hover:shadow-emerald-500/20 dark:hover:shadow-emerald-400/20 hover:-translate-y-0.5"
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-emerald-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>

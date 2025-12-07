@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '../../utils/cn'
-import { Bot, Lock, LogOut } from 'lucide-react'
+import { Bot, Lock, LogOut, Shield } from 'lucide-react'
 import { ThemeToggle } from '../ui/ThemeToggle'
 import { Home, Beaker, Settings as SettingsIcon, Database, BookOpen } from 'lucide-react'
 import { useLicense, getLicenseTierDisplayName, getLicenseTierColor } from '../../providers/LicenseProvider'
@@ -17,11 +17,14 @@ const allNavigation = [
   { name: 'Settings', href: '/settings', icon: SettingsIcon, feature: 'settings' },
 ]
 
+// Admin navigation item - shown separately
+const adminNavItem = { name: 'Admin', href: '/admin', icon: Shield }
+
 export function Header(): React.ReactElement {
   const location = useLocation()
   const navigate = useNavigate()
   const { hasAccess, licenseTier } = useLicense()
-  const { user, logout } = useAuth()
+  const { user, logout, hasAdminAccess } = useAuth()
   const [showUserMenu, setShowUserMenu] = useState(false)
 
   // Filter navigation based on license access
@@ -74,6 +77,25 @@ export function Header(): React.ReactElement {
                 </Link>
               )
             })}
+            {/* Admin link - only shown for users with admin access */}
+            {hasAdminAccess && (
+              <>
+                <div className="w-px h-5 bg-border mx-1" />
+                <Link
+                  to={adminNavItem.href}
+                  className={cn(
+                    'relative inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200',
+                    location.pathname === adminNavItem.href
+                      ? 'text-foreground bg-surface-muted'
+                      : 'text-neutral-muted hover:text-foreground hover:bg-surface-muted'
+                  )}
+                  aria-current={location.pathname === adminNavItem.href ? 'page' : undefined}
+                >
+                  <adminNavItem.icon className="h-4 w-4" aria-hidden="true" />
+                  <span>{adminNavItem.name}</span>
+                </Link>
+              </>
+            )}
           </nav>
 
           {/* Right: Controls */}

@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     # Chatbot / LLM settings
     # Default (local): Qwen 3 4B via Ollama - privacy-focused, offline
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
-    OLLAMA_MODEL: str = "qwen3:4b-instruct"
+    OLLAMA_MODEL: str = "qwen3:4b"
     DEFAULT_LLM_PROVIDER: str = "ollama"  # 'openai', 'azure', 'ollama', 'mistral', 'ibm' - default to local
 
     # OpenAI (GPT-5.1) - highest intelligence and speed

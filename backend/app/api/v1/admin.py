@@ -8,12 +8,11 @@ from sqlalchemy import select, func, or_, and_
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
 from datetime import datetime
-import uuid
 
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
 from app.models.auth import UserAccount, Role, Permission, RolePermission, UserRole
-from app.models.monitoring import AuditLog
+from app.core.audit import AuditLog
 from app.core.security import get_password_hash
 from app.schemas.admin import (
     RoleResponse,
@@ -99,7 +98,7 @@ async def log_admin_action(
         action=action,
         resource_type=resource_type,
         resource_id=resource_id,
-        metadata=details
+        log_metadata=details
     )
     db.add(log_entry)
     await db.commit()
@@ -303,13 +302,43 @@ async def create_user(
     if user_data.role_id == 'super_admin' and admin_user.is_super_admin != 1:
         raise HTTPException(status_code=403, detail="Only Super Admin can create Super Admin users")
 
-    # Create user
-    new_user_id = str(uuid.uuid4())
+    # Also check legacy_users for existing username/email
+    existing_legacy = await db.execute(
+        select(User).where(User.username == user_data.username)
+    )
+    if existing_legacy.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    if user_data.email:
+        existing_legacy_email = await db.execute(
+            select(User).where(User.email == user_data.email)
+        )
+        if existing_legacy_email.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Email already exists")
+
+    password_hash = get_password_hash(user_data.password)
+
+    # Create user in legacy_users table (for authentication/login)
+    legacy_user = User(
+        email=user_data.email or f"{user_data.username}@placeholder.local",
+        username=user_data.username,
+        hashed_password=password_hash,
+        full_name=user_data.full_name,
+        is_active=True,
+        is_superuser=user_data.role_id == 'super_admin'
+    )
+    db.add(legacy_user)
+    await db.flush()  # Get the auto-generated ID
+
+    # Use the legacy_user.id as the user_id for RBAC tables
+    new_user_id = str(legacy_user.id)
+
+    # Create user in users table (for RBAC system)
     new_user = UserAccount(
         user_id=new_user_id,
         username=user_data.username,
         email=user_data.email,
-        password_hash=get_password_hash(user_data.password),
+        password_hash=password_hash,
         full_name=user_data.full_name,
         is_active=1,
         is_super_admin=1 if user_data.role_id == 'super_admin' else 0

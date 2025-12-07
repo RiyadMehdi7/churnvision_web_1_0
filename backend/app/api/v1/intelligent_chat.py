@@ -18,6 +18,7 @@ class IntelligentChatRequest(BaseModel):
     session_id: str = Field(..., description="Session ID for conversation tracking")
     employee_id: Optional[str] = Field(None, description="Optional employee context (HR code)")
     dataset_id: Optional[str] = Field(None, description="Active dataset context for scoping responses")
+    action_type: Optional[str] = Field(None, description="Quick action type: 'diagnose', 'retention_plan', 'compare_resigned', 'compare_stayed', 'exit_patterns', 'workforce_trends', 'department_analysis'. If provided, returns structured data for that action. Otherwise uses LLM.")
 
 
 class IntelligentChatResponse(BaseModel):
@@ -46,19 +47,21 @@ async def intelligent_chat(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Intelligent chat endpoint that understands ChurnVision-specific queries.
+    Intelligent chat endpoint with LLM-powered responses.
 
-    Automatically detects patterns such as:
-    - Churn risk diagnosis ("Why is John Smith at high risk?")
-    - Retention plan generation ("Create a retention plan for Mike Chen")
-    - Employee comparison ("Compare Sarah with similar resigned employees")
-    - Exit pattern mining ("Show common exit patterns")
-    - Workforce trends ("Show overall churn trends")
-    - Department analysis ("Analyze Sales department")
-    - SHAP explanations ("What factors contribute to risk?")
-    - General chat (falls back to LLM)
+    Two modes:
+    1. **Quick Action** (action_type provided): Returns structured data cards
+       - 'diagnose': Risk diagnosis card
+       - 'retention_plan': Retention plan card
+       - 'compare_resigned': Compare with resigned employees
+       - 'compare_stayed': Compare with retained employees
+       - 'exit_patterns': Exit pattern analysis
+       - 'workforce_trends': Workforce trends overview
+       - 'department_analysis': Department analysis
 
-    Returns structured_data for frontend renderers when applicable.
+    2. **Chat** (no action_type): Uses LLM with full employee context to respond naturally
+
+    Returns structured_data for frontend renderers when action_type is specified.
     """
     service = IntelligentChatbotService(db)
 
@@ -66,12 +69,13 @@ async def intelligent_chat(
     validated_session_id = get_or_create_session_id(request.session_id)
 
     try:
-        # Process message with intelligence - returns both text and structured data
+        # Process message - action_type determines if we return structured data or LLM response
         result = await service.chat(
             message=request.message,
             session_id=validated_session_id,
             employee_id=request.employee_id,
-            dataset_id=request.dataset_id
+            dataset_id=request.dataset_id,
+            action_type=request.action_type
         )
 
         # Handle both old (string) and new (dict) return formats

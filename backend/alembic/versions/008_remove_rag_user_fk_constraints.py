@@ -22,17 +22,38 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Drop foreign key constraints from RAG tables
+    # Drop foreign key constraints from RAG tables (if they exist)
     # These were referencing users.user_id but auth uses legacy_users.id
+    # Using raw SQL with IF EXISTS to handle cases where constraints don't exist
 
-    # Drop FK from rag_documents
-    op.drop_constraint("fk_rag_documents_user_id", "rag_documents", type_="foreignkey")
+    conn = op.get_bind()
 
-    # Drop FK from custom_hr_rules
-    op.drop_constraint("custom_hr_rules_user_id_fkey", "custom_hr_rules", type_="foreignkey")
+    # Drop FK from rag_documents (if exists)
+    conn.execute(sa.text("""
+        DO $$ BEGIN
+            ALTER TABLE rag_documents DROP CONSTRAINT IF EXISTS fk_rag_documents_user_id;
+        EXCEPTION WHEN undefined_object THEN
+            NULL;
+        END $$;
+    """))
 
-    # Drop FK from knowledge_base_settings
-    op.drop_constraint("knowledge_base_settings_user_id_fkey", "knowledge_base_settings", type_="foreignkey")
+    # Drop FK from custom_hr_rules (if exists)
+    conn.execute(sa.text("""
+        DO $$ BEGIN
+            ALTER TABLE custom_hr_rules DROP CONSTRAINT IF EXISTS custom_hr_rules_user_id_fkey;
+        EXCEPTION WHEN undefined_object THEN
+            NULL;
+        END $$;
+    """))
+
+    # Drop FK from knowledge_base_settings (if exists)
+    conn.execute(sa.text("""
+        DO $$ BEGIN
+            ALTER TABLE knowledge_base_settings DROP CONSTRAINT IF EXISTS knowledge_base_settings_user_id_fkey;
+        EXCEPTION WHEN undefined_object THEN
+            NULL;
+        END $$;
+    """))
 
 
 def downgrade() -> None:

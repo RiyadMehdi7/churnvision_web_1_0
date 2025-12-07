@@ -998,6 +998,7 @@ export function DataManagement(): React.ReactElement {
             isLoading: true,
             error: null,
             data: null,
+            searchQuery: '',
         });
 
         try {

@@ -117,10 +117,20 @@ class IntelligentChatbotService:
 
         # Pattern: Churn Risk Diagnosis
         # "Why is John Smith at high risk?", "Diagnose risk for employee CV001"
-        if any(keyword in message_lower for keyword in [
+        # Also catches casual questions about employee problems/issues when employee is selected
+        risk_keywords = [
             "why is", "at risk", "churn risk", "risk score", "explain risk",
-            "diagnose", "risk diagnosis", "analyze risk", "risk analysis"
-        ]):
+            "diagnose", "risk diagnosis", "analyze risk", "risk analysis",
+            "high risk", "medium risk", "low risk", "leaving", "quit", "resign"
+        ]
+        # When employee is selected, also catch casual questions about problems/issues
+        if employee_id:
+            risk_keywords.extend([
+                "problem", "issue", "concern", "wrong", "matter", "happening",
+                "going on", "situation", "status", "what's up", "whats up",
+                "why", "reason", "cause", "explain", "understand"
+            ])
+        if any(keyword in message_lower for keyword in risk_keywords):
             if not entities.get("hr_code"):
                 entities["employee_name"] = self._extract_employee_name(message)
                 entities["hr_code"] = self._extract_hr_code(message)
@@ -1608,12 +1618,18 @@ Best regards,
         context: Dict[str, Any]
     ) -> str:
         """Generate general response using LLM with comprehensive employee context"""
+        print(f"[GENERAL_RESPONSE] === Generating general LLM response ===", flush=True)
+
         # Build context-aware prompt
         employee = context.get("employee")
         churn = context.get("churn", {})
         reasoning = context.get("reasoning", {})
         additional_data = context.get("additional_data", {})
         company_overview = context.get("company_overview", {})
+
+        print(f"[GENERAL_RESPONSE] Employee present: {employee is not None}", flush=True)
+        if employee:
+            print(f"[GENERAL_RESPONSE] Employee details: {employee.get('full_name')}, risk: {churn.get('resign_proba', reasoning.get('churn_risk', 'N/A'))}", flush=True)
 
         employee_context = ""
         if employee:
@@ -1707,17 +1723,32 @@ High Risk: {company_overview.get('high_risk_count', 'N/A')}
 Average Risk: {company_overview.get('avg_risk', 0):.1%}
 """
 
+        # Build messages with context - include employee data in user message for better model compliance
         system_prompt = f"""{settings.CHATBOT_SYSTEM_PROMPT}
 
-You are ChurnVision AI Assistant, helping HR professionals with employee retention and churn analytics.
-Provide concise, actionable insights based on the data available.
+You are ChurnVision AI Assistant for HR professionals. You help analyze employee churn risk.
+NEVER ask for clarification. ALWAYS answer based on the employee data provided.
+Keep responses concise and actionable.
+"""
+
+        if employee:
+            # Include employee context in user message - models handle this better
+            user_message_with_context = f"""Here is the employee data you must use to answer:
+
 {employee_context}
 {company_context}
-"""
+
+User question: {message}
+
+Answer the question using ONLY the employee data above. Do not ask for clarification."""
+        else:
+            user_message_with_context = f"""{company_context}
+
+User question: {message}"""
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message}
+            {"role": "user", "content": user_message_with_context}
         ]
 
         # Determine model based on DEFAULT_LLM_PROVIDER
@@ -1737,20 +1768,23 @@ Provide concise, actionable insights based on the data available.
             # Default to local Ollama
             model = settings.OLLAMA_MODEL
 
+        print(f"[GENERAL_RESPONSE] Using provider: {provider}, model: {model}", flush=True)
+        print(f"[GENERAL_RESPONSE] System prompt length: {len(system_prompt)} chars, has employee_context: {len(employee_context) > 0}", flush=True)
+
         try:
             response, _ = await self.chatbot_service._get_llm_response(
                 messages=messages,
                 model=model,
                 temperature=0.7
             )
+            print(f"[GENERAL_RESPONSE] LLM response length: {len(response) if response else 0}", flush=True)
             # Check for empty response
             if response and response.strip():
                 return response
             # Fallback if LLM returned empty
             raise ValueError("LLM returned empty response")
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"LLM call failed: {e}")
+            print(f"[GENERAL_RESPONSE] LLM call failed: {e}", flush=True)
 
             # Return employee-specific fallback if employee is selected
             if employee:
@@ -1779,23 +1813,55 @@ Provide concise, actionable insights based on the data available.
         message: str,
         session_id: str,
         employee_id: Optional[str] = None,
-        dataset_id: Optional[str] = None
+        dataset_id: Optional[str] = None,
+        action_type: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Main chat method that processes messages with intelligence.
-        Returns dict with response text and structured data.
+        Main chat method with two modes:
+        1. Quick Action (action_type provided): Returns structured data cards
+        2. Chat (no action_type): Uses LLM with full employee context
         """
+        print(f"[CHAT] === CHAT REQUEST START ===", flush=True)
+        print(f"[CHAT] message: '{message}', employee_id: {employee_id}, action_type: {action_type}", flush=True)
+
         # Resolve dataset context first
         dataset_id = await self._resolve_dataset_id(dataset_id)
 
-        # Detect pattern
-        pattern_type, entities = await self.detect_pattern(message, employee_id)
+        # Build entities from employee_id
+        entities = {"hr_code": employee_id} if employee_id else {}
 
-        # Gather context
+        # Map action_type to pattern_type for structured responses
+        action_to_pattern = {
+            "diagnose": PatternType.CHURN_RISK_DIAGNOSIS,
+            "retention_plan": PatternType.RETENTION_PLAN,
+            "compare_resigned": PatternType.EMPLOYEE_COMPARISON,
+            "compare_stayed": PatternType.EMPLOYEE_COMPARISON_STAYED,
+            "exit_patterns": PatternType.EXIT_PATTERN_MINING,
+            "workforce_trends": PatternType.WORKFORCE_TRENDS,
+            "department_analysis": PatternType.DEPARTMENT_ANALYSIS,
+            "shap": PatternType.SHAP_EXPLANATION,
+            "email": PatternType.EMAIL_ACTION,
+            "meeting": PatternType.MEETING_ACTION,
+            "employee_info": PatternType.EMPLOYEE_INFO,
+        }
+
+        if action_type and action_type in action_to_pattern:
+            # Quick action mode: Return structured data
+            pattern_type = action_to_pattern[action_type]
+            print(f"[CHAT] Quick action mode: {action_type} -> {pattern_type}", flush=True)
+        else:
+            # Chat mode: Always use LLM
+            pattern_type = PatternType.GENERAL_CHAT
+            print(f"[CHAT] Chat mode: Using LLM with context", flush=True)
+
+        # Gather context based on pattern
         context = await self.gather_context(pattern_type, entities, dataset_id)
+        print(f"[CHAT] Context - employee: {context.get('employee', {}).get('full_name', 'None')}, has_churn: {context.get('churn') is not None}", flush=True)
 
         # Generate response
         result = await self.generate_response(pattern_type, context, message)
+        print(f"[CHAT] Response - pattern: {result.get('pattern_detected')}, structured: {result.get('structured_data') is not None}", flush=True)
+        print(f"[CHAT] === CHAT REQUEST END ===", flush=True)
 
         # Save to database
         await self._save_message(session_id, employee_id, message, "user")

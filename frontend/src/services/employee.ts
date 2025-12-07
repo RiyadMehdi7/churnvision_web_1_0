@@ -159,7 +159,7 @@ class EmployeeService {
       console.log('Successfully fetched employee data via API for project:', projectId, { count: responseRows.length });
       if (!responseRows || responseRows.length === 0) {
         console.warn('No employee data received from the backend for project:', projectId);
-        this.clearCache(projectId);
+        this.clearCache(projectId, datasetId);
         return [];
       }
 

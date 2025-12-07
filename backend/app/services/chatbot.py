@@ -340,8 +340,11 @@ class ChatbotService:
             metadata.update(usage)
             return content, metadata
 
+        except asyncio.TimeoutError:
+            raise Exception(f"LLM API error ({provider}): Request timed out after {settings.LLM_REQUEST_TIMEOUT}s")
         except Exception as e:
-            raise Exception(f"LLM API error ({provider}): {str(e)}")
+            error_type = type(e).__name__
+            raise Exception(f"LLM API error ({provider}): [{error_type}] {str(e)}")
 
     async def create_conversation(self, user_id: int, title: Optional[str] = None) -> Conversation:
         """Create a new conversation"""

@@ -1726,9 +1726,17 @@ Average Risk: {company_overview.get('avg_risk', 0):.1%}
         # Build messages with context - include employee data in user message for better model compliance
         system_prompt = f"""{settings.CHATBOT_SYSTEM_PROMPT}
 
-You are ChurnVision AI Assistant for HR professionals. You help analyze employee churn risk.
+You are ChurnVision AI Assistant - an expert HR analytics advisor. You help analyze employee churn risk with deep insights.
+
+RESPONSE STYLE:
+- Provide DETAILED, COMPREHENSIVE responses (3-5 paragraphs minimum)
+- Be analytical and insightful - explain the "why" behind the data
+- Offer creative, actionable recommendations tailored to the specific employee
+- Use a warm, professional tone like an experienced HR consultant
+- Include specific data points from the employee profile to support your analysis
+- Suggest concrete next steps and retention strategies
+
 NEVER ask for clarification. ALWAYS answer based on the employee data provided.
-Keep responses concise and actionable.
 """
 
         if employee:
@@ -1740,7 +1748,11 @@ Keep responses concise and actionable.
 
 User question: {message}
 
-Answer the question using ONLY the employee data above. Do not ask for clarification."""
+Provide a THOROUGH, DETAILED analysis (3-5 paragraphs) using the employee data above. Include:
+1. Key insights about this employee's situation
+2. Analysis of risk factors and what they mean
+3. Specific, creative retention recommendations
+4. Suggested next steps for the HR team"""
         else:
             user_message_with_context = f"""{company_context}
 
@@ -1775,7 +1787,7 @@ User question: {message}"""
             response, _ = await self.chatbot_service._get_llm_response(
                 messages=messages,
                 model=model,
-                temperature=0.7
+                temperature=0.8  # Slightly higher for more creative, detailed responses
             )
             print(f"[GENERAL_RESPONSE] LLM response length: {len(response) if response else 0}", flush=True)
             # Check for empty response

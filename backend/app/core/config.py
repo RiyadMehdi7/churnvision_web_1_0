@@ -82,9 +82,9 @@ class Settings(BaseSettings):
     MODELS_DIR: str = Field(default="models", validation_alias=AliasChoices("MODELS_DIR", "CHURNVISION_MODELS_DIR"))
 
     # Chatbot / LLM settings
-    # Default (local): Qwen 3 4B via Ollama - privacy-focused, offline
+    # Default (local): Qwen 2.5 3B Instruct via Ollama - fast inference for Docker
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
-    OLLAMA_MODEL: str = "qwen3:4b"
+    OLLAMA_MODEL: str = "qwen2.5:3b-instruct"
     DEFAULT_LLM_PROVIDER: str = "ollama"  # 'openai', 'azure', 'ollama', 'mistral', 'ibm' - default to local
 
     # OpenAI (GPT-5.1) - highest intelligence and speed
@@ -114,7 +114,7 @@ class Settings(BaseSettings):
 
     CHATBOT_MAX_HISTORY: int = 10  # Maximum number of previous messages to include in context
     CHATBOT_SYSTEM_PROMPT: str = "You are a helpful AI assistant for ChurnVision Enterprise, an employee churn prediction platform. You help users understand their workforce data, analyze employee turnover patterns, and make data-driven HR decisions."
-    LLM_REQUEST_TIMEOUT: int = 30  # seconds
+    LLM_REQUEST_TIMEOUT: int = 120  # seconds - increased for detailed responses
 
     # RAG (Retrieval-Augmented Generation) Settings
     RAG_ENABLED: bool = True

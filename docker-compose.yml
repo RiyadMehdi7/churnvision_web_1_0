@@ -9,8 +9,8 @@ services:
       - LICENSE_KEY=${LICENSE_KEY:-dev-license-key}
       - LICENSE_SECRET_KEY=${LICENSE_SECRET_KEY:-churnvision-enterprise-secret-2024}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-this-in-production-min-32-chars}
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3-4b-instruct-2507:q8}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:3b-instruct}
       - DEFAULT_LLM_PROVIDER=ollama
     volumes:
       - ./backend/app:/app/app

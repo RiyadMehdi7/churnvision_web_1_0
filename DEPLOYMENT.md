@@ -40,6 +40,7 @@ nano .env.production
 # Generate secure passwords:
 openssl rand -base64 32  # For POSTGRES_PASSWORD
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"  # For JWT_SECRET_KEY
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"  # For ENCRYPTION_KEY
 ```
 
 ### 3. Add License Key
@@ -77,6 +78,7 @@ curl http://localhost:8000/health
 |----------|----------|-------------|
 | `POSTGRES_PASSWORD` | Yes | Database password (min 32 chars) |
 | `JWT_SECRET_KEY` | Yes | Authentication secret (min 32 chars) |
+| `ENCRYPTION_KEY` | Yes | Field encryption key for PII (Fernet key) |
 | `LICENSE_KEY` | Yes | Your ChurnVision license key |
 | `LICENSE_SECRET_KEY` | Yes | License validation secret |
 | `ALLOWED_ORIGINS` | Yes | Your domain(s) for CORS |
@@ -192,6 +194,7 @@ NAME                    STATUS                    PORTS
 churnvision-backend     Up (healthy)              0.0.0.0:8000->8000/tcp
 churnvision-frontend    Up                        0.0.0.0:3000->80/tcp
 churnvision-db          Up (healthy)              0.0.0.0:5432->5432/tcp
+churnvision-redis       Up (healthy)              6379/tcp
 churnvision-ollama      Up                        0.0.0.0:11434->11434/tcp
 ```
 
@@ -274,6 +277,7 @@ Default resource allocations (adjustable in `docker-compose.prod.yml`):
 | Backend | 2 cores | 4 GB |
 | Frontend | 1 core | 512 MB |
 | Database | 2 cores | 2 GB |
+| Redis | 0.5 cores | 512 MB |
 | Ollama | 4 cores | 8 GB |
 
 Adjust based on your hardware and usage patterns.

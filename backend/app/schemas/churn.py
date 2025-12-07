@@ -89,29 +89,78 @@ class ModelTrainingRequest(BaseModel):
 
 
 class ModelTrainingResponse(BaseModel):
-    """Response after model training"""
+    """Response after model training with comprehensive metrics"""
     model_id: str
     model_type: str
+    # Basic metrics (on TEST set, not training set)
     accuracy: float
     precision: float
     recall: float
     f1_score: float
+    # Advanced metrics
+    roc_auc: Optional[float] = Field(None, description="ROC Area Under Curve (0.5=random, 1.0=perfect)")
+    pr_auc: Optional[float] = Field(None, description="Precision-Recall AUC (better for imbalanced data)")
+    brier_score: Optional[float] = Field(None, description="Calibration quality (0=perfect, 1=worst)")
+    # Cross-validation metrics
+    cv_roc_auc_mean: Optional[float] = Field(None, description="Mean ROC-AUC from 5-fold CV")
+    cv_roc_auc_std: Optional[float] = Field(None, description="Std deviation of CV scores")
+    # Training info
     trained_at: datetime
     training_samples: int
+    test_samples: Optional[int] = None
     feature_importance: Dict[str, float]
+    # Calibration & thresholds
+    calibrated: bool = False
+    optimal_high_threshold: Optional[float] = Field(None, description="Data-driven high risk threshold")
+    optimal_medium_threshold: Optional[float] = Field(None, description="Data-driven medium risk threshold")
+    class_imbalance_ratio: Optional[float] = Field(None, description="Negative/Positive class ratio")
 
 
 class ModelMetricsResponse(BaseModel):
     """Current model performance metrics"""
     model_id: str
     model_type: str
+    # Basic metrics
     accuracy: float
     precision: float
     recall: float
     f1_score: float
+    # Advanced metrics
+    roc_auc: Optional[float] = None
+    pr_auc: Optional[float] = None
+    brier_score: Optional[float] = None
+    cv_roc_auc_mean: Optional[float] = None
+    cv_roc_auc_std: Optional[float] = None
+    # Info
     last_trained: Optional[datetime] = None
     predictions_made: int = 0
     feature_importance: Dict[str, float] = Field(default_factory=dict)
+    # Calibration
+    calibrated: bool = False
+    optimal_high_threshold: Optional[float] = None
+    optimal_medium_threshold: Optional[float] = None
+
+
+class RealizedMetricsResponse(BaseModel):
+    """Realized accuracy metrics - how well predictions actually performed"""
+    total_predictions: int = Field(..., description="Total predictions made")
+    verified_predictions: int = Field(..., description="Predictions with known outcome")
+    # Precision: Of high-risk flagged, how many actually left?
+    high_risk_flagged: int
+    high_risk_left: int
+    realized_precision: float = Field(..., description="Precision: high_risk_left / high_risk_flagged")
+    # Recall: Of those who left, how many were flagged?
+    total_left: int
+    flagged_before_leaving: int
+    realized_recall: float = Field(..., description="Recall: flagged_before_leaving / total_left")
+    # Overall
+    correct_predictions: int
+    accuracy: float
+    # Time metrics
+    avg_days_to_departure: Optional[float] = None
+    predictions_within_90_days: int = 0
+    # Interpretation
+    interpretation: Optional[Dict[str, str]] = None
 
 
 class EmployeeCreate(BaseModel):

@@ -118,3 +118,16 @@ local_config.py
 secrets.json
 config/local/
 backend/.env
+
+# Playwright E2E tests
+frontend/playwright/.auth/
+frontend/playwright-report/
+frontend/test-results/
+**/blob-report/
+
+# Monitoring data (persistent volumes)
+prometheus_data/
+grafana_data/
+
+# Production secrets
+.env.production

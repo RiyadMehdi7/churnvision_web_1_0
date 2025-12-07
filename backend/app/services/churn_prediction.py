@@ -2,6 +2,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 from pathlib import Path
 import pickle
+import logging
 
 import numpy as np
 import pandas as pd
@@ -9,6 +10,13 @@ import xgboost as xgb
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    roc_auc_score, average_precision_score, brier_score_loss,
+    precision_recall_curve
+)
+from sklearn.calibration import CalibratedClassifierCV
 
 from app.schemas.churn import (
     ChurnPredictionRequest,
@@ -22,12 +30,30 @@ from app.schemas.churn import (
 )
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
+# Try to import SHAP (optional but recommended)
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
+    logger.warning("SHAP not available - using rule-based explanations")
+
 
 class ChurnPredictionService:
     """Service for employee churn prediction using ML models"""
 
+    # Feature names used for training and prediction
+    FEATURE_NAMES = [
+        'satisfaction_level', 'last_evaluation', 'number_project',
+        'average_monthly_hours', 'time_spend_company', 'work_accident',
+        'promotion_last_5years', 'department', 'salary_level'
+    ]
+
     def __init__(self):
         self.model = None
+        self.calibrated_model = None  # For probability calibration
         self.scaler = StandardScaler()
         self.label_encoders = {}
         self.feature_importance = {}
@@ -37,6 +63,16 @@ class ChurnPredictionService:
         self.training_progress: Dict[str, Dict[str, Any]] = {}
         self.active_version: Optional[str] = None
         self.active_dataset_id: Optional[str] = None
+
+        # SHAP explainer for model interpretability
+        self.shap_explainer = None
+
+        # Optimized thresholds (data-driven)
+        self.risk_thresholds = {
+            'high': 0.60,
+            'medium': 0.30
+        }
+        self.thresholds_by_dataset: Dict[str, Dict[str, float]] = {}
 
         model_dir = Path(settings.MODELS_DIR)
         self.model_path = model_dir / "churn_model.pkl"
@@ -190,11 +226,14 @@ class ChurnPredictionService:
 
         return feature_array_scaled
 
-    def _determine_risk_level(self, probability: float) -> ChurnRiskLevel:
-        """Determine risk level based on churn probability (3 levels: Low, Medium, High)"""
-        if probability >= 0.60:
+    def _determine_risk_level(self, probability: float, dataset_id: Optional[str] = None) -> ChurnRiskLevel:
+        """Determine risk level based on churn probability using data-driven thresholds."""
+        # Use dataset-specific thresholds if available, otherwise use defaults
+        thresholds = self.thresholds_by_dataset.get(dataset_id or "default", self.risk_thresholds)
+
+        if probability >= thresholds.get('high', 0.60):
             return ChurnRiskLevel.HIGH
-        elif probability >= 0.30:
+        elif probability >= thresholds.get('medium', 0.30):
             return ChurnRiskLevel.MEDIUM
         else:
             return ChurnRiskLevel.LOW
@@ -330,8 +369,96 @@ class ChurnPredictionService:
             print(f"RandomForest tree agreement error: {e}")
             return 0.5
 
-    def _get_contributing_factors(self, features: EmployeeChurnFeatures, probability: float) -> List[Dict[str, Any]]:
-        """Identify top contributing factors for churn risk"""
+    def _get_shap_contributing_factors(
+        self,
+        features_array: np.ndarray,
+        features: EmployeeChurnFeatures
+    ) -> List[Dict[str, Any]]:
+        """Get contributing factors using SHAP values for true model interpretability."""
+        if not SHAP_AVAILABLE or self.shap_explainer is None:
+            return self._get_heuristic_contributing_factors(features)
+
+        try:
+            # Get SHAP values for this prediction
+            shap_values = self.shap_explainer.shap_values(features_array)
+
+            # Handle different SHAP output formats
+            if isinstance(shap_values, list):
+                # Binary classification returns list of 2 arrays
+                shap_values = shap_values[1]  # Use positive class
+
+            shap_values = shap_values.flatten()
+
+            # Map SHAP values to feature names
+            feature_values = [
+                features.satisfaction_level,
+                features.last_evaluation,
+                features.number_project,
+                features.average_monthly_hours,
+                features.time_spend_company,
+                int(features.work_accident),
+                int(features.promotion_last_5years),
+                features.department,
+                features.salary_level
+            ]
+
+            # Create factor list sorted by absolute SHAP value
+            factors_with_shap = []
+            for i, (name, value, shap_val) in enumerate(zip(
+                self.FEATURE_NAMES, feature_values, shap_values
+            )):
+                abs_impact = abs(shap_val)
+                if abs_impact > 0.01:  # Filter insignificant factors
+                    factors_with_shap.append({
+                        "feature": name,
+                        "value": value,
+                        "shap_value": float(shap_val),
+                        "impact": self._shap_to_impact_level(shap_val),
+                        "direction": "increases_risk" if shap_val > 0 else "decreases_risk",
+                        "message": self._generate_shap_message(name, value, shap_val)
+                    })
+
+            # Sort by absolute SHAP value (most important first)
+            factors_with_shap.sort(key=lambda x: abs(x["shap_value"]), reverse=True)
+            return factors_with_shap[:5]
+
+        except Exception as e:
+            logger.warning(f"SHAP explanation failed: {e}, falling back to heuristics")
+            return self._get_heuristic_contributing_factors(features)
+
+    def _shap_to_impact_level(self, shap_value: float) -> str:
+        """Convert SHAP value magnitude to impact level."""
+        abs_val = abs(shap_value)
+        if abs_val >= 0.3:
+            return "critical"
+        elif abs_val >= 0.15:
+            return "high"
+        elif abs_val >= 0.05:
+            return "medium"
+        else:
+            return "low"
+
+    def _generate_shap_message(self, feature: str, value: Any, shap_val: float) -> str:
+        """Generate human-readable message from SHAP explanation."""
+        direction = "increases" if shap_val > 0 else "decreases"
+        magnitude = abs(shap_val)
+
+        messages = {
+            "satisfaction_level": f"Satisfaction level ({value:.2f}) {direction} churn risk",
+            "last_evaluation": f"Performance score ({value:.2f}) {direction} churn risk",
+            "number_project": f"Project count ({value}) {direction} churn risk",
+            "average_monthly_hours": f"Monthly hours ({value:.0f}) {direction} churn risk",
+            "time_spend_company": f"Tenure ({value} years) {direction} churn risk",
+            "work_accident": f"Work accident history {direction} churn risk",
+            "promotion_last_5years": f"Promotion status {direction} churn risk",
+            "department": f"Department ({value}) {direction} churn risk",
+            "salary_level": f"Salary level ({value}) {direction} churn risk"
+        }
+
+        return messages.get(feature, f"{feature} ({value}) {direction} churn risk")
+
+    def _get_heuristic_contributing_factors(self, features: EmployeeChurnFeatures) -> List[Dict[str, Any]]:
+        """Fallback: Identify contributing factors using heuristic rules."""
         factors = []
 
         # Low satisfaction is a major factor
@@ -339,14 +466,18 @@ class ChurnPredictionService:
             factors.append({
                 "feature": "satisfaction_level",
                 "value": features.satisfaction_level,
+                "shap_value": 0.4,  # Estimated impact
                 "impact": "critical",
+                "direction": "increases_risk",
                 "message": f"Very low satisfaction level ({features.satisfaction_level:.2f})"
             })
         elif features.satisfaction_level < 0.6:
             factors.append({
                 "feature": "satisfaction_level",
                 "value": features.satisfaction_level,
+                "shap_value": 0.2,
                 "impact": "high",
+                "direction": "increases_risk",
                 "message": f"Low satisfaction level ({features.satisfaction_level:.2f})"
             })
 
@@ -355,7 +486,9 @@ class ChurnPredictionService:
             factors.append({
                 "feature": "average_monthly_hours",
                 "value": features.average_monthly_hours,
+                "shap_value": 0.15,
                 "impact": "high",
+                "direction": "increases_risk",
                 "message": f"High workload ({features.average_monthly_hours:.0f} hours/month)"
             })
 
@@ -364,14 +497,18 @@ class ChurnPredictionService:
             factors.append({
                 "feature": "number_project",
                 "value": features.number_project,
+                "shap_value": 0.1,
                 "impact": "medium",
+                "direction": "increases_risk",
                 "message": f"High project count ({features.number_project} projects)"
             })
         elif features.number_project < 2:
             factors.append({
                 "feature": "number_project",
                 "value": features.number_project,
+                "shap_value": 0.1,
                 "impact": "medium",
+                "direction": "increases_risk",
                 "message": f"Low project engagement ({features.number_project} projects)"
             })
 
@@ -380,7 +517,9 @@ class ChurnPredictionService:
             factors.append({
                 "feature": "last_evaluation",
                 "value": features.last_evaluation,
+                "shap_value": 0.2,
                 "impact": "high",
+                "direction": "increases_risk",
                 "message": f"Low performance evaluation ({features.last_evaluation:.2f})"
             })
 
@@ -389,7 +528,9 @@ class ChurnPredictionService:
             factors.append({
                 "feature": "promotion_last_5years",
                 "value": False,
+                "shap_value": 0.1,
                 "impact": "medium",
+                "direction": "increases_risk",
                 "message": f"No promotion in {features.time_spend_company} years"
             })
 
@@ -398,11 +539,17 @@ class ChurnPredictionService:
             factors.append({
                 "feature": "salary_level",
                 "value": features.salary_level,
+                "shap_value": 0.05,
                 "impact": "medium",
+                "direction": "increases_risk",
                 "message": "Low salary level"
             })
 
-        return factors[:5]  # Return top 5 factors
+        return factors[:5]
+
+    def _get_contributing_factors(self, features: EmployeeChurnFeatures, probability: float) -> List[Dict[str, Any]]:
+        """Identify top contributing factors for churn risk (legacy compatibility)."""
+        return self._get_heuristic_contributing_factors(features)
 
     def _get_recommendations(self, features: EmployeeChurnFeatures, factors: List[Dict[str, Any]]) -> List[str]:
         """Generate actionable recommendations based on churn factors"""
@@ -457,18 +604,28 @@ class ChurnPredictionService:
                 'final_confidence': confidence_score,
                 'method': 'heuristic'
             }
+            # Use heuristic factors for untrained model
+            contributing_factors = self._get_heuristic_contributing_factors(request.features)
         else:
-            probability = float(self.model.predict_proba(features_array)[0][1])
+            # Use calibrated model if available for better probability estimates
+            if self.calibrated_model is not None:
+                probability = float(self.calibrated_model.predict_proba(features_array)[0][1])
+                confidence_breakdown_method = 'calibrated'
+            else:
+                probability = float(self.model.predict_proba(features_array)[0][1])
+                confidence_breakdown_method = 'raw'
+
             # Calculate real confidence using tree agreement + margin
             confidence_score, confidence_breakdown = self.calculate_prediction_confidence(
                 features_array, probability
             )
+            confidence_breakdown['method'] = confidence_breakdown_method
 
-        # Determine risk level
-        risk_level = self._determine_risk_level(probability)
+            # Use SHAP-based factors if available, otherwise heuristic
+            contributing_factors = self._get_shap_contributing_factors(features_array, request.features)
 
-        # Get contributing factors
-        contributing_factors = self._get_contributing_factors(request.features, probability)
+        # Determine risk level using data-driven thresholds
+        risk_level = self._determine_risk_level(probability, dataset_id)
 
         # Get recommendations
         recommendations = self._get_recommendations(request.features, contributing_factors)
@@ -537,7 +694,7 @@ class ChurnPredictionService:
         )
 
     async def train_model(self, request: ModelTrainingRequest, training_data: pd.DataFrame, dataset_id: Optional[str] = None) -> ModelTrainingResponse:
-        """Train a new churn prediction model, scoped to the provided dataset."""
+        """Train a new churn prediction model with proper validation and calibration."""
 
         # Remember which dataset this model belongs to
         self.active_dataset_id = dataset_id
@@ -545,46 +702,141 @@ class ChurnPredictionService:
         # Prepare training data
         X, y = self._prepare_training_data(training_data)
 
-        # Initialize model based on type
+        # === IMPROVEMENT 1: Proper Train/Test Split ===
+        # Use stratified split to maintain class balance
+        if len(X) > 50:
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, stratify=y, random_state=42
+            )
+        else:
+            # Small dataset - use all data for training
+            X_train, X_test, y_train, y_test = X, X, y, y
+            logger.warning(f"Small dataset ({len(X)} samples) - using all data for training")
+
+        # === IMPROVEMENT 2: Calculate Class Imbalance ===
+        n_positive = np.sum(y_train == 1)
+        n_negative = np.sum(y_train == 0)
+        class_imbalance_ratio = n_negative / max(n_positive, 1)
+        logger.info(f"Class distribution: {n_positive} left, {n_negative} stayed (ratio: {class_imbalance_ratio:.2f})")
+
+        # Initialize model based on type with class imbalance handling
         if request.model_type == "xgboost":
             params = request.hyperparameters or {
                 'n_estimators': 100,
                 'max_depth': 5,
                 'learning_rate': 0.1,
-                'random_state': 42
+                'random_state': 42,
+                'scale_pos_weight': class_imbalance_ratio,  # Handle imbalance
+                'eval_metric': 'auc'
             }
             self.model = xgb.XGBClassifier(**params)
         elif request.model_type == "random_forest":
             params = request.hyperparameters or {
                 'n_estimators': 100,
                 'max_depth': 10,
-                'random_state': 42
+                'random_state': 42,
+                'class_weight': 'balanced'  # Handle imbalance
             }
             self.model = RandomForestClassifier(**params)
         elif request.model_type == "logistic":
             params = request.hyperparameters or {
                 'random_state': 42,
-                'max_iter': 1000
+                'max_iter': 1000,
+                'class_weight': 'balanced'  # Handle imbalance
             }
             self.model = LogisticRegression(**params)
 
-        # Fit scaler
-        self.scaler.fit(X)
-        X_scaled = self.scaler.transform(X)
+        # Fit scaler on training data only
+        self.scaler.fit(X_train)
+        X_train_scaled = self.scaler.transform(X_train)
+        X_test_scaled = self.scaler.transform(X_test)
 
-        # Train model
-        self.model.fit(X_scaled, y)
+        # Train model on training data
+        self.model.fit(X_train_scaled, y_train)
 
-        # Calculate metrics
-        from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-        y_pred = self.model.predict(X_scaled)
+        # === IMPROVEMENT 3: Proper Validation Metrics (on TEST set) ===
+        y_pred_test = self.model.predict(X_test_scaled)
+        y_proba_test = self.model.predict_proba(X_test_scaled)[:, 1]
 
+        # Basic metrics on test set
         metrics = {
-            'accuracy': float(accuracy_score(y, y_pred)),
-            'precision': float(precision_score(y, y_pred)),
-            'recall': float(recall_score(y, y_pred)),
-            'f1_score': float(f1_score(y, y_pred))
+            'accuracy': float(accuracy_score(y_test, y_pred_test)),
+            'precision': float(precision_score(y_test, y_pred_test, zero_division=0)),
+            'recall': float(recall_score(y_test, y_pred_test, zero_division=0)),
+            'f1_score': float(f1_score(y_test, y_pred_test, zero_division=0)),
         }
+
+        # === IMPROVEMENT 4: Add ROC-AUC, PR-AUC, Brier Score ===
+        try:
+            metrics['roc_auc'] = float(roc_auc_score(y_test, y_proba_test))
+        except ValueError:
+            metrics['roc_auc'] = 0.5  # Default if only one class
+
+        try:
+            metrics['pr_auc'] = float(average_precision_score(y_test, y_proba_test))
+        except ValueError:
+            metrics['pr_auc'] = 0.0
+
+        metrics['brier_score'] = float(brier_score_loss(y_test, y_proba_test))
+
+        # Cross-validation scores (on full data for robustness estimate)
+        if len(X) >= 50:
+            try:
+                X_all_scaled = self.scaler.transform(X)
+                cv_scores = cross_val_score(self.model, X_all_scaled, y, cv=5, scoring='roc_auc')
+                metrics['cv_roc_auc_mean'] = float(cv_scores.mean())
+                metrics['cv_roc_auc_std'] = float(cv_scores.std())
+            except Exception as e:
+                logger.warning(f"Cross-validation failed: {e}")
+                metrics['cv_roc_auc_mean'] = metrics.get('roc_auc', 0.5)
+                metrics['cv_roc_auc_std'] = 0.0
+
+        # Training set metrics (for reference)
+        y_pred_train = self.model.predict(X_train_scaled)
+        metrics['train_accuracy'] = float(accuracy_score(y_train, y_pred_train))
+        metrics['class_imbalance_ratio'] = float(class_imbalance_ratio)
+        metrics['test_size'] = len(y_test)
+        metrics['train_size'] = len(y_train)
+
+        # === IMPROVEMENT 5: Initialize SHAP Explainer ===
+        if SHAP_AVAILABLE:
+            try:
+                if isinstance(self.model, (xgb.XGBClassifier, RandomForestClassifier)):
+                    self.shap_explainer = shap.TreeExplainer(self.model)
+                    logger.info("SHAP TreeExplainer initialized")
+                else:
+                    # For logistic regression, use KernelExplainer (slower)
+                    background = shap.sample(X_train_scaled, min(100, len(X_train_scaled)))
+                    self.shap_explainer = shap.KernelExplainer(self.model.predict_proba, background)
+                    logger.info("SHAP KernelExplainer initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize SHAP explainer: {e}")
+                self.shap_explainer = None
+
+        # === IMPROVEMENT 6: Probability Calibration ===
+        if len(X_train) > 100:
+            try:
+                # Calibrate probabilities using isotonic regression
+                self.calibrated_model = CalibratedClassifierCV(
+                    self.model, method='isotonic', cv=3
+                )
+                self.calibrated_model.fit(X_train_scaled, y_train)
+                logger.info("Probability calibration applied (isotonic)")
+                metrics['calibrated'] = True
+            except Exception as e:
+                logger.warning(f"Calibration failed: {e}")
+                self.calibrated_model = None
+                metrics['calibrated'] = False
+        else:
+            self.calibrated_model = None
+            metrics['calibrated'] = False
+
+        # === IMPROVEMENT 7: Data-Driven Threshold Optimization ===
+        optimal_thresholds = self._optimize_thresholds(y_test, y_proba_test)
+        cache_key = dataset_id or "default"
+        self.thresholds_by_dataset[cache_key] = optimal_thresholds
+        metrics['optimal_high_threshold'] = optimal_thresholds['high']
+        metrics['optimal_medium_threshold'] = optimal_thresholds['medium']
 
         # Get feature importance
         if hasattr(self.model, 'feature_importances_'):
@@ -600,7 +852,6 @@ class ChurnPredictionService:
         trained_at = datetime.utcnow()
 
         # Persist metrics for status checks (per dataset)
-        cache_key = dataset_id or "default"
         model_id = f"{request.model_type}_{cache_key}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
         metrics_payload = {
             **metrics,
@@ -618,6 +869,11 @@ class ChurnPredictionService:
 
         self.active_version = model_id
 
+        logger.info(f"Model trained: accuracy={metrics['accuracy']:.3f}, "
+                   f"roc_auc={metrics.get('roc_auc', 0):.3f}, "
+                   f"precision={metrics['precision']:.3f}, "
+                   f"recall={metrics['recall']:.3f}")
+
         return ModelTrainingResponse(
             model_id=model_id,
             model_type=request.model_type,
@@ -625,10 +881,59 @@ class ChurnPredictionService:
             precision=metrics['precision'],
             recall=metrics['recall'],
             f1_score=metrics['f1_score'],
+            roc_auc=metrics.get('roc_auc'),
+            pr_auc=metrics.get('pr_auc'),
+            brier_score=metrics.get('brier_score'),
+            cv_roc_auc_mean=metrics.get('cv_roc_auc_mean'),
+            cv_roc_auc_std=metrics.get('cv_roc_auc_std'),
             trained_at=trained_at,
-            training_samples=len(X),
-            feature_importance=self.feature_importance
+            training_samples=len(X_train),
+            test_samples=len(X_test),
+            feature_importance=self.feature_importance,
+            calibrated=metrics.get('calibrated', False),
+            optimal_high_threshold=metrics.get('optimal_high_threshold'),
+            optimal_medium_threshold=metrics.get('optimal_medium_threshold'),
+            class_imbalance_ratio=metrics.get('class_imbalance_ratio')
         )
+
+    def _optimize_thresholds(self, y_true: np.ndarray, y_proba: np.ndarray) -> Dict[str, float]:
+        """Optimize risk thresholds based on precision-recall trade-offs."""
+        try:
+            precision, recall, thresholds = precision_recall_curve(y_true, y_proba)
+
+            # Find threshold that maximizes F1 for HIGH risk
+            f1_scores = 2 * (precision * recall) / (precision + recall + 1e-8)
+            if len(f1_scores) > 0 and len(thresholds) > 0:
+                # F1 has one less element than precision/recall
+                optimal_idx = min(np.argmax(f1_scores), len(thresholds) - 1)
+                high_threshold = float(thresholds[optimal_idx])
+            else:
+                high_threshold = 0.60
+
+            # For MEDIUM threshold, find where recall is ~0.8
+            target_recall = 0.8
+            recall_diffs = np.abs(recall - target_recall)
+            medium_idx = np.argmin(recall_diffs)
+            if medium_idx < len(thresholds):
+                medium_threshold = float(thresholds[medium_idx])
+            else:
+                medium_threshold = 0.30
+
+            # Ensure medium < high
+            if medium_threshold >= high_threshold:
+                medium_threshold = max(0.20, high_threshold - 0.15)
+
+            # Clamp to reasonable bounds
+            high_threshold = max(0.40, min(0.80, high_threshold))
+            medium_threshold = max(0.15, min(0.50, medium_threshold))
+
+            logger.info(f"Optimized thresholds: high={high_threshold:.2f}, medium={medium_threshold:.2f}")
+
+            return {'high': high_threshold, 'medium': medium_threshold}
+
+        except Exception as e:
+            logger.warning(f"Threshold optimization failed: {e}, using defaults")
+            return {'high': 0.60, 'medium': 0.30}
 
     def _prepare_training_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
         """Prepare training data from DataFrame"""

@@ -1,0 +1,83 @@
+# AlertManager configuration for ChurnVision Enterprise
+global:
+  # Default SMTP settings (configure for your environment)
+  smtp_smarthost: 'smtp.example.com:587'
+  smtp_from: 'alerts@churnvision.local'
+  smtp_require_tls: true
+
+# Route configuration
+route:
+  # Default receiver
+  receiver: 'default-receiver'
+
+  # Group alerts by these labels
+  group_by: ['alertname', 'severity']
+
+  # Wait time before sending first notification
+  group_wait: 30s
+
+  # Wait time before sending updated notification
+  group_interval: 5m
+
+  # Interval for re-sending unresolved alerts
+  repeat_interval: 4h
+
+  # Child routes for different severities
+  routes:
+    - match:
+        severity: critical
+      receiver: 'critical-receiver'
+      group_wait: 10s
+      repeat_interval: 1h
+
+    - match:
+        severity: warning
+      receiver: 'warning-receiver'
+      repeat_interval: 4h
+
+    - match:
+        severity: info
+      receiver: 'info-receiver'
+      repeat_interval: 24h
+
+# Receivers configuration
+receivers:
+  - name: 'default-receiver'
+    # Configure your notification channels here
+    # Email example:
+    # email_configs:
+    #   - to: 'ops@yourcompany.com'
+    #     send_resolved: true
+
+  - name: 'critical-receiver'
+    # For critical alerts - multiple notification channels
+    # webhook_configs:
+    #   - url: 'http://your-pagerduty-integration'
+    # email_configs:
+    #   - to: 'oncall@yourcompany.com'
+
+  - name: 'warning-receiver'
+    # For warning alerts
+    # email_configs:
+    #   - to: 'dev-team@yourcompany.com'
+
+  - name: 'info-receiver'
+    # For info alerts - less urgent
+    # email_configs:
+    #   - to: 'monitoring@yourcompany.com'
+
+# Inhibition rules - prevent notification floods
+inhibit_rules:
+  # If API is down, don't alert on dependent services
+  - source_match:
+      alertname: 'APIDown'
+    target_match_re:
+      alertname: 'High.*'
+    equal: ['instance']
+
+  # Critical alerts inhibit warning alerts for same instance
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']

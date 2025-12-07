@@ -2,9 +2,11 @@
 License Key Validation System for ChurnVision Enterprise
 
 This module handles on-premise license validation using JWT-signed keys.
+Includes hardware fingerprinting to prevent license sharing.
 """
 
 import os
+import hashlib
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -14,6 +16,7 @@ from fastapi import Depends, HTTPException, status
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.core.hardware_fingerprint import HardwareFingerprint
 
 class LicenseInfo(BaseModel):
     """License information model"""
@@ -24,6 +27,7 @@ class LicenseInfo(BaseModel):
     expires_at: datetime
     features: list[str]
     hardware_id: Optional[str] = None
+    enforce_hardware: bool = True  # Whether to enforce hardware binding
 
 
 class LicenseValidator:
@@ -130,6 +134,22 @@ class LicenseValidator:
                     detail="License has expired. Please contact support."
                 )
 
+            # Verify hardware fingerprint if required
+            license_hardware_id = payload.get("hardware_id")
+            enforce_hardware = payload.get("enforce_hardware", True)
+
+            if enforce_hardware and license_hardware_id:
+                current_fingerprint = HardwareFingerprint.generate()
+                if not HardwareFingerprint.verify(license_hardware_id):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=(
+                            "License is bound to a different machine. "
+                            f"Expected: {license_hardware_id[:16]}..., "
+                            f"Current: {current_fingerprint[:16]}..."
+                        )
+                    )
+
             # Create LicenseInfo object
             license_info = LicenseInfo(
                 company_name=payload["company_name"],
@@ -138,7 +158,8 @@ class LicenseValidator:
                 issued_at=issued_at,
                 expires_at=expires_at,
                 features=payload.get("features", []),
-                hardware_id=payload.get("hardware_id")
+                hardware_id=license_hardware_id,
+                enforce_hardware=enforce_hardware
             )
 
             return license_info

@@ -144,6 +144,22 @@ async def _get_active_dataset_for_project(db: AsyncSession) -> DatasetModel:
     return dataset
 
 
+async def _get_active_dataset_id_for_project(db: AsyncSession) -> Optional[str]:
+    """Return the active dataset ID for the active project (without validating file existence)."""
+    try:
+        await ensure_default_project(db)
+        active_project = await get_active_project(db)
+        dataset = await db.scalar(
+            select(DatasetModel).where(
+                DatasetModel.project_id == active_project.id,
+                DatasetModel.is_active == 1,
+            )
+        )
+        return dataset.dataset_id if dataset else None
+    except Exception:
+        return None
+
+
 async def _load_active_dataset_with_mapping(db: AsyncSession) -> tuple[pd.DataFrame, Optional[Dict[str, Any]], DatasetModel]:
     """Load the active dataset CSV and return it with any stored column mapping."""
     dataset = await _get_active_dataset_for_project(db)
@@ -176,10 +192,32 @@ async def _complete_training_job(db: AsyncSession, job: TrainingJob, status: str
     await db.commit()
 
 
+def _parse_additional_data_column(raw: Any) -> Dict[str, Any]:
+    """Parse additional_data JSON field from a single row."""
+    import json as json_module
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json_module.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except:
+            return {}
+    return {}
+
+
 def _build_training_frame(df: pd.DataFrame, mapping: Optional[Dict[str, Any]]) -> pd.DataFrame:
     """
     Convert arbitrary HR dataset into the feature set expected by the churn model.
-    Uses Data Management column mapping when provided; otherwise falls back to best-effort defaults.
+
+    Data sources:
+    1. Required columns: Direct columns from user's CSV/HRDataInput (hr_code, tenure, status, etc.)
+    2. additional_data: JSON field containing optional user-provided columns
+    3. Column mapping: User-defined mapping from their column names to canonical names
+
+    Returns DataFrame with ML features and data_quality_score per row.
     """
 
     # Apply column mapping to create canonical columns
@@ -202,45 +240,156 @@ def _build_training_frame(df: pd.DataFrame, mapping: Optional[Dict[str, Any]]) -
             if mapped_col and mapped_col in df.columns and canonical not in df.columns:
                 df = df.rename(columns={mapped_col: canonical})
 
-    # Derive feature columns expected by churn model
-    # satisfaction_level: use performance_rating_latest if available (scale 0-5 -> 0-1)
-    if "performance_rating_latest" in df.columns:
-        df["satisfaction_level"] = df["performance_rating_latest"].apply(lambda v: min(max(_normalize_value(v) / 5.0, 0), 1))
+    # === PARSE additional_data JSON if present ===
+    # This column contains user-provided optional fields
+    if "additional_data" in df.columns:
+        parsed_additional = df["additional_data"].apply(_parse_additional_data_column)
+
+        # Extract known fields from additional_data
+        additional_field_mappings = {
+            # Satisfaction/engagement fields
+            "job_satisfaction": ["job_satisfaction", "satisfaction", "engagement_score"],
+            "work_life_balance": ["work_life_balance", "worklife_balance"],
+            "environment_satisfaction": ["environment_satisfaction", "env_satisfaction"],
+            "relationship_satisfaction": ["relationship_satisfaction", "rel_satisfaction"],
+            # Performance fields
+            "performance_rating": ["performance_rating_latest", "performance_rating", "last_evaluation", "perf_rating"],
+            # Workload fields
+            "average_monthly_hours": ["average_monthly_hours", "avg_monthly_hours", "monthly_hours"],
+            "number_project": ["number_project", "num_projects", "project_count"],
+            "overtime": ["overtime", "over_time"],
+            # Career fields
+            "years_since_last_promotion": ["years_since_last_promotion", "years_no_promotion"],
+            "years_in_current_role": ["years_in_current_role", "years_current_role"],
+            "training_times_last_year": ["training_times_last_year", "training_count"],
+            # Other
+            "work_accident": ["work_accident", "accident"],
+        }
+
+        for target_col, source_keys in additional_field_mappings.items():
+            if target_col not in df.columns:
+                def extract_field(add_data, keys=source_keys):
+                    if not isinstance(add_data, dict):
+                        return None
+                    for key in keys:
+                        if key in add_data and add_data[key] is not None:
+                            return add_data[key]
+                    return None
+                extracted = parsed_additional.apply(extract_field)
+                if extracted.notna().any():
+                    df[target_col] = extracted
+
+    # === Track data quality (which features are real vs defaulted) ===
+    features_from_data = []
+    features_defaulted = []
+
+    # satisfaction_level: use job_satisfaction or performance_rating if available
+    if "job_satisfaction" in df.columns and df["job_satisfaction"].notna().sum() > 0:
+        # job_satisfaction typically 1-4 scale -> normalize to 0-1
+        df["satisfaction_level"] = df["job_satisfaction"].apply(
+            lambda v: min(max(_normalize_value(v) / 4.0, 0), 1) if pd.notna(v) else 0.5
+        )
+        features_from_data.append("satisfaction_level")
+    elif "performance_rating" in df.columns and df["performance_rating"].notna().sum() > 0:
+        df["satisfaction_level"] = df["performance_rating"].apply(
+            lambda v: min(max(_normalize_value(v) / 5.0, 0), 1) if pd.notna(v) else 0.5
+        )
+        features_from_data.append("satisfaction_level")
+    elif "performance_rating_latest" in df.columns and df["performance_rating_latest"].notna().sum() > 0:
+        df["satisfaction_level"] = df["performance_rating_latest"].apply(
+            lambda v: min(max(_normalize_value(v) / 5.0, 0), 1) if pd.notna(v) else 0.5
+        )
+        features_from_data.append("satisfaction_level")
     else:
         df["satisfaction_level"] = 0.5
+        features_defaulted.append("satisfaction_level")
 
-    # last_evaluation: mirror satisfaction_level unless a better column exists
-    df["last_evaluation"] = df.get("satisfaction_level", pd.Series([0.5] * len(df)))
+    # last_evaluation: use performance rating or mirror satisfaction
+    if "performance_rating" in df.columns and df["performance_rating"].notna().sum() > 0:
+        df["last_evaluation"] = df["performance_rating"].apply(
+            lambda v: min(max(_normalize_value(v) / 5.0, 0), 1) if pd.notna(v) else 0.5
+        )
+        features_from_data.append("last_evaluation")
+    else:
+        df["last_evaluation"] = df["satisfaction_level"]
+        if "satisfaction_level" in features_defaulted:
+            features_defaulted.append("last_evaluation")
+        else:
+            features_from_data.append("last_evaluation")
 
-    # number_project: fall back to 3 if missing
-    df["number_project"] = 3
+    # number_project
+    if "number_project" in df.columns and df["number_project"].notna().sum() > 0:
+        df["number_project"] = df["number_project"].apply(lambda v: int(_normalize_value(v)) if pd.notna(v) else 3)
+        features_from_data.append("number_project")
+    else:
+        df["number_project"] = 3
+        features_defaulted.append("number_project")
 
-    # average_monthly_hours: fall back to 160 if missing
-    df["average_monthly_hours"] = 160
+    # average_monthly_hours
+    if "average_monthly_hours" in df.columns and df["average_monthly_hours"].notna().sum() > 0:
+        df["average_monthly_hours"] = df["average_monthly_hours"].apply(
+            lambda v: _normalize_value(v) if pd.notna(v) else 160
+        )
+        features_from_data.append("average_monthly_hours")
+    elif "overtime" in df.columns:
+        # Derive from overtime flag: overtime=Yes -> 220 hours, No -> 160
+        df["average_monthly_hours"] = df["overtime"].apply(
+            lambda v: 220 if str(v).lower() in ["yes", "1", "true"] else 160
+        )
+        features_from_data.append("average_monthly_hours")
+    else:
+        df["average_monthly_hours"] = 160
+        features_defaulted.append("average_monthly_hours")
 
-    # time_spend_company: use tenure if present, else 3
-    if "tenure" in df.columns:
+    # time_spend_company (tenure)
+    if "tenure" in df.columns and df["tenure"].notna().sum() > 0:
         df["time_spend_company"] = df["tenure"].apply(_normalize_value)
+        features_from_data.append("time_spend_company")
     else:
         df["time_spend_company"] = 3
+        features_defaulted.append("time_spend_company")
 
-    # work_accident and promotion_last_5years: default to 0
-    df["work_accident"] = 0
-    df["promotion_last_5years"] = 0
+    # work_accident
+    if "work_accident" in df.columns and df["work_accident"].notna().sum() > 0:
+        df["work_accident"] = df["work_accident"].apply(
+            lambda v: 1 if str(v).lower() in ["yes", "1", "true"] else 0
+        )
+        features_from_data.append("work_accident")
+    else:
+        df["work_accident"] = 0
+        features_defaulted.append("work_accident")
 
-    # department: use mapped department if present, else placeholder
+    # promotion_last_5years: derive from years_since_last_promotion or default
+    if "years_since_last_promotion" in df.columns and df["years_since_last_promotion"].notna().sum() > 0:
+        df["promotion_last_5years"] = df["years_since_last_promotion"].apply(
+            lambda v: 0 if pd.notna(v) and _normalize_value(v) > 5 else 1
+        )
+        features_from_data.append("promotion_last_5years")
+    else:
+        df["promotion_last_5years"] = 0
+        features_defaulted.append("promotion_last_5years")
+
+    # department
     if "department" in df.columns:
         df["department"] = df["department"].fillna("unknown")
+        features_from_data.append("department")
+    elif "structure_name" in df.columns:
+        df["department"] = df["structure_name"].fillna("unknown")
+        features_from_data.append("department")
     else:
         df["department"] = "general"
+        features_defaulted.append("department")
 
-    # salary_level: derive from employee_cost quantiles if available, else medium
-    if "employee_cost" in df.columns:
+    # salary_level: derive from employee_cost quantiles
+    if "employee_cost" in df.columns and df["employee_cost"].notna().sum() > 0:
         cost_series = df["employee_cost"].apply(_normalize_value)
-        if len(cost_series) > 0:
-            thresholds = np.quantile(cost_series, [0.33, 0.66])
+        valid_costs = cost_series[cost_series > 0]
+        if len(valid_costs) > 0:
+            thresholds = np.quantile(valid_costs, [0.33, 0.66])
 
             def bucket(cost: float) -> str:
+                if cost <= 0:
+                    return "medium"
                 if cost <= thresholds[0]:
                     return "low"
                 if cost <= thresholds[1]:
@@ -248,21 +397,39 @@ def _build_training_frame(df: pd.DataFrame, mapping: Optional[Dict[str, Any]]) -
                 return "high"
 
             df["salary_level"] = cost_series.apply(bucket)
+            features_from_data.append("salary_level")
         else:
             df["salary_level"] = "medium"
+            features_defaulted.append("salary_level")
     else:
         df["salary_level"] = "medium"
+        features_defaulted.append("salary_level")
 
-    # left: derive from status if available, else 0
+    # left: derive from status (the target variable)
     if "status" in df.columns:
         def status_to_left(val: Any) -> int:
             sval = str(val).strip().lower()
-            if any(k in sval for k in ["resign", "terminated", "left", "inactive", "exit"]):
+            if any(k in sval for k in ["resign", "terminated", "left", "inactive", "exit", "departed"]):
                 return 1
             return 0
         df["left"] = df["status"].apply(status_to_left)
     else:
         df["left"] = 0
+
+    # === Calculate per-row data quality score ===
+    # Higher score = more features from actual data vs defaults
+    total_features = len(features_from_data) + len(features_defaulted)
+    data_quality_score = len(features_from_data) / total_features if total_features > 0 else 0.5
+    df["_data_quality_score"] = data_quality_score
+    df["_features_from_data"] = ",".join(features_from_data)
+    df["_features_defaulted"] = ",".join(features_defaulted)
+
+    # Log data quality info
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Training data quality: {data_quality_score:.1%} features from actual data")
+    logger.info(f"  From data: {features_from_data}")
+    logger.info(f"  Defaulted: {features_defaulted}")
 
     # Ensure required columns exist
     required_columns = [
@@ -278,7 +445,7 @@ def _build_training_frame(df: pd.DataFrame, mapping: Optional[Dict[str, Any]]) -
             detail=f"Unable to build training features, missing: {missing_after_enrichment}"
         )
 
-    return df[required_columns]
+    return df[required_columns + ['_data_quality_score', '_features_from_data', '_features_defaulted']]
 
 
 async def _run_training_background(
@@ -855,8 +1022,15 @@ async def get_training_status(
 ):
     """Return training status for the active dataset, including progress if available."""
     try:
-        dataset = await _get_active_dataset_for_project(db)
-        dataset_id = dataset.dataset_id
+        # Get dataset ID without requiring the file to exist on disk
+        dataset_id = await _get_active_dataset_id_for_project(db)
+        if not dataset_id:
+            return {
+                "status": "idle",
+                "progress": 0,
+                "message": "No active dataset configured",
+                "dataset_id": None,
+            }
         cache_key = dataset_id or "default"
 
         # Prefer in-memory progress (live updates during training)
@@ -1531,4 +1705,103 @@ async def get_batch_survival_predictions(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=sanitize_error_message(e, "batch survival predictions")
+        )
+
+
+# ============================================================================
+# OUTCOME TRACKING ENDPOINTS (Model Validation)
+# ============================================================================
+
+from app.services.outcome_tracking_service import outcome_tracking_service
+
+
+@router.get("/model/realized-metrics")
+async def get_realized_metrics(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get realized accuracy metrics - how well did predictions actually perform?
+
+    This is the key validation metric. Returns:
+    - Realized precision: Of high-risk flagged, what % actually left?
+    - Realized recall: Of those who left, what % were flagged beforehand?
+    - Overall accuracy
+    - Time-to-departure metrics
+
+    These metrics prove (or disprove) that the model is useful.
+    """
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        metrics = await outcome_tracking_service.calculate_realized_metrics(
+            db, dataset.dataset_id
+        )
+
+        from dataclasses import asdict
+        result = asdict(metrics)
+        result['interpretation'] = outcome_tracking_service._interpret_metrics(metrics)
+        result['dataset_id'] = dataset.dataset_id
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=sanitize_error_message(e, "realized metrics calculation")
+        )
+
+
+@router.get("/model/outcome-tracking")
+async def get_outcome_tracking(
+    lookback_days: int = 90,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Verify past predictions against actual outcomes.
+
+    Returns individual predictions made N days ago with their actual outcomes.
+    Use this to audit specific predictions and understand model behavior.
+    """
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        outcomes = await outcome_tracking_service.verify_predictions(
+            db, dataset.dataset_id, lookback_days
+        )
+        return outcomes
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=sanitize_error_message(e, "outcome tracking")
+        )
+
+
+@router.get("/model/accuracy-by-cohort")
+async def get_accuracy_by_cohort(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get accuracy metrics broken down by department and other cohorts.
+
+    Returns:
+    - Overall realized metrics
+    - Department-level breakdown
+    - Human-readable interpretation
+    """
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        results = await outcome_tracking_service.get_accuracy_by_cohort(
+            db, dataset.dataset_id
+        )
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=sanitize_error_message(e, "accuracy by cohort")
         )

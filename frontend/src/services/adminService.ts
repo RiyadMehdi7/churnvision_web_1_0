@@ -122,6 +122,54 @@ export interface AuditLogParams {
   end_date?: string;
 }
 
+// SSO Configuration Types
+export interface SSOConfigResponse {
+  id: number;
+  enabled: boolean;
+  provider: string;
+  issuer_url: string | null;
+  client_id: string | null;
+  has_client_secret: boolean;
+  redirect_uri: string | null;
+  scopes: string;
+  auto_create_users: boolean;
+  default_role: string;
+  admin_groups: string | null;
+  session_lifetime: number;
+  created_at: string | null;
+  updated_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  last_test_at: string | null;
+  last_test_success: boolean | null;
+  last_test_error: string | null;
+}
+
+export interface SSOConfigUpdate {
+  enabled: boolean;
+  provider: string;
+  issuer_url?: string | null;
+  client_id?: string | null;
+  client_secret?: string | null;
+  redirect_uri?: string | null;
+  scopes?: string;
+  auto_create_users?: boolean;
+  default_role?: string;
+  admin_groups?: string | null;
+  session_lifetime?: number;
+}
+
+export interface SSOTestResult {
+  success: boolean;
+  message: string;
+  issuer_info?: {
+    issuer: string;
+    authorization_endpoint: string;
+    token_endpoint: string;
+    userinfo_endpoint: string;
+  };
+}
+
 // ============ Admin Service ============
 
 class AdminService {
@@ -188,6 +236,26 @@ class AdminService {
   async getAuditLogs(params: AuditLogParams = {}): Promise<AuditLogListResponse> {
     const response = await api.get<AuditLogListResponse>(`${ADMIN_ENDPOINT}/audit-logs`, { params });
     return response.data;
+  }
+
+  // SSO Configuration
+  async getSSOConfig(): Promise<SSOConfigResponse> {
+    const response = await api.get<SSOConfigResponse>(`${ADMIN_ENDPOINT}/sso/config`);
+    return response.data;
+  }
+
+  async updateSSOConfig(data: SSOConfigUpdate): Promise<SSOConfigResponse> {
+    const response = await api.put<SSOConfigResponse>(`${ADMIN_ENDPOINT}/sso/config`, data);
+    return response.data;
+  }
+
+  async testSSOConnection(): Promise<SSOTestResult> {
+    const response = await api.post<SSOTestResult>(`${ADMIN_ENDPOINT}/sso/test`);
+    return response.data;
+  }
+
+  async disableSSO(): Promise<void> {
+    await api.delete(`${ADMIN_ENDPOINT}/sso/config`);
   }
 }
 

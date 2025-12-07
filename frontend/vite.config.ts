@@ -108,22 +108,104 @@ export default defineConfig({
   },
   // Configure build options
   build: {
-    // Ensure source maps for better debugging
-    sourcemap: true,
+    // Source maps only in development
+    sourcemap: process.env.NODE_ENV !== 'production',
     // Optimize for the correct environment
     target: isElectron ? 'chrome100' : 'esnext',
     // Disable service worker generation in production build
     manifest: false,
     // Ensure clean builds
     emptyOutDir: true,
-    // Configure rollup options
+    // Chunk size warning limit (500kb)
+    chunkSizeWarningLimit: 500,
+    // Minification options
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        // Remove console.log in production
+        drop_console: process.env.NODE_ENV === 'production',
+        drop_debugger: true,
+        // Remove dead code
+        dead_code: true,
+        // Optimize conditionals
+        conditionals: true,
+        // Remove unused code
+        unused: true,
+      },
+      mangle: {
+        safari10: true,
+      },
+      format: {
+        comments: false,
+      },
+    },
+    // Configure rollup options for better code splitting
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          ui: ['framer-motion', 'lucide-react', 'clsx', 'tailwind-merge']
-        }
-      }
-    }
-  }
+        manualChunks: (id) => {
+          // Vendor chunks for better caching
+          if (id.includes('node_modules')) {
+            // React core
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
+              return 'vendor-react';
+            }
+            // TanStack libraries
+            if (id.includes('@tanstack')) {
+              return 'vendor-tanstack';
+            }
+            // UI libraries
+            if (id.includes('@radix-ui') || id.includes('@headlessui') || id.includes('framer-motion')) {
+              return 'vendor-ui';
+            }
+            // Charts
+            if (id.includes('recharts') || id.includes('d3')) {
+              return 'vendor-charts';
+            }
+            // Icons
+            if (id.includes('lucide') || id.includes('@heroicons') || id.includes('@ant-design/icons')) {
+              return 'vendor-icons';
+            }
+            // Form and validation
+            if (id.includes('react-hook-form') || id.includes('zod') || id.includes('@hookform')) {
+              return 'vendor-forms';
+            }
+            // Date utilities
+            if (id.includes('date-fns')) {
+              return 'vendor-date';
+            }
+            // Export libraries
+            if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('exceljs')) {
+              return 'vendor-export';
+            }
+            // Everything else
+            return 'vendor-misc';
+          }
+        },
+        // Optimize chunk file names
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]',
+      },
+    },
+  },
+  // Optimize dependencies
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-router-dom',
+      '@tanstack/react-query',
+      '@tanstack/react-router',
+      'recharts',
+      'zustand',
+    ],
+    exclude: ['@playwright/test'],
+  },
+  // Enable experimental features for better performance
+  esbuild: {
+    // Drop console in production
+    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+    // Legal comments
+    legalComments: 'none',
+  },
 }) 

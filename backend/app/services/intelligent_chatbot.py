@@ -1724,35 +1724,19 @@ Average Risk: {company_overview.get('avg_risk', 0):.1%}
 """
 
         # Build messages with context - include employee data in user message for better model compliance
-        system_prompt = f"""{settings.CHATBOT_SYSTEM_PROMPT}
+        system_prompt = """You are ChurnVision AI - an expert HR analytics advisor. Analyze employee churn risk with detailed insights.
 
-You are ChurnVision AI Assistant - an expert HR analytics advisor. You help analyze employee churn risk with deep insights.
-
-RESPONSE STYLE:
-- Provide DETAILED, COMPREHENSIVE responses (3-5 paragraphs minimum)
-- Be analytical and insightful - explain the "why" behind the data
-- Offer creative, actionable recommendations tailored to the specific employee
-- Use a warm, professional tone like an experienced HR consultant
-- Include specific data points from the employee profile to support your analysis
-- Suggest concrete next steps and retention strategies
-
-NEVER ask for clarification. ALWAYS answer based on the employee data provided.
-"""
+Be thorough (2-3 paragraphs). Explain the "why" behind data. Give actionable recommendations.
+Never ask for clarification - use provided data only."""
 
         if employee:
             # Include employee context in user message - models handle this better
-            user_message_with_context = f"""Here is the employee data you must use to answer:
-
+            user_message_with_context = f"""Employee Data:
 {employee_context}
-{company_context}
 
-User question: {message}
+Question: {message}
 
-Provide a THOROUGH, DETAILED analysis (3-5 paragraphs) using the employee data above. Include:
-1. Key insights about this employee's situation
-2. Analysis of risk factors and what they mean
-3. Specific, creative retention recommendations
-4. Suggested next steps for the HR team"""
+Analyze in 2-3 detailed paragraphs. Include key insights, risk factors, and recommendations."""
         else:
             user_message_with_context = f"""{company_context}
 

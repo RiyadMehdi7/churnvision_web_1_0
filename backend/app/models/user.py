@@ -17,3 +17,6 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     last_login = Column(DateTime(timezone=True), nullable=True)
+    # SSO integration fields
+    sso_provider = Column(String, nullable=True)  # oidc, ldap, saml
+    sso_subject = Column(String, nullable=True, index=True)  # Unique ID from IdP

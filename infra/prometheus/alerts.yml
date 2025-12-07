@@ -1,0 +1,102 @@
+# Alerting rules for ChurnVision Enterprise
+groups:
+  - name: churnvision-critical
+    rules:
+      # API availability
+      - alert: APIDown
+        expr: up{job="churnvision-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ChurnVision API is down"
+          description: "The ChurnVision backend API has been unreachable for more than 1 minute."
+
+      # Health check failing
+      - alert: HealthCheckFailing
+        expr: probe_success{job="churnvision-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Health check is failing"
+          description: "The /health endpoint has been returning errors for more than 2 minutes."
+
+      # Database connection issues
+      - alert: DatabaseConnectionFailed
+        expr: churnvision_db_check_status == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database connection failed"
+          description: "Cannot connect to the PostgreSQL database."
+
+  - name: churnvision-warning
+    rules:
+      # High error rate
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="churnvision-backend",status=~"5.."}[5m]))
+          / sum(rate(http_requests_total{job="churnvision-backend"}[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API error rate"
+          description: "More than 5% of API requests are returning 5xx errors."
+
+      # High latency
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="churnvision-backend"}[5m])) by (le)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency"
+          description: "95th percentile latency is above 2 seconds."
+
+      # Memory usage high
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes{job="churnvision-backend"} > 1e9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Backend is using more than 1GB of memory."
+
+      # Too many active connections
+      - alert: TooManyConnections
+        expr: churnvision_inprogress_requests > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of concurrent requests"
+          description: "More than 100 requests are currently being processed."
+
+  - name: churnvision-info
+    rules:
+      # Rate limiting triggered
+      - alert: RateLimitTriggered
+        expr: increase(http_requests_total{job="churnvision-backend",status="429"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "Rate limiting is being triggered"
+          description: "Multiple rate limit violations detected. Possible abuse attempt."
+
+      # License expiring soon
+      - alert: LicenseExpiringSoon
+        expr: churnvision_license_days_remaining < 30
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "License expiring soon"
+          description: "ChurnVision license will expire in less than 30 days."

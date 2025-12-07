@@ -17,8 +17,10 @@ from app.api.v1 import (
     rag,
     reasoning,
     settings,
+    sso_admin,
 )
 from app.core.license import get_current_license, require_license_tier
+from app.core.sso import oidc_router
 
 # Apply license validation to all feature routers (except auth/license)
 protected_router = APIRouter(dependencies=[Depends(get_current_license)])
@@ -46,10 +48,13 @@ protected_router.include_router(actions.router, prefix="/actions", tags=["action
 protected_router.include_router(agent_memory.router, prefix="/agent-memory", tags=["agent-memory"])
 protected_router.include_router(rag.router, prefix="/rag", tags=["rag"])
 protected_router.include_router(admin.router, prefix="/admin", tags=["admin"])
+protected_router.include_router(sso_admin.router, prefix="/admin/sso", tags=["admin-sso"])
 
 # Expose license routes without the dependency so activation/status endpoints stay reachable
 api_router = APIRouter()
 api_router.include_router(license_routes.router, prefix="/license", tags=["license"])
 # Auth must remain accessible even before a license is installed
 api_router.include_router(auth.router, prefix="/auth", tags=["authentication"])
+# SSO routes (OIDC/SAML/LDAP) - accessible without license for enterprise IdP integration
+api_router.include_router(oidc_router, tags=["sso"])
 api_router.include_router(protected_router)

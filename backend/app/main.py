@@ -8,16 +8,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
 from app.api.v1 import api_router
 from app.db.session import check_db_connection
+from app.core.logging_config import setup_logging, RequestLoggingMiddleware
+from app.core.rate_limiter import limiter, rate_limit_exceeded_handler
+from app.core.shutdown import lifespan_manager, RequestTrackingMiddleware, get_shutdown_manager
+from app.core.data_retention import get_retention_service
+from app.core.csrf import CSRFMiddleware, RequestSizeLimitMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
-# Configure structured logging
-logging.basicConfig(
-    level=logging.INFO if not settings.DEBUG else logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+# Configure structured logging (JSON in production, colored in development)
+setup_logging()
 logger = logging.getLogger("churnvision")
 
 
@@ -80,7 +84,14 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs" if settings.DEBUG else None,  # Disable docs in production
     redoc_url="/redoc" if settings.DEBUG else None,
+    lifespan=lifespan_manager,  # Graceful startup/shutdown
 )
+
+# Add rate limiter to app state
+app.state.limiter = limiter
+
+# Register rate limit exceeded handler
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # CORS origins configuration (defined early for use in exception handler)
 is_dev_env = settings.DEBUG or settings.ENVIRONMENT.lower() == "development"
@@ -161,8 +172,33 @@ app.add_middleware(
 # Security Headers Middleware
 app.add_middleware(SecurityHeadersMiddleware)
 
+# CSRF Protection Middleware (validates tokens on state-changing requests)
+app.add_middleware(CSRFMiddleware)
+
+# Request Size Limit Middleware (prevents large payload DoS)
+app.add_middleware(RequestSizeLimitMiddleware, max_size=10 * 1024 * 1024)  # 10 MB default
+
+# Request tracking middleware for graceful shutdown
+app.add_middleware(RequestTrackingMiddleware)
+
+# Request logging middleware with timing and request IDs
+app.add_middleware(RequestLoggingMiddleware)
+
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# Prometheus metrics instrumentation
+# Exposes /metrics endpoint for Prometheus scraping
+instrumentator = Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    should_respect_env_var=True,
+    should_instrument_requests_inprogress=True,
+    excluded_handlers=["/health", "/metrics"],
+    inprogress_name="churnvision_inprogress_requests",
+    inprogress_labels=True,
+)
+instrumentator.instrument(app).expose(app, include_in_schema=False)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -200,3 +236,57 @@ async def health_check():
 @app.get("/")
 async def root():
     return {"message": "Welcome to ChurnVision Enterprise API"}
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize background services on startup."""
+    from app.core.license import LicenseValidator
+    from app.core.integrity import verify_startup_integrity
+
+    # Verify binary integrity (detects tampering)
+    try:
+        verify_startup_integrity()
+        logger.info("Integrity check passed")
+    except Exception as e:
+        logger.error(f"Integrity check failed: {e}")
+        if settings.ENVIRONMENT.lower() == "production":
+            raise SystemExit("Application integrity compromised")
+
+    # Validate license at startup
+    try:
+        license_info = LicenseValidator.validate_license()
+        logger.info(
+            f"License validated: {license_info.company_name} "
+            f"({license_info.license_type}), expires: {license_info.expires_at.date()}"
+        )
+    except Exception as e:
+        logger.error(f"License validation failed: {e}")
+        if settings.ENVIRONMENT.lower() == "production":
+            raise SystemExit("Invalid or missing license")
+
+    # Start data retention cleanup service (runs daily in production, 6h in dev)
+    retention_service = get_retention_service()
+    interval = 24 if settings.ENVIRONMENT.lower() == "production" else 6
+    retention_service.start_scheduled_cleanup(interval_hours=interval)
+    logger.info(f"Data retention service started (interval: {interval}h)")
+
+
+@app.get("/admin/retention/run", tags=["admin"])
+async def run_data_retention():
+    """
+    Manually trigger data retention cleanup.
+    Requires admin authentication (handled by router).
+    """
+    from app.api.deps import get_current_admin_user
+
+    retention_service = get_retention_service()
+    results = await retention_service.run_all_cleanups()
+    return results
+
+
+@app.get("/admin/retention/report", tags=["admin"])
+async def get_retention_report():
+    """Get data retention compliance report."""
+    retention_service = get_retention_service()
+    return await retention_service.generate_retention_report()

@@ -8,10 +8,17 @@
     "dev:electron": "ELECTRON=true vite",
     "build": "tsc && vite build",
     "build:electron": "ELECTRON=true tsc && vite build",
+    "build:analyze": "ANALYZE=true vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint:fix": "eslint . --ext ts,tsx --fix",
     "preview": "vite preview",
     "test": "vitest",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "typecheck": "tsc --noEmit",
+    "clean:console": "find src -name '*.ts' -o -name '*.tsx' | xargs sed -i '' '/console\\.(log|debug|info)/d'"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
@@ -66,6 +73,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "@tailwindcss/typography": "^0.5.19",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
@@ -89,6 +97,8 @@
     "tailwindcss": "^3.4.18",
     "typescript": "^5.9.3",
     "vite": "^6.4.1",
-    "vitest": "^4.0.9"
+    "vitest": "^4.0.9",
+    "terser": "^5.31.0",
+    "rollup-plugin-visualizer": "^5.12.0"
   }
 }

@@ -78,13 +78,26 @@ class Settings(BaseSettings):
     LOGIN_LOCKOUT_MINUTES: int = 15
     LOGIN_ATTEMPT_WINDOW_MINUTES: int = 15
 
+    # Redis configuration (for caching and rate limiting)
+    # Use rediss:// for TLS connections (e.g., rediss://redis:6379/0)
+    REDIS_URL: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("REDIS_URL", "CACHE_REDIS_URL"),
+    )
+    # Optional: Path to CA certificate for Redis TLS verification
+    REDIS_TLS_CA_CERT: Optional[str] = None
+
+    # Field-level encryption key (for sensitive data like salaries)
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    ENCRYPTION_KEY: Optional[str] = None
+
     # Model/artifact storage
     MODELS_DIR: str = Field(default="models", validation_alias=AliasChoices("MODELS_DIR", "CHURNVISION_MODELS_DIR"))
 
     # Chatbot / LLM settings
-    # Default (local): Qwen 2.5 3B Instruct via Ollama - fast inference for Docker
+    # Default (local): Gemma 3 4B via Ollama - best instruction following
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
-    OLLAMA_MODEL: str = "qwen2.5:3b-instruct"
+    OLLAMA_MODEL: str = "gemma3:4b"
     DEFAULT_LLM_PROVIDER: str = "ollama"  # 'openai', 'azure', 'ollama', 'mistral', 'ibm' - default to local
 
     # OpenAI (GPT-5.1) - highest intelligence and speed
@@ -114,7 +127,7 @@ class Settings(BaseSettings):
 
     CHATBOT_MAX_HISTORY: int = 10  # Maximum number of previous messages to include in context
     CHATBOT_SYSTEM_PROMPT: str = "You are a helpful AI assistant for ChurnVision Enterprise, an employee churn prediction platform. You help users understand their workforce data, analyze employee turnover patterns, and make data-driven HR decisions."
-    LLM_REQUEST_TIMEOUT: int = 120  # seconds - increased for detailed responses
+    LLM_REQUEST_TIMEOUT: int = 300  # seconds - 5min for dev (Gemma 3 slow in Docker, fast on prod with GPU)
 
     # RAG (Retrieval-Augmented Generation) Settings
     RAG_ENABLED: bool = True

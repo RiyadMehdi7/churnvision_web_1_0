@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,7 +6,14 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Alert } from '../components/ui/alert';
-import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react';
+import { Eye, EyeOff, Loader2, LogIn, KeyRound } from 'lucide-react';
+import api from '../services/api';
+
+interface SSOStatus {
+  sso_enabled: boolean;
+  provider: string;
+  login_url?: string;
+}
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -16,6 +23,29 @@ export const Login: React.FC = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [ssoStatus, setSsoStatus] = useState<SSOStatus | null>(null);
+  const [ssoLoading, setSsoLoading] = useState(false);
+
+  // Check SSO status on mount
+  useEffect(() => {
+    const checkSSOStatus = async () => {
+      try {
+        const response = await api.get<SSOStatus>('/auth/sso/status');
+        setSsoStatus(response.data);
+      } catch {
+        // SSO not available, that's fine
+        setSsoStatus(null);
+      }
+    };
+    checkSSOStatus();
+  }, []);
+
+  const handleSSOLogin = () => {
+    if (ssoStatus?.login_url) {
+      setSsoLoading(true);
+      window.location.href = ssoStatus.login_url;
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -234,6 +264,45 @@ export const Login: React.FC = () => {
             )}
           </Button>
         </motion.form>
+
+        {/* SSO Login Button */}
+        {ssoStatus?.sso_enabled && ssoStatus.login_url && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.35, duration: 0.4 }}
+          >
+            <div className="relative my-5">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-slate-200 dark:border-slate-700" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-white dark:bg-slate-900 px-3 text-slate-400 dark:text-slate-500 font-medium">
+                  or
+                </span>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleSSOLogin}
+              disabled={ssoLoading}
+              className="w-full h-11 border-slate-200 dark:border-slate-700 hover:border-emerald-400 dark:hover:border-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all duration-200 rounded-lg"
+            >
+              {ssoLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Redirecting...
+                </>
+              ) : (
+                <>
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  Sign in with {ssoStatus.provider === 'oidc' ? 'SSO' : ssoStatus.provider.toUpperCase()}
+                </>
+              )}
+            </Button>
+          </motion.div>
+        )}
 
         {/* Divider */}
         <motion.div

@@ -5,10 +5,10 @@ import { motion } from 'framer-motion';
 import {
     UploadCloud as CloudUploadIcon, Database, AlertCircle, CheckCircle, Loader2,
     FileText, Wifi, WifiOff, LucideIcon, Trash2, RefreshCw,
-    ArrowRight, Check, X, FolderPlus, Folder, FolderOpen, Info, // ADDED Info icon
-    Share2, // Import Share2 icon
-    Download, Upload, Clock, MessageSquare, BarChart, GitCompare, // Added Clock icon for Coming Soon and MessageSquare for interviews
-    HardDrive // Added for PageHeader icon
+    ArrowRight, Check, X, FolderPlus, Folder, FolderOpen, Info, Eye,
+    Share2, Search, Table2, Users, Briefcase, Hash, Calendar, DollarSign,
+    Download, Upload, Clock, MessageSquare, BarChart, GitCompare,
+    HardDrive
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { useNavigate } from 'react-router-dom';
@@ -25,6 +25,7 @@ import { useToast } from '@/hooks/use-toast';
 import { InterviewUploadWindow } from '../components/InterviewUploadWindow';
 import { EngagementUploadWindow } from '../components/EngagementUploadWindow';
 import { ModelPerformanceGauge } from '../components/ModelPerformanceGauge';
+import { DatabaseSyncFlow } from '../components/DatabaseSyncFlow';
 
 // Define accepted file types for CSV and Excel
 const ACCEPTED_FILE_TYPES = [
@@ -477,6 +478,26 @@ export function DataManagement(): React.ReactElement {
     const [showInterviewUpload, setShowInterviewUpload] = useState(false);
     const [showEngagementUpload, setShowEngagementUpload] = useState(false);
     const [showDiagnosisResults, setShowDiagnosisResults] = useState<boolean>(false);
+    const [isPreviewExpanded, setIsPreviewExpanded] = useState<boolean>(false);
+
+    // State for viewing uploaded dataset preview
+    const [datasetPreviewModal, setDatasetPreviewModal] = useState<{
+        isOpen: boolean;
+        datasetId: string | null;
+        datasetName: string;
+        isLoading: boolean;
+        error: string | null;
+        data: { headers: string[]; rows: Record<string, unknown>[]; totalRows: number } | null;
+        searchQuery: string;
+    }>({
+        isOpen: false,
+        datasetId: null,
+        datasetName: '',
+        isLoading: false,
+        error: null,
+        data: null,
+        searchQuery: '',
+    });
 
     // --- Project Management State (Local to this component, related to UI interaction) ---
     const [projects, setProjects] = useState<Project[]>([]); // List of all projects
@@ -514,17 +535,43 @@ export function DataManagement(): React.ReactElement {
         setIsMetricsLoading(true);
         setMetricsError('');
         try {
-            // getModelMetrics may not be typed on ElectronAPI
             const response = await api.get('/churn/model/metrics');
             const result = response.data;
-            if (result?.success) {
-                setModelMetrics(result.data || []);
+            // Backend returns ModelMetricsResponse directly, not wrapped in { success, data }
+            if (result && (result.model_id || result.accuracy !== undefined)) {
+                // Convert single metrics object to array format expected by UI
+                const metricsArray = [{
+                    id: result.model_id || 'current',
+                    model_type: result.model_type || 'xgboost',
+                    accuracy: result.accuracy || 0,
+                    precision_score: result.precision || 0,
+                    recall_score: result.recall || 0,
+                    f1_score: result.f1_score || 0,
+                    roc_auc: result.roc_auc || result.accuracy || 0,
+                    last_trained: result.last_trained,
+                    predictions_made: result.predictions_made || 0,
+                    feature_importance: result.feature_importance || {}
+                }];
+                setModelMetrics(metricsArray);
             } else {
-                setMetricsError(result?.error || 'Failed to load model metrics');
+                setMetricsError(result?.error || result?.detail || 'Failed to load model metrics');
             }
         } catch (error: any) {
-            logger.error('Failed to fetch model metrics', error);
-            setMetricsError('Failed to load model metrics');
+            const status = error?.response?.status;
+            const detail = error?.response?.data?.detail || '';
+            // Handle specific error cases gracefully
+            if (status === 400 && detail.includes('No active dataset')) {
+                setMetricsError('No active dataset. Please upload and activate a dataset first.');
+            } else if (status === 400 && detail.includes('file not found on disk')) {
+                setMetricsError('Dataset file not found. Please re-upload your dataset.');
+            } else if (status === 400 && detail.includes('missing file path')) {
+                setMetricsError('Dataset configuration incomplete. Please re-upload your dataset.');
+            } else if (status === 404 && detail.includes('Model not trained')) {
+                setMetricsError('No trained model found. Please train a model first.');
+            } else {
+                logger.error('Failed to fetch model metrics', error);
+                setMetricsError(detail || 'Failed to load model metrics');
+            }
         } finally {
             setIsMetricsLoading(false);
         }
@@ -941,6 +988,56 @@ export function DataManagement(): React.ReactElement {
             setGeneralError(error.message || 'Could not delete dataset.');
         }
     }, [fetchDatasets]); // fetchDatasets is now stable due to useCallback
+
+    // Function to fetch dataset preview for modal
+    const fetchDatasetPreview = useCallback(async (datasetId: string, datasetName: string) => {
+        setDatasetPreviewModal({
+            isOpen: true,
+            datasetId,
+            datasetName,
+            isLoading: true,
+            error: null,
+            data: null,
+        });
+
+        try {
+            const response = await api.get(`/data-management/datasets/${datasetId}/preview?limit=100`);
+            const result = response.data;
+
+            // Extract headers from the first row's keys
+            const headers = result.rows.length > 0 ? Object.keys(result.rows[0]) : [];
+
+            setDatasetPreviewModal(prev => ({
+                ...prev,
+                isLoading: false,
+                data: {
+                    headers,
+                    rows: result.rows,
+                    totalRows: result.total_rows,
+                },
+            }));
+        } catch (error: any) {
+            logger.error(`Error fetching dataset preview for ${datasetId}:`, error, 'DataManagement');
+            setDatasetPreviewModal(prev => ({
+                ...prev,
+                isLoading: false,
+                error: error.response?.data?.detail || error.message || 'Failed to load preview',
+            }));
+        }
+    }, []);
+
+    // Function to close dataset preview modal
+    const closeDatasetPreviewModal = useCallback(() => {
+        setDatasetPreviewModal({
+            isOpen: false,
+            datasetId: null,
+            datasetName: '',
+            isLoading: false,
+            error: null,
+            data: null,
+            searchQuery: '',
+        });
+    }, []);
 
     // Function to fetch connections (depends on activeProject from context)
     const fetchConnections = useCallback(async () => {
@@ -2819,7 +2916,7 @@ export function DataManagement(): React.ReactElement {
                             <button
                                 onClick={() => setActiveMainTab('database')}
                                 title="Database Connection - Live HR System Integration"
-                                className={`hidden px-4 py-2 text-sm font-medium border-b-2 rounded-t-lg cursor-pointer transition-all ${activeMainTab === 'database'
+                                className={`px-4 py-2 text-sm font-medium border-b-2 rounded-t-lg cursor-pointer transition-all ${activeMainTab === 'database'
                                     ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/20'
                                     : 'border-transparent text-gray-500 dark:text-gray-400 bg-gray-50/30 dark:bg-gray-700/10 hover:bg-gray-100 dark:hover:bg-gray-600/30'
                                     }`}
@@ -2977,13 +3074,29 @@ export function DataManagement(): React.ReactElement {
                                                     </div>
 
                                                     <div className="space-y-3">
-                                                        <h4 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2 pt-2 border-t border-gray-200 dark:border-gray-700/50">
-                                                            Dataset Preview
-                                                        </h4>
+                                                        <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-700/50">
+                                                            <h4 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                                                                Dataset Preview
+                                                            </h4>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setIsPreviewExpanded(true)}
+                                                                className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                                                            >
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                                                                </svg>
+                                                                Expand View
+                                                            </button>
+                                                        </div>
                                                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                            Showing first 5 rows of {dataPreview.totalRows} total rows. Scroll to see more columns if needed.
+                                                            Showing first 5 rows of {dataPreview.totalRows} total rows. Click to expand.
                                                         </p>
-                                                        <div className="border border-gray-200 dark:border-gray-700/50 rounded-lg overflow-hidden shadow-sm bg-gray-50 dark:bg-gray-800/50 max-h-72 overflow-y-auto">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setIsPreviewExpanded(true)}
+                                                            className="w-full text-left border border-gray-200 dark:border-gray-700/50 rounded-lg overflow-hidden shadow-sm bg-gray-50 dark:bg-gray-800/50 max-h-72 overflow-y-auto hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md transition-all duration-200 cursor-pointer group"
+                                                        >
                                                             <div className="overflow-x-auto">
                                                                 <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-600">
                                                                     <thead className="bg-gray-100 dark:bg-gray-700/80 sticky top-0 z-10">
@@ -3000,7 +3113,7 @@ export function DataManagement(): React.ReactElement {
                                                                     </thead>
                                                                     <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-600">
                                                                         {dataPreview.rows.map((row, rowIndex) => (
-                                                                            <tr key={rowIndex} className="odd:bg-gray-50 dark:odd:bg-gray-700/60 hover:bg-gray-100 dark:hover:bg-gray-700/70 transition-colors duration-150">
+                                                                            <tr key={rowIndex} className="odd:bg-gray-50 dark:odd:bg-gray-700/60 group-hover:bg-blue-50/50 dark:group-hover:bg-blue-900/20 transition-colors duration-150">
                                                                                 {row.map((cell, cellIndex) => (
                                                                                     <td
                                                                                         key={cellIndex}
@@ -3015,7 +3128,7 @@ export function DataManagement(): React.ReactElement {
                                                                     </tbody>
                                                                 </table>
                                                             </div>
-                                                        </div>
+                                                        </button>
                                                     </div>
 
                                                     <div className="space-y-3 pt-4 border-t border-gray-200 dark:border-gray-700/50">
@@ -3446,6 +3559,13 @@ export function DataManagement(): React.ReactElement {
                                                                         </>
                                                                     )}
                                                                     <button
+                                                                        onClick={() => fetchDatasetPreview(dataset.id, dataset.name)}
+                                                                        className="p-1.5 text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-purple-500 dark:focus:ring-purple-400"
+                                                                        title="Preview data"
+                                                                    >
+                                                                        <Eye className="w-4 h-4" />
+                                                                    </button>
+                                                                    <button
                                                                         onClick={() => setSelectedDataset(dataset.id === selectedDataset ? null : dataset.id)}
                                                                         className={`p-1.5 rounded-md transition-colors ${selectedDataset === dataset.id
                                                                             ? 'text-blue-600 dark:text-blue-300 bg-blue-100 dark:bg-blue-700/50'
@@ -3472,8 +3592,16 @@ export function DataManagement(): React.ReactElement {
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.3 }}
-                                    className="hidden space-y-6"
+                                    className="space-y-6"
                                 >
+                                    {/* Database Sync Flow Visualization */}
+                                    <DatabaseSyncFlow
+                                        isConnected={connections.length > 0}
+                                        lastSyncTime={connections.length > 0 ? "Just now" : undefined}
+                                        snapshots={[]}
+                                        className="mb-6"
+                                    />
+
                                     {/* Database Connection Form */}
                                     <div className="space-y-4">
                                         <div className="flex items-center gap-3 mb-4">
@@ -3733,13 +3861,31 @@ export function DataManagement(): React.ReactElement {
                                     )}
 
                                     {metricsError && (
-                                        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                                            <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
-                                                <AlertCircle className="w-4 h-4" />
-                                                <span className="text-sm font-medium">Error loading metrics</span>
+                                        metricsError.includes('No active dataset') || metricsError.includes('No trained model') || metricsError.includes('re-upload') ? (
+                                            <div className="text-center py-12 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-600">
+                                                <BarChart className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                                                <h4 className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-2">
+                                                    {metricsError.includes('No active dataset') ? 'No Active Dataset' :
+                                                     metricsError.includes('re-upload') ? 'Dataset File Missing' : 'No Model Results Yet'}
+                                                </h4>
+                                                <p className="text-sm text-gray-500 dark:text-gray-500 mb-4">{metricsError}</p>
+                                                <button
+                                                    onClick={() => (metricsError.includes('No active dataset') || metricsError.includes('re-upload')) ? setActiveMainTab('files') : navigate('/model-training')}
+                                                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors flex items-center gap-2 mx-auto"
+                                                >
+                                                    <ArrowRight className="w-4 h-4" />
+                                                    {(metricsError.includes('No active dataset') || metricsError.includes('re-upload')) ? 'Upload Dataset' : 'Go to Model Training'}
+                                                </button>
                                             </div>
-                                            <p className="text-sm text-red-600 dark:text-red-300 mt-1">{metricsError}</p>
-                                        </div>
+                                        ) : (
+                                            <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                                                <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
+                                                    <AlertCircle className="w-4 h-4" />
+                                                    <span className="text-sm font-medium">Error loading metrics</span>
+                                                </div>
+                                                <p className="text-sm text-red-600 dark:text-red-300 mt-1">{metricsError}</p>
+                                            </div>
+                                        )
                                     )}
 
                                     {!isMetricsLoading && !metricsError && (
@@ -4020,6 +4166,340 @@ export function DataManagement(): React.ReactElement {
                     // You can add success notification here if needed
                 }}
             />
+
+            {/* Expanded Dataset Preview Modal */}
+            {isPreviewExpanded && dataPreview && createPortal(
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/70 p-4"
+                    onClick={() => setIsPreviewExpanded(false)}
+                >
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.2, ease: 'easeOut' }}
+                        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-6xl max-h-[85vh] flex flex-col border border-gray-200 dark:border-gray-700"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+                            <div>
+                                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                                    Dataset Preview
+                                </h2>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                                    {selectedFile?.name} • {dataPreview.totalRows.toLocaleString()} total rows • {dataPreview.headers.length} columns
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setIsPreviewExpanded(false)}
+                                className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                                aria-label="Close preview"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Modal Body - Scrollable Table */}
+                        <div className="flex-1 overflow-auto p-4">
+                            <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                    <thead className="bg-gray-50 dark:bg-gray-700/80 sticky top-0 z-10">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-12">
+                                                #
+                                            </th>
+                                            {dataPreview.headers.map((header, index) => (
+                                                <th
+                                                    key={index}
+                                                    className="px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap"
+                                                >
+                                                    {header}
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                        {dataPreview.rows.map((row, rowIndex) => (
+                                            <tr
+                                                key={rowIndex}
+                                                className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                            >
+                                                <td className="px-4 py-2.5 text-xs text-gray-400 dark:text-gray-500 font-mono">
+                                                    {rowIndex + 1}
+                                                </td>
+                                                {row.map((cell, cellIndex) => (
+                                                    <td
+                                                        key={cellIndex}
+                                                        className="px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 whitespace-nowrap"
+                                                        title={String(cell)}
+                                                    >
+                                                        {String(cell) || <span className="text-gray-400 dark:text-gray-500 italic">empty</span>}
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Showing first {dataPreview.rows.length} rows of {dataPreview.totalRows.toLocaleString()} total
+                            </p>
+                            <button
+                                onClick={() => setIsPreviewExpanded(false)}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>,
+                document.body
+            )}
+
+            {/* Uploaded Dataset Preview Modal - Enhanced */}
+            {datasetPreviewModal.isOpen && createPortal(
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+                    onClick={closeDatasetPreviewModal}
+                >
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                        className="bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 rounded-2xl shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col border border-gray-200/50 dark:border-gray-700/50 overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Modal Header - Gradient with glassmorphism */}
+                        <div className="relative overflow-hidden">
+                            {/* Background pattern */}
+                            <div className="absolute inset-0 bg-gradient-to-r from-purple-600/10 via-blue-600/10 to-emerald-600/10 dark:from-purple-500/20 dark:via-blue-500/20 dark:to-emerald-500/20" />
+                            <div className="absolute inset-0 bg-[linear-gradient(to_right,#8882_1px,transparent_1px),linear-gradient(to_bottom,#8882_1px,transparent_1px)] bg-[size:14px_24px] opacity-30" />
+
+                            <div className="relative px-6 py-5">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="flex items-center gap-4">
+                                        {/* Icon */}
+                                        <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-blue-600 shadow-lg shadow-purple-500/25">
+                                            <Table2 className="w-6 h-6 text-white" />
+                                        </div>
+
+                                        <div>
+                                            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                                                {datasetPreviewModal.datasetName}
+                                            </h2>
+                                            {datasetPreviewModal.data && (
+                                                <div className="flex items-center gap-3 mt-1.5">
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30">
+                                                        <Users className="w-3.5 h-3.5" />
+                                                        {datasetPreviewModal.data.totalRows.toLocaleString()} rows
+                                                    </span>
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30">
+                                                        <Hash className="w-3.5 h-3.5" />
+                                                        {datasetPreviewModal.data.headers.length} columns
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={closeDatasetPreviewModal}
+                                        className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-white/50 dark:hover:bg-white/10 rounded-xl transition-all duration-200"
+                                        aria-label="Close preview"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                                {/* Search bar */}
+                                {datasetPreviewModal.data && !datasetPreviewModal.isLoading && (
+                                    <div className="mt-4 relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search employees by name, department, position..."
+                                            value={datasetPreviewModal.searchQuery}
+                                            onChange={(e) => setDatasetPreviewModal(prev => ({ ...prev, searchQuery: e.target.value }))}
+                                            className="w-full pl-10 pr-4 py-2.5 text-sm bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 dark:focus:ring-purple-400/50 focus:border-transparent transition-all duration-200"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="flex-1 overflow-hidden">
+                            {datasetPreviewModal.isLoading && (
+                                <div className="flex flex-col items-center justify-center h-full py-16">
+                                    <div className="relative">
+                                        <div className="w-16 h-16 rounded-full border-4 border-purple-200 dark:border-purple-900" />
+                                        <div className="absolute inset-0 w-16 h-16 rounded-full border-4 border-transparent border-t-purple-600 animate-spin" />
+                                    </div>
+                                    <p className="mt-4 text-gray-600 dark:text-gray-400 font-medium">Loading dataset...</p>
+                                    <p className="mt-1 text-sm text-gray-400 dark:text-gray-500">Fetching employee records</p>
+                                </div>
+                            )}
+
+                            {datasetPreviewModal.error && (
+                                <div className="flex flex-col items-center justify-center h-full py-16 text-center px-6">
+                                    <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-4">
+                                        <AlertCircle className="w-8 h-8 text-red-500 dark:text-red-400" />
+                                    </div>
+                                    <p className="text-lg font-semibold text-gray-900 dark:text-white">Failed to load preview</p>
+                                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md">{datasetPreviewModal.error}</p>
+                                    <button
+                                        onClick={() => datasetPreviewModal.datasetId && fetchDatasetPreview(datasetPreviewModal.datasetId, datasetPreviewModal.datasetName)}
+                                        className="mt-4 px-4 py-2 text-sm font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+                                    >
+                                        Try again
+                                    </button>
+                                </div>
+                            )}
+
+                            {datasetPreviewModal.data && !datasetPreviewModal.isLoading && (() => {
+                                // Filter rows based on search query
+                                const filteredRows = datasetPreviewModal.searchQuery
+                                    ? datasetPreviewModal.data.rows.filter(row =>
+                                        Object.values(row).some(val =>
+                                            String(val).toLowerCase().includes(datasetPreviewModal.searchQuery.toLowerCase())
+                                        )
+                                    )
+                                    : datasetPreviewModal.data.rows;
+
+                                // Helper to get column icon
+                                const getColumnIcon = (header: string) => {
+                                    const h = header.toLowerCase();
+                                    if (h.includes('name') || h.includes('full')) return <Users className="w-3.5 h-3.5" />;
+                                    if (h.includes('department') || h.includes('structure')) return <Briefcase className="w-3.5 h-3.5" />;
+                                    if (h.includes('position') || h.includes('role')) return <Briefcase className="w-3.5 h-3.5" />;
+                                    if (h.includes('date') || h.includes('tenure')) return <Calendar className="w-3.5 h-3.5" />;
+                                    if (h.includes('cost') || h.includes('salary')) return <DollarSign className="w-3.5 h-3.5" />;
+                                    if (h.includes('code') || h.includes('id')) return <Hash className="w-3.5 h-3.5" />;
+                                    return null;
+                                };
+
+                                // Helper to style status cells
+                                const getStatusStyle = (value: string) => {
+                                    const v = String(value).toLowerCase();
+                                    if (v === 'active' || v === 'employed') return 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30';
+                                    if (v === 'inactive' || v === 'terminated' || v === 'left') return 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300 border-red-200 dark:border-red-500/30';
+                                    if (v === 'on leave' || v === 'pending') return 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30';
+                                    return '';
+                                };
+
+                                return (
+                                    <div className="h-full overflow-auto">
+                                        <table className="min-w-full">
+                                            <thead className="bg-gray-50/90 dark:bg-gray-800/90 backdrop-blur-sm sticky top-0 z-10">
+                                                <tr>
+                                                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider w-14 border-b border-gray-200 dark:border-gray-700">
+                                                        #
+                                                    </th>
+                                                    {datasetPreviewModal.data.headers.map((header, index) => (
+                                                        <th
+                                                            key={index}
+                                                            className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap border-b border-gray-200 dark:border-gray-700"
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-gray-400 dark:text-gray-500">
+                                                                    {getColumnIcon(header)}
+                                                                </span>
+                                                                {header.replace(/_/g, ' ')}
+                                                            </div>
+                                                        </th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                                {filteredRows.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan={datasetPreviewModal.data.headers.length + 1} className="px-4 py-12 text-center">
+                                                            <div className="flex flex-col items-center">
+                                                                <Search className="w-10 h-10 text-gray-300 dark:text-gray-600 mb-3" />
+                                                                <p className="text-gray-500 dark:text-gray-400 font-medium">No results found</p>
+                                                                <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Try adjusting your search terms</p>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    filteredRows.map((row, rowIndex) => (
+                                                        <tr
+                                                            key={rowIndex}
+                                                            className="hover:bg-purple-50/50 dark:hover:bg-purple-900/10 transition-colors group"
+                                                        >
+                                                            <td className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-mono">
+                                                                {rowIndex + 1}
+                                                            </td>
+                                                            {datasetPreviewModal.data!.headers.map((header, cellIndex) => {
+                                                                const cellValue = row[header];
+                                                                const displayValue = cellValue === null || cellValue === undefined ? '' : String(cellValue);
+                                                                const isStatus = header.toLowerCase().includes('status');
+                                                                const statusStyle = isStatus ? getStatusStyle(displayValue) : '';
+
+                                                                return (
+                                                                    <td
+                                                                        key={cellIndex}
+                                                                        className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200 whitespace-nowrap max-w-[250px]"
+                                                                        title={displayValue}
+                                                                    >
+                                                                        {isStatus && displayValue ? (
+                                                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusStyle}`}>
+                                                                                {displayValue}
+                                                                            </span>
+                                                                        ) : displayValue ? (
+                                                                            <span className="truncate block">{displayValue}</span>
+                                                                        ) : (
+                                                                            <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
+                                                                        )}
+                                                                    </td>
+                                                                );
+                                                            })}
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                );
+                            })()}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-700/50 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-sm">
+                            <div className="flex items-center gap-4">
+                                {datasetPreviewModal.data && (
+                                    <>
+                                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                            Showing {datasetPreviewModal.searchQuery
+                                                ? `${datasetPreviewModal.data.rows.filter(row =>
+                                                    Object.values(row).some(val =>
+                                                        String(val).toLowerCase().includes(datasetPreviewModal.searchQuery.toLowerCase())
+                                                    )
+                                                ).length} of `
+                                                : `${datasetPreviewModal.data.rows.length} of `}
+                                            {datasetPreviewModal.data.totalRows.toLocaleString()} records
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            <button
+                                onClick={closeDatasetPreviewModal}
+                                className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-xl shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 transition-all duration-200"
+                            >
+                                Close Preview
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>,
+                document.body
+            )}
         </div>
     );
 }

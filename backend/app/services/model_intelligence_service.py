@@ -300,9 +300,46 @@ class ModelIntelligenceService:
         dataset_id: str
     ) -> Optional[DepartureTimeline]:
         """
-        Predict when an employee is likely to leave using survival analysis concepts.
+        Predict when an employee is likely to leave using survival analysis.
+
+        Uses the SurvivalAnalysisService for proper Cox PH model predictions
+        when available, with fallback to risk-based approximation.
         """
-        # Get current prediction
+        from app.services.survival_analysis_service import survival_service
+
+        # Try to get prediction from survival model
+        try:
+            survival_pred = await survival_service.predict_survival(db, hr_code, dataset_id)
+
+            if survival_pred:
+                # Also get current risk score for reference
+                result = await db.execute(
+                    select(ChurnOutput.resign_proba)
+                    .where(
+                        ChurnOutput.hr_code == hr_code,
+                        ChurnOutput.dataset_id == dataset_id
+                    )
+                )
+                risk_row = result.scalar_one_or_none()
+                current_risk = float(risk_row) if risk_row else survival_pred.prob_90_days
+
+                return DepartureTimeline(
+                    hr_code=hr_code,
+                    current_risk=round(current_risk, 3),
+                    predicted_departure_window=survival_pred.departure_window,
+                    probability_30d=survival_pred.prob_30_days,
+                    probability_60d=survival_pred.prob_60_days,
+                    probability_90d=survival_pred.prob_90_days,
+                    probability_180d=survival_pred.prob_180_days,
+                    urgency=survival_pred.urgency,
+                    confidence=survival_pred.confidence
+                )
+        except Exception as e:
+            # Log and fall through to legacy method
+            import logging
+            logging.getLogger(__name__).warning(f"Survival prediction failed: {e}")
+
+        # Fallback: Legacy risk-based estimation
         result = await db.execute(
             select(ChurnOutput)
             .where(
@@ -318,22 +355,16 @@ class ModelIntelligenceService:
         current_risk = float(prediction.resign_proba or 0)
         confidence = float(prediction.confidence_score or 70) / 100
 
-        # Simple survival probability estimation
-        # Based on current risk, estimate probability of departure at different time horizons
-        # Using exponential decay model: P(leave by time t) = 1 - exp(-lambda * t)
-        # Where lambda is derived from current risk
-
-        # Higher risk = higher hazard rate
-        hazard_rate = current_risk * 0.1  # Scale factor
+        # Exponential decay model: P(leave by time t) = 1 - exp(-lambda * t)
+        hazard_rate = current_risk * 0.1
 
         prob_30d = 1 - math.exp(-hazard_rate * 1)
         prob_60d = 1 - math.exp(-hazard_rate * 2)
         prob_90d = 1 - math.exp(-hazard_rate * 3)
         prob_180d = 1 - math.exp(-hazard_rate * 6)
 
-        # Determine predicted window based on when probability crosses 50%
         if prob_30d >= 0.5:
-            window = "0-30 days"
+            window = "< 30 days"
             urgency = "critical"
         elif prob_60d >= 0.5:
             window = "30-60 days"
@@ -342,13 +373,12 @@ class ModelIntelligenceService:
             window = "60-90 days"
             urgency = "high"
         elif prob_180d >= 0.5:
-            window = "90-180 days"
+            window = "3-6 months"
             urgency = "medium"
         else:
-            window = "180+ days"
+            window = "6+ months"
             urgency = "low"
 
-        # Override urgency based on current risk
         if current_risk >= 0.8:
             urgency = "critical"
         elif current_risk >= 0.6:
@@ -370,14 +400,13 @@ class ModelIntelligenceService:
         self,
         db: AsyncSession,
         dataset_id: str,
-        limit: int = 100
+        limit: int = 500
     ) -> List[Dict[str, Any]]:
-        """Get departure timelines for multiple employees."""
-        # Get high-risk employees
+        """Get departure timelines for ALL employees (sorted by risk)."""
+        # Get all employees with predictions, sorted by risk
         result = await db.execute(
             select(ChurnOutput.hr_code)
             .where(ChurnOutput.dataset_id == dataset_id)
-            .where(ChurnOutput.resign_proba > 0.3)
             .order_by(desc(ChurnOutput.resign_proba))
             .limit(limit)
         )

@@ -4,6 +4,7 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 from app.api.deps import get_current_user, get_db
+from app.core.security_utils import sanitize_error_message, get_or_create_session_id
 from app.models.auth import UserAccount
 from app.services.intelligent_chatbot import IntelligentChatbotService, PatternType
 from app.models.chatbot import ChatMessage
@@ -61,11 +62,14 @@ async def intelligent_chat(
     """
     service = IntelligentChatbotService(db)
 
+    # Validate/sanitize session ID
+    validated_session_id = get_or_create_session_id(request.session_id)
+
     try:
         # Process message with intelligence - returns both text and structured data
         result = await service.chat(
             message=request.message,
-            session_id=request.session_id,
+            session_id=validated_session_id,
             employee_id=request.employee_id,
             dataset_id=request.dataset_id
         )
@@ -74,7 +78,7 @@ async def intelligent_chat(
         if isinstance(result, dict):
             return IntelligentChatResponse(
                 response=result.get("response", ""),
-                session_id=request.session_id,
+                session_id=validated_session_id,
                 pattern_detected=result.get("pattern_detected"),
                 structured_data=result.get("structured_data")
             )
@@ -82,7 +86,7 @@ async def intelligent_chat(
             # Legacy string response
             return IntelligentChatResponse(
                 response=result,
-                session_id=request.session_id
+                session_id=validated_session_id
             )
     except ValueError as ve:
         raise HTTPException(
@@ -92,7 +96,7 @@ async def intelligent_chat(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing chat request: {str(e)}"
+            detail=sanitize_error_message(e, "chat request processing"),
         )
 
 

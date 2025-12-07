@@ -13,6 +13,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.core.security_utils import sanitize_error_message
 
 logger = logging.getLogger("churnvision")
 from app.core.audit import AuditLogger
@@ -91,7 +92,7 @@ async def predict_employee_churn(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Prediction failed: {str(e)}"
+            detail=sanitize_error_message(e, "prediction"),
         )
 
 
@@ -115,7 +116,7 @@ async def predict_batch_churn(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Batch prediction failed: {str(e)}"
+            detail=sanitize_error_message(e, "batch prediction"),
         )
 
 
@@ -642,7 +643,7 @@ async def train_churn_model(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Training failed: {str(e)}"
+            detail=sanitize_error_message(e, "model training"),
         )
 
 
@@ -733,7 +734,7 @@ async def get_model_metrics(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve model metrics: {str(e)}"
+            detail=sanitize_error_message(e, "model metrics retrieval"),
         )
 
 
@@ -756,7 +757,7 @@ async def reset_model(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Model reset failed: {str(e)}"
+            detail=sanitize_error_message(e, "model reset"),
         )
 
 
@@ -1057,7 +1058,7 @@ async def predict_all_employees(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate predictions: {str(e)}"
+            detail=sanitize_error_message(e, "prediction generation")
         )
 
 
@@ -1108,7 +1109,7 @@ async def get_backtesting_results(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get backtesting results: {str(e)}"
+            detail=sanitize_error_message(e, "backtesting results retrieval")
         )
 
 
@@ -1136,7 +1137,7 @@ async def get_prediction_outcomes(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get prediction outcomes: {str(e)}"
+            detail=sanitize_error_message(e, "prediction outcomes retrieval")
         )
 
 
@@ -1170,7 +1171,7 @@ async def get_departure_timeline(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get departure timeline: {str(e)}"
+            detail=sanitize_error_message(e, "departure timeline retrieval")
         )
 
 
@@ -1194,7 +1195,7 @@ async def get_batch_departure_timelines(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get batch timelines: {str(e)}"
+            detail=sanitize_error_message(e, "batch timelines retrieval")
         )
 
 
@@ -1236,7 +1237,7 @@ async def get_cohort_analysis(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get cohort analysis: {str(e)}"
+            detail=sanitize_error_message(e, "cohort analysis retrieval")
         )
 
 
@@ -1263,7 +1264,7 @@ async def get_cohort_overview(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get cohort overview: {str(e)}"
+            detail=sanitize_error_message(e, "cohort overview retrieval")
         )
 
 
@@ -1298,7 +1299,7 @@ async def get_risk_alerts(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get alerts: {str(e)}"
+            detail=sanitize_error_message(e, "alerts retrieval")
         )
 
 
@@ -1315,7 +1316,7 @@ async def mark_alert_read(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to mark alert as read: {str(e)}"
+            detail=sanitize_error_message(e, "alert status update")
         )
 
 
@@ -1331,5 +1332,116 @@ async def mark_all_alerts_read(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to mark alerts as read: {str(e)}"
+            detail=sanitize_error_message(e, "alerts status update")
+        )
+
+
+# ============================================================================
+# SURVIVAL ANALYSIS ENDPOINTS
+# ============================================================================
+
+from app.services.survival_analysis_service import survival_service
+
+
+@router.post("/survival/fit")
+async def fit_survival_model(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Fit the survival analysis model on current employee data.
+
+    Trains a Cox Proportional Hazards model using:
+    - tenure: time employed (duration)
+    - status: active/left (event indicator)
+    - risk_score: from churn prediction model
+
+    Returns model metrics including concordance index.
+    """
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        metrics = await survival_service.fit_survival_model(db, dataset.dataset_id)
+
+        return {
+            "success": True,
+            "metrics": {
+                "concordance_index": metrics.concordance_index,
+                "total_employees": metrics.total_employees,
+                "events_observed": metrics.events_observed,
+                "censored": metrics.censored,
+                "median_tenure_leavers": metrics.median_tenure_leavers,
+                "median_tenure_active": metrics.median_tenure_active
+            },
+            "message": f"Survival model fitted on {metrics.total_employees} employees"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=sanitize_error_message(e, "survival model training")
+        )
+
+
+@router.get("/survival/predict/{hr_code}")
+async def get_survival_prediction(
+    hr_code: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get survival prediction for a specific employee.
+
+    Returns:
+    - Probability of departure at various time horizons (30, 60, 90, 180, 365 days)
+    - Expected departure window
+    - Median survival time
+    - Hazard ratio relative to baseline
+    """
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        prediction = await survival_service.predict_survival(db, hr_code, dataset.dataset_id)
+
+        if not prediction:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No prediction available for employee {hr_code}"
+            )
+
+        from dataclasses import asdict
+        return asdict(prediction)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=sanitize_error_message(e, "survival prediction")
+        )
+
+
+@router.get("/survival/batch")
+async def get_batch_survival_predictions(
+    limit: int = 100,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get survival predictions for multiple employees.
+
+    Returns predictions sorted by urgency (critical first).
+    """
+    try:
+        dataset = await _get_active_dataset_for_project(db)
+        predictions = await survival_service.get_batch_predictions(db, dataset.dataset_id, limit)
+
+        return {
+            "predictions": predictions,
+            "count": len(predictions)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=sanitize_error_message(e, "batch survival predictions")
         )

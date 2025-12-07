@@ -10,6 +10,12 @@ interface AuthContextType {
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  // Permission helpers
+  hasPermission: (permission: string) => boolean;
+  hasAnyPermission: (...permissions: string[]) => boolean;
+  hasAllPermissions: (...permissions: string[]) => boolean;
+  hasAdminAccess: boolean;
+  userRole: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -38,13 +44,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (token && storedUser) {
         try {
-          // Verify token is still valid by fetching current user
+          // Verify token is still valid by fetching current user with extended info
           // Add timeout to prevent indefinite loading
           const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Auth check timeout')), 5000)
           );
           const currentUser = await Promise.race([
-            authService.getCurrentUser(),
+            authService.getCurrentUserExtended(),
             timeoutPromise
           ]) as typeof storedUser;
           setUser(currentUser);
@@ -113,7 +119,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const refreshUser = useCallback(async () => {
     try {
-      const currentUser = await authService.getCurrentUser();
+      // Fetch extended user info with role and permissions
+      const currentUser = await authService.getCurrentUserExtended();
       setUser(currentUser);
     } catch (error) {
       console.error('Refresh user error:', error);
@@ -121,6 +128,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(null);
     }
   }, []);
+
+  // Permission checking helpers
+  const hasPermission = useCallback((permission: string): boolean => {
+    if (!user?.permissions) return false;
+    return user.permissions.includes(permission);
+  }, [user]);
+
+  const hasAnyPermission = useCallback((...permissions: string[]): boolean => {
+    if (!user?.permissions) return false;
+    return permissions.some(p => user.permissions?.includes(p));
+  }, [user]);
+
+  const hasAllPermissions = useCallback((...permissions: string[]): boolean => {
+    if (!user?.permissions) return false;
+    return permissions.every(p => user.permissions?.includes(p));
+  }, [user]);
+
+  const hasAdminAccess = user?.has_admin_access ?? false;
+  const userRole = user?.role?.role_id ?? null;
 
   const value: AuthContextType = {
     user,
@@ -130,6 +156,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     register,
     logout,
     refreshUser,
+    // Permission helpers
+    hasPermission,
+    hasAnyPermission,
+    hasAllPermissions,
+    hasAdminAccess,
+    userRole,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

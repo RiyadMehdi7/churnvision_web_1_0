@@ -36,6 +36,8 @@ dependencies = [
     "PyMuPDF>=1.23.0",
     "python-docx>=1.1.0",
     "tiktoken>=0.5.0",
+    # Survival analysis
+    "lifelines>=0.27.0",
 ]
 
 [build-system]

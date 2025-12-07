@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
+import DOMPurify from 'dompurify';
 import {
   Search,
   ChevronUp,
@@ -1442,7 +1443,7 @@ export function Home(): React.ReactElement {
 
       setIsLoadingTimelines(true);
       try {
-        const result = await modelIntelligenceService.getBatchDepartureTimelines(100);
+        const result = await modelIntelligenceService.getBatchDepartureTimelines(500);
         const timelinesMap = new Map<string, DepartureTimeline>();
         result.timelines.forEach(t => timelinesMap.set(t.hr_code, t));
         setDepartureTimelines(timelinesMap);
@@ -2769,7 +2770,8 @@ export function Home(): React.ReactElement {
 
                     // Create temporary element for PDF generation
                     const element = document.createElement('div');
-                    element.innerHTML = pdfContent;
+                    // Sanitize HTML content to prevent XSS attacks
+                    element.innerHTML = DOMPurify.sanitize(pdfContent);
                     element.style.position = 'absolute';
                     element.style.left = '-9999px';
                     element.style.top = '0';

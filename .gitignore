@@ -117,3 +117,4 @@ local_config.py
 .env.production
 secrets.json
 config/local/
+backend/.env

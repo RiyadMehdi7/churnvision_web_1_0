@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.v1 import (
     actions,
+    admin,
     agent_memory,
     ai,
     auth,
@@ -44,6 +45,7 @@ protected_router.include_router(reasoning.router, prefix="/reasoning", tags=["re
 protected_router.include_router(actions.router, prefix="/actions", tags=["actions"])
 protected_router.include_router(agent_memory.router, prefix="/agent-memory", tags=["agent-memory"])
 protected_router.include_router(rag.router, prefix="/rag", tags=["rag"])
+protected_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 
 # Expose license routes without the dependency so activation/status endpoints stay reachable
 api_router = APIRouter()

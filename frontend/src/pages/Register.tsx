@@ -38,8 +38,32 @@ export const Register: React.FC = () => {
       return false;
     }
 
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters long');
+    // Password validation to match backend requirements
+    if (formData.password.length < 8) {
+      setError('Password must be at least 8 characters long');
+      return false;
+    }
+
+    // Check password complexity
+    const hasUppercase = /[A-Z]/.test(formData.password);
+    const hasLowercase = /[a-z]/.test(formData.password);
+    const hasDigit = /\d/.test(formData.password);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;'`~]/.test(formData.password);
+
+    if (!hasUppercase) {
+      setError('Password must include at least one uppercase letter');
+      return false;
+    }
+    if (!hasLowercase) {
+      setError('Password must include at least one lowercase letter');
+      return false;
+    }
+    if (!hasDigit) {
+      setError('Password must include at least one number');
+      return false;
+    }
+    if (!hasSpecial) {
+      setError('Password must include at least one special character');
       return false;
     }
 
@@ -151,7 +175,7 @@ export const Register: React.FC = () => {
                 id="password"
                 name="password"
                 type="password"
-                placeholder="Create a password (min 6 characters)"
+                placeholder="Min 8 chars, uppercase, lowercase, number, special"
                 value={formData.password}
                 onChange={handleChange}
                 disabled={isLoading}

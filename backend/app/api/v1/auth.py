@@ -5,12 +5,15 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.api.deps import get_db, get_current_user, get_current_active_user
+from app.api.deps import get_db, get_current_user, get_current_active_user, oauth2_scheme, get_user_permissions, get_user_role
 from app.core.config import settings
 from app.core.security import create_access_token, verify_password, get_password_hash
+from app.core.token_blacklist import blacklist_token
 from app.models.user import User
+from app.models.auth import Role, UserRole, UserAccount
 from app.schemas.token import Token, LoginRequest, LoginResponse
 from app.schemas.user import User as UserSchema, UserCreate
+from sqlalchemy import or_
 
 router = APIRouter()
 
@@ -265,13 +268,27 @@ async def read_users_me(
 @router.post("/logout")
 async def logout(
     response: Response,
+    request: Request,
+    token: str = Depends(oauth2_scheme),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """
     Logout current user.
-    Note: With JWT tokens, logout is typically handled client-side by removing the token.
-    This endpoint is provided for consistency and can be extended with token blacklisting.
+    Blacklists the current token to prevent reuse until expiration.
     """
+    # Get the token from Authorization header or cookies
+    actual_token = token
+    if not actual_token:
+        actual_token = request.cookies.get("access_token") or request.cookies.get("churnvision_access_token")
+        if actual_token and actual_token.lower().startswith("bearer "):
+            actual_token = actual_token.split(" ", 1)[1]
+
+    # Blacklist the token if we have one
+    if actual_token:
+        # Token expires at ACCESS_TOKEN_EXPIRE_MINUTES from now (worst case)
+        expires_at = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        blacklist_token(actual_token, expires_at)
+
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("churnvision_access_token", path="/")
     return {"message": "Successfully logged out"}
@@ -305,3 +322,58 @@ async def refresh_token(
         token_type="bearer",
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
+
+
+@router.get("/me/extended")
+async def read_users_me_extended(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Get current authenticated user with role and permissions.
+    """
+    # Get role
+    role_id = await get_user_role(db, current_user)
+    role_info = None
+
+    if role_id:
+        role_result = await db.execute(
+            select(Role).where(Role.role_id == role_id)
+        )
+        role = role_result.scalar_one_or_none()
+        if role:
+            role_info = {
+                "role_id": role.role_id,
+                "role_name": role.role_name,
+                "description": role.description
+            }
+
+    # Get permissions
+    permissions = await get_user_permissions(db, current_user)
+
+    # Check if user is super admin in RBAC system
+    is_admin = False
+    result = await db.execute(
+        select(UserAccount).where(
+            or_(
+                UserAccount.user_id == str(current_user.id),
+                UserAccount.username == current_user.username
+            )
+        )
+    )
+    user_account = result.scalar_one_or_none()
+    if user_account:
+        is_admin = user_account.is_super_admin == 1 or 'admin:access' in permissions
+
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.username,
+        "full_name": current_user.full_name,
+        "is_active": current_user.is_active,
+        "is_superuser": current_user.is_superuser,
+        "tenant_id": current_user.tenant_id,
+        "role": role_info,
+        "permissions": permissions,
+        "has_admin_access": is_admin
+    }

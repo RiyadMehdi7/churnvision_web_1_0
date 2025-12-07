@@ -5,6 +5,7 @@ Document management, custom rules, knowledge base queries, and settings
 for the Retrieval-Augmented Generation subsystem.
 """
 
+import logging
 import os
 import uuid
 import shutil
@@ -17,6 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
 from app.core.config import settings
+from app.core.security_utils import sanitize_filename, sanitize_error_message
+
+logger = logging.getLogger(__name__)
 from app.services.rag_service import RAGService
 from app.services.vector_store import get_vector_store
 from app.schemas.rag import (
@@ -83,8 +87,9 @@ async def upload_document(
     upload_dir = Path(settings.RAG_UPLOAD_PATH)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save file with unique name
-    unique_filename = f"{uuid.uuid4().hex}_{file.filename}"
+    # Save file with unique name (sanitize user-provided filename)
+    safe_filename = sanitize_filename(file.filename)
+    unique_filename = f"{uuid.uuid4().hex}_{safe_filename}"
     file_path = upload_dir / unique_filename
 
     try:
@@ -93,7 +98,7 @@ async def upload_document(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save file: {str(e)}"
+            detail=sanitize_error_message(e, "file save"),
         )
 
     # Use filename as title if not provided
@@ -130,7 +135,7 @@ async def upload_document(
             file_path.unlink()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process document: {str(e)}"
+            detail=sanitize_error_message(e, "document processing"),
         )
 
 

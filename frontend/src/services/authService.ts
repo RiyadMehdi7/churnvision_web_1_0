@@ -17,6 +17,12 @@ export interface RegisterData {
   is_active?: boolean;
 }
 
+export interface RoleInfo {
+  role_id: string;
+  role_name: string;
+  description: string | null;
+}
+
 export interface UserData {
   id: number;
   email: string;
@@ -25,6 +31,9 @@ export interface UserData {
   is_active: boolean;
   is_superuser: boolean;
   tenant_id: string | null;
+  role?: RoleInfo | null;
+  permissions?: string[];
+  has_admin_access?: boolean;
 }
 
 export interface LoginResponse {
@@ -135,6 +144,30 @@ class AuthService {
 
     try {
       const response = await axios.get<UserData>(`${AUTH_ENDPOINT}/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      this.setUser(response.data);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        this.clearAuth();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get current user with role and permissions
+   */
+  async getCurrentUserExtended(): Promise<UserData> {
+    const token = this.getAccessToken();
+    if (!token) {
+      throw new Error('No access token found');
+    }
+
+    try {
+      const response = await axios.get<UserData>(`${AUTH_ENDPOINT}/me/extended`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

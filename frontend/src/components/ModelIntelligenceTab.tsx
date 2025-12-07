@@ -312,6 +312,30 @@ export function ModelIntelligenceTab({ className }: ModelIntelligenceTabProps) {
       {/* Prediction Outcomes Content */}
       {activeSubTab === 'outcomes' && outcomesData && (
         <div className="space-y-6">
+          {/* Show empty state if no continuous data */}
+          {outcomesData.outcomes.length === 0 ? (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-8 text-center">
+              <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Clock className="w-8 h-8 text-amber-600 dark:text-amber-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-amber-900 dark:text-amber-100 mb-2">
+                Continuous Data Required
+              </h3>
+              <p className="text-amber-700 dark:text-amber-300 mb-4 max-w-lg mx-auto">
+                Prediction tracking requires historical snapshots of your employee data over time.
+                This allows us to compare what we predicted vs. what actually happened.
+              </p>
+              <div className="bg-white dark:bg-gray-800 rounded-lg p-4 max-w-md mx-auto text-left">
+                <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">How to enable this:</h4>
+                <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                  <li>• Upload employee data regularly (weekly/monthly)</li>
+                  <li>• Include a date/snapshot column in your Excel files</li>
+                  <li>• Or connect a database with historical records</li>
+                </ul>
+              </div>
+            </div>
+          ) : (
+          <>
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <motion.div
@@ -436,6 +460,8 @@ export function ModelIntelligenceTab({ className }: ModelIntelligenceTabProps) {
               </table>
             </div>
           </div>
+          </>
+          )}
         </div>
       )}
     </div>

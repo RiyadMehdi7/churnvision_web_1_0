@@ -1,5 +1,6 @@
 from datetime import datetime
 import json
+import logging
 import uuid
 from pathlib import Path
 from typing import List, Optional
@@ -11,9 +12,13 @@ from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.core.security_utils import sanitize_filename, sanitize_error_message
+
+logger = logging.getLogger(__name__)
 from app.models.user import User
 from app.models.dataset import Dataset as DatasetModel, Connection as ConnectionModel
 from app.models.project import Project as ProjectModel
+from app.models.hr_data import HRDataInput
 from app.schemas.data_management import (
     Project,
     Dataset,
@@ -192,6 +197,66 @@ async def delete_dataset(
     return OperationResult(success=True)
 
 
+@router.get("/datasets/{dataset_id}/preview")
+async def get_dataset_preview(
+    dataset_id: str,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a preview of dataset rows (from hr_data_input table)."""
+    active_project = await get_active_project(db)
+
+    # Verify dataset exists and belongs to active project
+    dataset = await db.scalar(
+        select(DatasetModel).where(
+            DatasetModel.dataset_id == dataset_id,
+            DatasetModel.project_id == active_project.id,
+        )
+    )
+    if not dataset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found for active project")
+
+    # Fetch HR data rows for this dataset
+    result = await db.execute(
+        select(HRDataInput)
+        .where(HRDataInput.dataset_id == dataset_id)
+        .offset(offset)
+        .limit(limit)
+    )
+    rows = result.scalars().all()
+
+    # Convert to list of dicts for JSON response
+    data = []
+    for row in rows:
+        row_dict = {
+            "hr_code": row.hr_code,
+            "full_name": row.full_name,
+            "structure_name": row.structure_name,
+            "position": row.position,
+            "status": row.status,
+            "manager_id": row.manager_id,
+            "tenure": float(row.tenure) if row.tenure else None,
+            "employee_cost": float(row.employee_cost) if row.employee_cost else None,
+            "report_date": row.report_date.isoformat() if row.report_date else None,
+            "termination_date": row.termination_date.isoformat() if row.termination_date else None,
+        }
+        # Include additional_data fields if present
+        if row.additional_data:
+            row_dict.update(row.additional_data)
+        data.append(row_dict)
+
+    return {
+        "dataset_id": dataset_id,
+        "dataset_name": dataset.name,
+        "total_rows": dataset.row_count or len(data),
+        "offset": offset,
+        "limit": limit,
+        "rows": data,
+    }
+
+
 @router.post("/datasets/{dataset_id}/activate", response_model=OperationResult)
 async def activate_dataset(
     dataset_id: str,
@@ -343,7 +408,9 @@ async def upload_file(
         project_dir = UPLOAD_DIR / project.id
         project_dir.mkdir(parents=True, exist_ok=True)
 
-        dest = project_dir / file.filename
+        # Sanitize filename to prevent path traversal attacks
+        safe_filename = sanitize_filename(file.filename)
+        dest = project_dir / safe_filename
         content = await file.read()
         dest.write_bytes(content)
 
@@ -401,5 +468,5 @@ async def upload_file(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload file: {exc}",
+            detail=sanitize_error_message(exc, "file upload"),
         )

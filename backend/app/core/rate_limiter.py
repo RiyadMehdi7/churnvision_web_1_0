@@ -73,7 +73,7 @@ limiter = Limiter(
     key_func=get_user_identifier,
     default_limits=["1000/hour", "100/minute"],  # Default limits for all endpoints
     storage_uri=storage_uri,
-    strategy="fixed-window-elastic-expiry",  # Prevents burst attacks
+    strategy="fixed-window",  # Prevents burst attacks
     headers_enabled=True,  # Add X-RateLimit headers to responses
 )
 

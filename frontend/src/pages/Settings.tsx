@@ -45,7 +45,7 @@ import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import api from '@/services/api';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
-import { uiLogger } from '@/utils/logger';
+import { uiLogger } from '@/utils/clientLogger';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';

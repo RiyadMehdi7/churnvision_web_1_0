@@ -20,6 +20,12 @@ from app.models.treatment import TreatmentDefinition, TreatmentApplication
 from app.services.chatbot import ChatbotService
 from app.models.dataset import Dataset
 from app.services.project_service import ensure_default_project, get_active_project
+from app.services.cached_queries import (
+    get_cached_company_overview,
+    get_cached_workforce_statistics,
+    get_cached_department_snapshot,
+    get_cached_manager_team_summary,
+)
 
 
 class PatternType:
@@ -534,186 +540,20 @@ class IntelligentChatbotService:
         ]
 
     async def _get_workforce_statistics(self, dataset_id: str) -> Dict[str, Any]:
-        """Get comprehensive workforce statistics"""
-        # Get all active employees with reasoning data
-        # Use case-insensitive comparison for status
-        query = select(HRDataInput, ChurnReasoning).outerjoin(
-            ChurnReasoning,
-            HRDataInput.hr_code == ChurnReasoning.hr_code
-        ).where(func.lower(HRDataInput.status) == "active")
-        query = query.where(HRDataInput.dataset_id == dataset_id)
-
-        result = await self.db.execute(query)
-        employees = result.all()
-
-        total = len(employees)
-        # Use standard thresholds (0.6/0.3) matching frontend and churn_prediction.py
-        high_risk = sum(1 for e, r in employees if r and r.churn_risk and r.churn_risk >= 0.6)
-        medium_risk = sum(1 for e, r in employees if r and r.churn_risk and 0.3 <= r.churn_risk < 0.6)
-        low_risk = total - high_risk - medium_risk
-
-        # Department breakdown
-        dept_stats = {}
-        for e, r in employees:
-            dept = e.structure_name or "Unknown"
-            if dept not in dept_stats:
-                dept_stats[dept] = {"count": 0, "risks": [], "ml_scores": [], "stage_scores": [], "confidences": []}
-            dept_stats[dept]["count"] += 1
-            if r and r.churn_risk:
-                dept_stats[dept]["risks"].append(float(r.churn_risk))
-            if r and r.ml_score:
-                dept_stats[dept]["ml_scores"].append(float(r.ml_score))
-            if r and r.stage_score:
-                dept_stats[dept]["stage_scores"].append(float(r.stage_score))
-            if r and r.confidence_level:
-                dept_stats[dept]["confidences"].append(float(r.confidence_level))
-
-        department_risks = []
-        for dept, stats in dept_stats.items():
-            risks = stats["risks"]
-            department_risks.append({
-                "department": dept,
-                "count": stats["count"],
-                "avgRisk": sum(risks) / len(risks) if risks else 0,
-                "highRiskCount": sum(1 for r in risks if r >= 0.6),
-                "avgMLScore": sum(stats["ml_scores"]) / len(stats["ml_scores"]) if stats["ml_scores"] else 0,
-                "avgStageScore": sum(stats["stage_scores"]) / len(stats["stage_scores"]) if stats["stage_scores"] else 0,
-                "avgConfidence": sum(stats["confidences"]) / len(stats["confidences"]) if stats["confidences"] else 0
-            })
-
-        # Stage distribution
-        stage_counts = {}
-        for e, r in employees:
-            stage = r.stage if r and r.stage else "Unknown"
-            if stage not in stage_counts:
-                stage_counts[stage] = {"count": 0, "risks": []}
-            stage_counts[stage]["count"] += 1
-            if r and r.churn_risk:
-                stage_counts[stage]["risks"].append(float(r.churn_risk))
-
-        stage_distribution = [
-            {
-                "stage": stage,
-                "count": data["count"],
-                "avgRisk": sum(data["risks"]) / len(data["risks"]) if data["risks"] else 0
-            }
-            for stage, data in stage_counts.items()
-        ]
-
-        return {
-            "totalEmployees": total,
-            "highRisk": high_risk,
-            "mediumRisk": medium_risk,
-            "lowRisk": low_risk,
-            "departmentRisks": sorted(department_risks, key=lambda x: x["avgRisk"], reverse=True),
-            "stageDistribution": stage_distribution,
-            "riskTrends": {
-                "criticalEmployees": high_risk,
-                "atRiskDepartments": sum(1 for d in department_risks if d["avgRisk"] >= 0.5),
-                "averageConfidence": sum(d["avgConfidence"] for d in department_risks) / len(department_risks) if department_risks else 0,
-                "totalWithReasoningData": sum(1 for e, r in employees if r is not None)
-            }
-        }
+        """Get comprehensive workforce statistics (cached)."""
+        return await get_cached_workforce_statistics(self.db, dataset_id)
 
     async def _get_company_overview(self, dataset_id: str) -> Dict[str, Any]:
-        """Aggregate company-level metrics scoped to dataset."""
-        stats_query = select(
-            func.count().label("total_employees"),
-            func.sum(case((func.lower(HRDataInput.status) == "active", 1), else_=0)).label("active_employees"),
-            func.avg(HRDataInput.tenure).label("avg_tenure"),
-            func.avg(HRDataInput.employee_cost).label("avg_cost"),
-            func.avg(ChurnOutput.resign_proba).label("avg_risk"),
-            func.sum(case((ChurnOutput.resign_proba >= 0.6, 1), else_=0)).label("high_risk"),
-            func.sum(case(((ChurnOutput.resign_proba >= 0.3) & (ChurnOutput.resign_proba < 0.6), 1), else_=0)).label("medium_risk"),
-            func.sum(case((ChurnOutput.resign_proba < 0.3, 1), else_=0)).label("low_risk"),
-        ).select_from(HRDataInput).outerjoin(
-            ChurnOutput,
-            and_(ChurnOutput.hr_code == HRDataInput.hr_code, ChurnOutput.dataset_id == dataset_id)
-        ).where(HRDataInput.dataset_id == dataset_id)
-
-        result = await self.db.execute(stats_query)
-        row = result.fetchone()
-        if not row:
-            return {}
-
-        return {
-            "totalEmployees": row.total_employees or 0,
-            "activeEmployees": row.active_employees or 0,
-            "avgTenure": float(row.avg_tenure) if row.avg_tenure else 0,
-            "avgCost": float(row.avg_cost) if row.avg_cost else 0,
-            "avgRisk": float(row.avg_risk) if row.avg_risk else 0,
-            "riskDistribution": {
-                "high": int(row.high_risk or 0),
-                "medium": int(row.medium_risk or 0),
-                "low": int(row.low_risk or 0),
-            }
-        }
+        """Aggregate company-level metrics scoped to dataset (cached)."""
+        return await get_cached_company_overview(self.db, dataset_id)
 
     async def _get_manager_team_summary(self, manager_id: str, dataset_id: str) -> Optional[Dict[str, Any]]:
-        """Summarize team under a manager with risk/cost/tenure aggregates."""
-        if not manager_id:
-            return None
-
-        query = select(
-            func.count().label("team_size"),
-            func.avg(HRDataInput.tenure).label("avg_tenure"),
-            func.avg(HRDataInput.employee_cost).label("avg_cost"),
-            func.avg(ChurnOutput.resign_proba).label("avg_risk"),
-            func.sum(case((ChurnOutput.resign_proba >= 0.6, 1), else_=0)).label("high_risk"),
-        ).select_from(HRDataInput).outerjoin(
-            ChurnOutput,
-            and_(ChurnOutput.hr_code == HRDataInput.hr_code, ChurnOutput.dataset_id == dataset_id)
-        ).where(
-            HRDataInput.manager_id == manager_id,
-            HRDataInput.dataset_id == dataset_id
-        )
-
-        result = await self.db.execute(query)
-        row = result.fetchone()
-        if not row or not row.team_size:
-            return None
-
-        return {
-            "managerId": manager_id,
-            "teamSize": int(row.team_size or 0),
-            "avgTenure": float(row.avg_tenure) if row.avg_tenure else 0,
-            "avgCost": float(row.avg_cost) if row.avg_cost else 0,
-            "avgRisk": float(row.avg_risk) if row.avg_risk else 0,
-            "highRiskCount": int(row.high_risk or 0),
-        }
+        """Summarize team under a manager with risk/cost/tenure aggregates (cached)."""
+        return await get_cached_manager_team_summary(self.db, dataset_id, manager_id)
 
     async def _get_department_snapshot(self, department: str, dataset_id: str) -> Optional[Dict[str, Any]]:
-        """Return key stats for a department to enrich responses."""
-        if not department:
-            return None
-
-        query = select(
-            func.count().label("headcount"),
-            func.avg(HRDataInput.tenure).label("avg_tenure"),
-            func.avg(HRDataInput.employee_cost).label("avg_cost"),
-            func.avg(ChurnOutput.resign_proba).label("avg_risk"),
-            func.sum(case((ChurnOutput.resign_proba >= 0.6, 1), else_=0)).label("high_risk"),
-        ).select_from(HRDataInput).outerjoin(
-            ChurnOutput,
-            and_(ChurnOutput.hr_code == HRDataInput.hr_code, ChurnOutput.dataset_id == dataset_id)
-        ).where(
-            HRDataInput.dataset_id == dataset_id,
-            HRDataInput.structure_name.ilike(f"%{department}%")
-        )
-
-        result = await self.db.execute(query)
-        row = result.fetchone()
-        if not row or not row.headcount:
-            return None
-
-        return {
-            "department": department,
-            "headcount": int(row.headcount or 0),
-            "avgTenure": float(row.avg_tenure) if row.avg_tenure else 0,
-            "avgCost": float(row.avg_cost) if row.avg_cost else 0,
-            "avgRisk": float(row.avg_risk) if row.avg_risk else 0,
-            "highRiskCount": int(row.high_risk or 0),
-        }
+        """Return key stats for a department to enrich responses (cached)."""
+        return await get_cached_department_snapshot(self.db, dataset_id, department)
 
     async def _get_department_analysis(self, department: str, dataset_id: str) -> Dict[str, Any]:
         """Get detailed analysis for a specific department"""

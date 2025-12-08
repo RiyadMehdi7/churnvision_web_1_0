@@ -2,6 +2,7 @@ import { Employee } from '../types/employee';
 import { ChurnReasoning } from '../types/reasoning';
 import reasoningService from './reasoning';
 import { getCurrentThresholds } from '../config/riskThresholds';
+import { aiCacheManager } from './aiCacheManager';
 
 export interface AIInsight {
   id: string;
@@ -32,18 +33,11 @@ export interface AIAnalysisRequest {
   parameters?: Record<string, any>;
 }
 
-export interface CacheEntry<T> {
-  data: T;
-  timestamp: Date;
-  expiresAt: Date;
-  key: string;
-}
+// CacheEntry is now managed by aiCacheManager - no longer needed here
 
 class AIIntegrationManager {
   private static instance: AIIntegrationManager;
-  private cache = new Map<string, CacheEntry<any>>();
   private readonly DEFAULT_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
-  private readonly MAX_CACHE_SIZE = 100;
 
   private constructor() {}
 
@@ -218,39 +212,25 @@ class AIIntegrationManager {
     }
   }
 
-  // Cache management
+  // Cache management - delegates to aiCacheManager
   private getFromCache<T>(key: string): T | null {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-    
-    if (entry.expiresAt < new Date()) {
-      this.cache.delete(key);
-      return null;
-    }
-    
-    return entry.data as T;
+    return aiCacheManager.get<T>(key);
   }
 
   private setCache<T>(key: string, data: T, ttl: number = this.DEFAULT_CACHE_TTL): void {
-    if (this.cache.size >= this.MAX_CACHE_SIZE) {
-      const oldestKey = Array.from(this.cache.keys())[0];
-      this.cache.delete(oldestKey);
-    }
-
-    this.cache.set(key, {
-      data,
-      timestamp: new Date(),
-      expiresAt: new Date(Date.now() + ttl),
-      key
-    });
+    // Determine priority based on content type
+    const priority = key.includes('individual') || key.includes('retention') ? 'high' : 'medium';
+    aiCacheManager.set(key, data, ttl, priority);
   }
 
   public clearCache(pattern?: string): void {
     if (pattern) {
-      const keysToDelete = Array.from(this.cache.keys()).filter(key => key.includes(pattern));
-      keysToDelete.forEach(key => this.cache.delete(key));
+      aiCacheManager.invalidatePattern(pattern);
     } else {
-      this.cache.clear();
+      aiCacheManager.invalidatePattern('workforce-trends');
+      aiCacheManager.invalidatePattern('individual-diagnosis');
+      aiCacheManager.invalidatePattern('retention-plan');
+      aiCacheManager.invalidatePattern('strategic-insights');
     }
   }
 

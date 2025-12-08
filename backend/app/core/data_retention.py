@@ -12,7 +12,7 @@ from sqlalchemy import delete, select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.session import async_session_maker
+from app.db.session import AsyncSessionLocal
 
 logger = logging.getLogger("churnvision.data_retention")
 
@@ -224,7 +224,7 @@ class DataRetentionService:
             "success": True,
         }
 
-        async with async_session_maker() as db:
+        async with AsyncSessionLocal() as db:
             try:
                 results["audit_logs"] = await self.cleanup_audit_logs(db)
                 results["sessions"] = await self.cleanup_expired_sessions(db)
@@ -256,7 +256,7 @@ class DataRetentionService:
             "pending_cleanup": {},
         }
 
-        async with async_session_maker() as db:
+        async with AsyncSessionLocal() as db:
             # Count records pending cleanup
             try:
                 from app.models.audit import AuditLog

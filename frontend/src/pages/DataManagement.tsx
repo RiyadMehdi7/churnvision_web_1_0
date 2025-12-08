@@ -17,7 +17,7 @@ import { useProject } from '@/contexts/ProjectContext'; // Import from local con
 import { parse as csvParse } from 'papaparse';
 // Excel parsing is handled by FastAPI backend
 import ExcelJS from 'exceljs';
-import { logger } from '@/utils/logger'; // Import frontend logger
+import { logger } from '@/utils/clientLogger';
 // // import type { ConnectionTestParams } from '@/types/electron'; // Removed ConnectionCreateParams
 import { Button } from "@/components/ui/button";
 import { useToast } from '@/hooks/use-toast';

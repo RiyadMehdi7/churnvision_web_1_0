@@ -18,11 +18,18 @@ services:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
       - ./backend/alembic.ini:/app/alembic.ini
-      - ./ml/models:/app/models
+      - ./ml/models:/app/models:ro  # Read-only for models
     depends_on:
       - db
       - ollama
       - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 3G
+        reservations:
+          memory: 512M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -54,6 +61,20 @@ services:
       - POSTGRES_DB=churnvision
     volumes:
       - pg_data:/var/lib/postgresql/data
+      - ./db/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   ollama:
     image: ollama/ollama:latest
@@ -61,6 +82,17 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_NUM_PARALLEL=2          # Limit concurrent requests to save memory
+      - OLLAMA_MAX_LOADED_MODELS=1     # Only keep 1 model loaded at a time
+      - OLLAMA_KEEP_ALIVE=5m           # Unload model after 5 min idle to free RAM
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 6G
+        reservations:
+          memory: 2G
 
   redis:
     image: redis:7-alpine

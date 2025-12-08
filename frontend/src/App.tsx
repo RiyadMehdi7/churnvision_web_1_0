@@ -22,7 +22,7 @@ import { AuthProtectedRoute } from './components/AuthProtectedRoute';
 import { ReasoningDashboard } from './components/ReasoningDashboard';
 import { subscribeToThresholdChanges } from './config/riskThresholds';
 import { useToast } from './hooks/use-toast';
-import { appLogger } from './utils/logger';
+import { appLogger } from './utils/clientLogger';
 import thresholdSyncService from './services/thresholdSyncService';
 import ErrorBoundary from './components/ErrorBoundary';
 import { errorReporter } from './utils/errorReporting';

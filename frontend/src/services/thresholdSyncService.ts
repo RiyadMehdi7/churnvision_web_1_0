@@ -1,5 +1,5 @@
 import { getCurrentThresholds, updateRiskThresholds } from '../config/riskThresholds';
-import logger from '../utils/logger';
+import logger from '../utils/clientLogger';
 import api from './api';
 
 /**

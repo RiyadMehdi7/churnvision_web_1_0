@@ -1,120 +1,104 @@
 /**
  * Client-side logging utility for ChurnVision frontend
  * Provides structured logging that can be controlled by environment
+ *
+ * This is the canonical logger for the frontend.
+ *
+ * API:
+ *   logger.info(message, data?)           - Log with 'General' context
+ *   logger.ui.info(message, data?)        - Log with 'UI' context
+ *   logger.project.info(message, data?)   - Log with 'Project' context
+ *   appLogger.info(message, data?)        - Alias for logger with 'App' context
+ *   uiLogger.info(message, data?)         - Alias for logger with 'UI' context
  */
 
-interface LogLevel {
-  DEBUG: 0;
-  INFO: 1;
-  WARN: 2;
-  ERROR: 3;
-}
+// Use Vite's import.meta.env for environment detection
+const isDevelopment = import.meta.env.DEV;
+const isProduction = import.meta.env.PROD;
 
-const LOG_LEVELS: LogLevel = {
-  DEBUG: 0,
-  INFO: 1,
-  WARN: 2,
-  ERROR: 3
+// Helper function to format log messages consistently
+const formatMessage = (level: string, context: string | undefined, message: string, data?: any): string => {
+  if (!isDevelopment) return message;
+
+  const timestamp = new Date().toISOString();
+  const contextStr = context ? `[${context}] ` : '';
+  let dataStr = '';
+  if (data !== undefined) {
+    try {
+      if (data instanceof Error) {
+        dataStr = ` | Error: ${data.name} - ${data.message}`;
+      } else {
+        dataStr = ` | Data: ${typeof data === 'object' ? JSON.stringify(data).substring(0, 200) : String(data)}`;
+      }
+    } catch {
+      dataStr = ' | Data: [Unserializable]';
+    }
+  }
+  return `[${timestamp}] ${level.toUpperCase()}: ${contextStr}${message}${dataStr}`;
 };
 
-class ClientLogger {
-  private currentLevel: number;
-  private isDevelopment: boolean;
-
-  constructor() {
-    this.isDevelopment = process.env.NODE_ENV === 'development';
-    this.currentLevel = this.isDevelopment ? LOG_LEVELS.DEBUG : LOG_LEVELS.INFO;
-  }
-
-  private shouldLog(level: number): boolean {
-    return level >= this.currentLevel;
-  }
-
-  private formatMessage(level: string, context: string, message: string, data?: any): void {
-    const timestamp = new Date().toISOString();
-    const prefix = `[${timestamp}] [${level}] [${context}]`;
-    
-    if (data) {
-      console.log(`${prefix} ${message}`, data);
-    } else {
-      console.log(`${prefix} ${message}`);
+// Create namespaced logger factory
+const createNamespacedLogger = (context: string) => ({
+  debug: (message: string, data?: any): void => {
+    if (isProduction) return;
+    console.debug(formatMessage('debug', context, message, data));
+  },
+  info: (message: string, data?: any): void => {
+    if (isDevelopment) {
+      console.info(formatMessage('info', context, message, data));
     }
-  }
+  },
+  warn: (message: string, data?: any): void => {
+    console.warn(formatMessage('warn', context, message, data));
+  },
+  error: (message: string, data?: any): void => {
+    console.error(formatMessage('error', context, message, data));
+  },
+});
 
-  debug(context: string, message: string, data?: any): void {
-    if (this.shouldLog(LOG_LEVELS.DEBUG)) {
-      this.formatMessage('DEBUG', context, message, data);
+// Main logger with backwards-compatible API: logger.info(message, data?)
+export const logger = {
+  debug: (message: string, data?: any, context?: string): void => {
+    if (isProduction) return;
+    console.debug(formatMessage('debug', context, message, data));
+  },
+
+  info: (message: string, data?: any, context?: string): void => {
+    if (isDevelopment) {
+      console.info(formatMessage('info', context, message, data));
     }
-  }
+  },
 
-  info(context: string, message: string, data?: any): void {
-    if (this.shouldLog(LOG_LEVELS.INFO)) {
-      this.formatMessage('INFO', context, message, data);
-    }
-  }
+  warn: (message: string, data?: any, context?: string): void => {
+    console.warn(formatMessage('warn', context, message, data));
+  },
 
-  warn(context: string, message: string, data?: any): void {
-    if (this.shouldLog(LOG_LEVELS.WARN)) {
-      this.formatMessage('WARN', context, message, data);
-    }
-  }
+  error: (message: string, data?: any, context?: string): void => {
+    console.error(formatMessage('error', context, message, data));
+  },
 
-  error(context: string, message: string, error?: Error | any): void {
-    if (this.shouldLog(LOG_LEVELS.ERROR)) {
-      const timestamp = new Date().toISOString();
-      const prefix = `[${timestamp}] [ERROR] [${context}]`;
-      
-      if (error instanceof Error) {
-        console.error(`${prefix} ${message}`, {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        });
-      } else if (error) {
-        console.error(`${prefix} ${message}`, error);
-      } else {
-        console.error(`${prefix} ${message}`);
-      }
-    }
-  }
+  // Namespaced loggers for specific contexts
+  router: createNamespacedLogger('Router'),
+  serviceWorker: createNamespacedLogger('ServiceWorker'),
+  project: createNamespacedLogger('Project'),
+  cache: createNamespacedLogger('Cache'),
+  ui: createNamespacedLogger('UI'),
+  app: createNamespacedLogger('App'),
+};
 
-  // Specialized loggers for different contexts
-  router = {
-    info: (message: string, data?: any) => this.info('Router', message, data),
-    debug: (message: string, data?: any) => this.debug('Router', message, data),
-    warn: (message: string, data?: any) => this.warn('Router', message, data),
-    error: (message: string, error?: Error | any) => this.error('Router', message, error)
-  };
+// Compatibility aliases matching the old logger.ts exports
+export const appLogger = {
+  info: (message: string, data?: any) => logger.info(message, data, 'App'),
+  warn: (message: string, data?: any) => logger.warn(message, data, 'App'),
+  error: (message: string, data?: any) => logger.error(message, data, 'App'),
+  debug: (message: string, data?: any) => logger.debug(message, data, 'App'),
+};
 
-  serviceWorker = {
-    info: (message: string, data?: any) => this.info('ServiceWorker', message, data),
-    debug: (message: string, data?: any) => this.debug('ServiceWorker', message, data),
-    warn: (message: string, data?: any) => this.warn('ServiceWorker', message, data),
-    error: (message: string, error?: Error | any) => this.error('ServiceWorker', message, error)
-  };
+export const uiLogger = {
+  info: (message: string, data?: any) => logger.info(message, data, 'UI'),
+  warn: (message: string, data?: any) => logger.warn(message, data, 'UI'),
+  error: (message: string, data?: any) => logger.error(message, data, 'UI'),
+  debug: (message: string, data?: any) => logger.debug(message, data, 'UI'),
+};
 
-  project = {
-    info: (message: string, data?: any) => this.info('Project', message, data),
-    debug: (message: string, data?: any) => this.debug('Project', message, data),
-    warn: (message: string, data?: any) => this.warn('Project', message, data),
-    error: (message: string, error?: Error | any) => this.error('Project', message, error)
-  };
-
-  cache = {
-    info: (message: string, data?: any) => this.info('Cache', message, data),
-    debug: (message: string, data?: any) => this.debug('Cache', message, data),
-    warn: (message: string, data?: any) => this.warn('Cache', message, data),
-    error: (message: string, error?: Error | any) => this.error('Cache', message, error)
-  };
-
-  ui = {
-    info: (message: string, data?: any) => this.info('UI', message, data),
-    debug: (message: string, data?: any) => this.debug('UI', message, data),
-    warn: (message: string, data?: any) => this.warn('UI', message, data),
-    error: (message: string, error?: Error | any) => this.error('UI', message, error)
-  };
-}
-
-// Export singleton instance
-export const logger = new ClientLogger();
 export default logger;

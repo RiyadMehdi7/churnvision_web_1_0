@@ -238,6 +238,50 @@ class ChurnPredictionService:
         else:
             return ChurnRiskLevel.LOW
 
+    def _safe_encode_series(self, series: pd.Series, encoder: LabelEncoder) -> np.ndarray:
+        """Encode categorical series with fallback for unseen values."""
+        if not hasattr(encoder, "classes_") or len(encoder.classes_) == 0:
+            return encoder.fit_transform(series.fillna("unknown").astype(str))
+
+        fallback = encoder.classes_[0]
+        known = set(encoder.classes_.tolist())
+        normalized = [
+            val if val in known else fallback
+            for val in series.fillna(fallback).astype(str)
+        ]
+        return encoder.transform(normalized)
+
+    def _get_shap_values_batch(self, features_array: np.ndarray):
+        """Return SHAP values for a batch or None on failure."""
+        if not SHAP_AVAILABLE or self.shap_explainer is None:
+            return None
+        try:
+            shap_values = self.shap_explainer.shap_values(features_array)
+            if isinstance(shap_values, list):
+                shap_values = shap_values[1]
+            return shap_values
+        except Exception as e:
+            logger.warning(f"SHAP batch explanation failed: {e}")
+            return None
+
+    def _build_factors_from_shap_row(self, shap_row: np.ndarray, feature_values: List[Any]) -> List[Dict[str, Any]]:
+        """Create contributing factors list from a single SHAP row."""
+        factors: List[Dict[str, Any]] = []
+        for name, value, shap_val in zip(self.FEATURE_NAMES, feature_values, shap_row):
+            abs_impact = abs(shap_val)
+            if abs_impact <= 0.01:
+                continue
+            factors.append({
+                "feature": name,
+                "value": value,
+                "shap_value": float(shap_val),
+                "impact": self._shap_to_impact_level(shap_val),
+                "direction": "increases_risk" if shap_val > 0 else "decreases_risk",
+                "message": self._generate_shap_message(name, value, shap_val)
+            })
+        factors.sort(key=lambda x: abs(x["shap_value"]), reverse=True)
+        return factors[:5]
+
     def calculate_prediction_confidence(
         self,
         features_array: np.ndarray,
@@ -692,6 +736,166 @@ class ChurnPredictionService:
             medium_risk_count=medium_risk,
             low_risk_count=low_risk
         )
+
+    async def predict_frame_batch(
+        self,
+        feature_frame: pd.DataFrame,
+        dataset_id: Optional[str] = None,
+        hr_codes: Optional[List[str]] = None,
+        batch_size: int = 256,
+    ) -> List[ChurnPredictionResponse]:
+        """
+        Vectorized churn prediction for a feature DataFrame.
+
+        Preserves SHAP-based explanations by default while avoiding per-row loops.
+        """
+        self.ensure_model_for_dataset(dataset_id)
+
+        feature_columns = [
+            'satisfaction_level', 'last_evaluation', 'number_project',
+            'average_monthly_hours', 'time_spend_company', 'work_accident',
+            'promotion_last_5years', 'department', 'salary_level'
+        ]
+
+        # Fallback for untrained model: use heuristic path row-by-row (rare)
+        if self.model is None:
+            results: List[ChurnPredictionResponse] = []
+            for idx, row in feature_frame.iterrows():
+                features_obj = EmployeeChurnFeatures(
+                    satisfaction_level=float(row.get("satisfaction_level", 0.5)),
+                    last_evaluation=float(row.get("last_evaluation", 0.5)),
+                    number_project=int(float(row.get("number_project", 3))),
+                    average_monthly_hours=float(row.get("average_monthly_hours", 160)),
+                    time_spend_company=int(float(row.get("time_spend_company", 3))),
+                    work_accident=bool(int(float(row.get("work_accident", 0)))),
+                    promotion_last_5years=bool(int(float(row.get("promotion_last_5years", 0)))),
+                    department=str(row.get("department", "general")),
+                    salary_level=str(row.get("salary_level", "medium")),
+                )
+                prob = self._heuristic_prediction(features_obj)
+                margin = abs(prob - 0.5) * 2
+                factors = self._get_heuristic_contributing_factors(features_obj)
+                results.append(ChurnPredictionResponse(
+                    employee_id=hr_codes[idx] if hr_codes and idx < len(hr_codes) else None,
+                    churn_probability=prob,
+                    confidence_score=margin,
+                    confidence_breakdown={
+                        "prediction_margin": margin,
+                        "tree_agreement": 0.5,
+                        "final_confidence": margin,
+                        "method": "heuristic-batch"
+                    },
+                    risk_level=self._determine_risk_level(prob, dataset_id),
+                    contributing_factors=factors,
+                    recommendations=self._get_recommendations(features_obj, factors),
+                    predicted_at=datetime.utcnow()
+                ))
+            return results
+
+        # Prepare numeric matrix
+        base_df = feature_frame[feature_columns].copy()
+        base_df['department'] = base_df['department'].fillna("unknown").astype(str)
+        base_df['salary_level'] = base_df['salary_level'].fillna("medium").astype(str)
+
+        dept_encoded = self._safe_encode_series(base_df['department'], self.label_encoders['department'])
+        salary_encoded = self._safe_encode_series(base_df['salary_level'], self.label_encoders['salary_level'])
+
+        feature_matrix = np.column_stack([
+            base_df['satisfaction_level'].astype(float).values,
+            base_df['last_evaluation'].astype(float).values,
+            base_df['number_project'].astype(float).values,
+            base_df['average_monthly_hours'].astype(float).values,
+            base_df['time_spend_company'].astype(float).values,
+            base_df['work_accident'].astype(float).values,
+            base_df['promotion_last_5years'].astype(float).values,
+            dept_encoded,
+            salary_encoded
+        ])
+
+        scaled_matrix = self.scaler.transform(feature_matrix)
+        results: List[ChurnPredictionResponse] = []
+
+        for start in range(0, len(scaled_matrix), batch_size):
+            end = start + batch_size
+            batch_scaled = scaled_matrix[start:end]
+            batch_slice_df = base_df.iloc[start:end]
+            batch_hr_codes = hr_codes[start:end] if hr_codes else None
+
+            if self.calibrated_model is not None:
+                batch_proba = self.calibrated_model.predict_proba(batch_scaled)[:, 1]
+                confidence_method = "calibrated-batch"
+            else:
+                batch_proba = self.model.predict_proba(batch_scaled)[:, 1]
+                confidence_method = "raw-batch"
+
+            shap_values = self._get_shap_values_batch(batch_scaled)
+
+            for row_idx, prob in enumerate(batch_proba):
+                margin = abs(prob - 0.5) * 2
+                idx_global = start + row_idx
+                feature_row = batch_slice_df.iloc[row_idx]
+
+                if shap_values is not None:
+                    factors = self._build_factors_from_shap_row(
+                        shap_values[row_idx],
+                        [
+                            feature_row['satisfaction_level'],
+                            feature_row['last_evaluation'],
+                            feature_row['number_project'],
+                            feature_row['average_monthly_hours'],
+                            feature_row['time_spend_company'],
+                            feature_row['work_accident'],
+                            feature_row['promotion_last_5years'],
+                            feature_row['department'],
+                            feature_row['salary_level'],
+                        ]
+                    )
+                else:
+                    features_obj = EmployeeChurnFeatures(
+                        satisfaction_level=float(feature_row.get("satisfaction_level", 0.5)),
+                        last_evaluation=float(feature_row.get("last_evaluation", 0.5)),
+                        number_project=int(float(feature_row.get("number_project", 3))),
+                        average_monthly_hours=float(feature_row.get("average_monthly_hours", 160)),
+                        time_spend_company=int(float(feature_row.get("time_spend_company", 3))),
+                        work_accident=bool(int(float(feature_row.get("work_accident", 0)))),
+                        promotion_last_5years=bool(int(float(feature_row.get("promotion_last_5years", 0)))),
+                        department=str(feature_row.get("department", "general")),
+                        salary_level=str(feature_row.get("salary_level", "medium")),
+                    )
+                    factors = self._get_heuristic_contributing_factors(features_obj)
+
+                confidence_breakdown = {
+                    "prediction_margin": margin,
+                    "tree_agreement": 0.5,  # skip expensive per-row agreement in batch mode
+                    "final_confidence": margin,
+                    "method": confidence_method,
+                }
+
+                results.append(ChurnPredictionResponse(
+                    employee_id=batch_hr_codes[row_idx] if batch_hr_codes else None,
+                    churn_probability=float(prob),
+                    confidence_score=margin,
+                    confidence_breakdown=confidence_breakdown,
+                    risk_level=self._determine_risk_level(float(prob), dataset_id),
+                    contributing_factors=factors,
+                    recommendations=self._get_recommendations(
+                        EmployeeChurnFeatures(
+                            satisfaction_level=float(feature_row.get("satisfaction_level", 0.5)),
+                            last_evaluation=float(feature_row.get("last_evaluation", 0.5)),
+                            number_project=int(float(feature_row.get("number_project", 3))),
+                            average_monthly_hours=float(feature_row.get("average_monthly_hours", 160)),
+                            time_spend_company=int(float(feature_row.get("time_spend_company", 3))),
+                            work_accident=bool(int(float(feature_row.get("work_accident", 0)))),
+                            promotion_last_5years=bool(int(float(feature_row.get("promotion_last_5years", 0)))),
+                            department=str(feature_row.get("department", "general")),
+                            salary_level=str(feature_row.get("salary_level", "medium")),
+                        ),
+                        factors,
+                    ),
+                    predicted_at=datetime.utcnow()
+                ))
+
+        return results
 
     async def train_model(self, request: ModelTrainingRequest, training_data: pd.DataFrame, dataset_id: Optional[str] = None) -> ModelTrainingResponse:
         """Train a new churn prediction model with proper validation and calibration."""

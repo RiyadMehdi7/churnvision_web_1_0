@@ -180,6 +180,13 @@ class RAGQueryResponse(BaseModel):
 
 class KnowledgeBaseSettingsBase(BaseModel):
     """Base KB settings fields."""
+    # Company context (for AI personalization)
+    company_name: Optional[str] = Field(None, max_length=200)
+    industry: Optional[str] = Field(None, max_length=100)
+    company_size: Optional[str] = Field(None, max_length=50)
+    company_description: Optional[str] = None
+
+    # RAG configuration
     mode: KnowledgeBaseMode = Field(default=KnowledgeBaseMode.AUTOMATIC)
     chunk_size: int = Field(default=500, ge=100, le=2000)
     chunk_overlap: int = Field(default=50, ge=0, le=500)
@@ -191,6 +198,13 @@ class KnowledgeBaseSettingsBase(BaseModel):
 
 class KnowledgeBaseSettingsUpdate(BaseModel):
     """Update KB settings request."""
+    # Company context (for AI personalization)
+    company_name: Optional[str] = Field(None, max_length=200)
+    industry: Optional[str] = Field(None, max_length=100)
+    company_size: Optional[str] = Field(None, max_length=50)
+    company_description: Optional[str] = None
+
+    # RAG configuration
     mode: Optional[KnowledgeBaseMode] = None
     chunk_size: Optional[int] = Field(None, ge=100, le=2000)
     chunk_overlap: Optional[int] = Field(None, ge=0, le=500)

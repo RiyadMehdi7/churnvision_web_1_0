@@ -112,10 +112,17 @@ class KnowledgeBaseSettings(Base):
     Per-user/project RAG configuration settings.
 
     Controls how document retrieval and rule application work.
+    Also stores company context for AI personalization.
     """
     __tablename__ = "knowledge_base_settings"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # Company context (for AI personalization)
+    company_name = Column(String(200), nullable=True)
+    industry = Column(String(100), nullable=True)  # tech, finance, healthcare, retail, manufacturing, other
+    company_size = Column(String(50), nullable=True)  # small (<50), medium (50-200), large (200-1000), enterprise (1000+)
+    company_description = Column(Text, nullable=True)  # Brief context about the company
 
     # Mode: automatic (documents only), custom (rules only), hybrid (both)
     mode = Column(String(20), default="automatic")

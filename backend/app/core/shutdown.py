@@ -147,7 +147,7 @@ async def lifespan_manager(app):
     Usage:
         app = FastAPI(lifespan=lifespan_manager)
     """
-    from app.db.session import engine, async_session_maker
+    from app.db.session import engine
 
     logger.info("Application starting up...")
     shutdown_manager = get_shutdown_manager()

@@ -4,7 +4,7 @@
  * Manages company documents, custom HR rules, and RAG settings.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -23,6 +23,7 @@ import {
   Filter,
   RefreshCw,
   Database,
+  Building2,
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -595,6 +596,16 @@ function SettingsSection() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  // Local state for company context (all fields)
+  const [companyContext, setCompanyContext] = useState({
+    company_name: '',
+    industry: '',
+    company_size: '',
+    company_description: '',
+  });
+  const [companyContextDirty, setCompanyContextDirty] = useState(false);
+  const initialLoadDone = useRef(false);
+
   const { data: settings, isLoading } = useQuery({
     queryKey: ['rag-settings'],
     queryFn: () => ragService.getSettings(),
@@ -604,6 +615,19 @@ function SettingsSection() {
     queryKey: ['rag-stats'],
     queryFn: () => ragService.getStats(),
   });
+
+  // Sync local state when settings load (only on initial load)
+  useEffect(() => {
+    if (settings && !initialLoadDone.current) {
+      setCompanyContext({
+        company_name: settings.company_name || '',
+        industry: settings.industry || '',
+        company_size: settings.company_size || '',
+        company_description: settings.company_description || '',
+      });
+      initialLoadDone.current = true;
+    }
+  }, [settings]);
 
   const updateMutation = useMutation({
     mutationFn: (updates: Partial<KnowledgeBaseSettings>) => ragService.updateSettings(updates),
@@ -615,6 +639,22 @@ function SettingsSection() {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     },
   });
+
+  const saveCompanyContextMutation = useMutation({
+    mutationFn: () => ragService.updateSettings(companyContext),
+    onSuccess: () => {
+      setCompanyContextDirty(false);
+      toast({ title: 'Company context saved', description: 'Your company information has been updated.' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const handleCompanyContextChange = (field: keyof typeof companyContext, value: string) => {
+    setCompanyContext(prev => ({ ...prev, [field]: value }));
+    setCompanyContextDirty(true);
+  };
 
   if (isLoading || !settings) {
     return (
@@ -651,6 +691,101 @@ function SettingsSection() {
           ))}
         </div>
       )}
+
+      {/* Company Context */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-primary" />
+              <CardTitle>Company Context</CardTitle>
+            </div>
+            {companyContextDirty && (
+              <span className="text-xs text-muted-foreground">Unsaved changes</span>
+            )}
+          </div>
+          <CardDescription>Help the AI understand your company for better responses</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="company-name">Company Name</Label>
+              <Input
+                id="company-name"
+                placeholder="e.g., Acme Corp"
+                value={companyContext.company_name}
+                onChange={(e) => handleCompanyContextChange('company_name', e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="industry">Industry</Label>
+              <Select
+                value={companyContext.industry}
+                onValueChange={(v) => handleCompanyContextChange('industry', v)}
+              >
+                <SelectTrigger id="industry">
+                  <SelectValue placeholder="Select industry" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="technology">Technology</SelectItem>
+                  <SelectItem value="finance">Finance & Banking</SelectItem>
+                  <SelectItem value="healthcare">Healthcare</SelectItem>
+                  <SelectItem value="retail">Retail & E-commerce</SelectItem>
+                  <SelectItem value="manufacturing">Manufacturing</SelectItem>
+                  <SelectItem value="professional_services">Professional Services</SelectItem>
+                  <SelectItem value="education">Education</SelectItem>
+                  <SelectItem value="government">Government</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="company-size">Company Size</Label>
+            <Select
+              value={companyContext.company_size}
+              onValueChange={(v) => handleCompanyContextChange('company_size', v)}
+            >
+              <SelectTrigger id="company-size">
+                <SelectValue placeholder="Select company size" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="small">Small (under 50 employees)</SelectItem>
+                <SelectItem value="medium">Medium (50-200 employees)</SelectItem>
+                <SelectItem value="large">Large (200-1000 employees)</SelectItem>
+                <SelectItem value="enterprise">Enterprise (1000+ employees)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="company-description">Company Description (Optional)</Label>
+            <Textarea
+              id="company-description"
+              placeholder="Brief context about your company, culture, or specific HR policies..."
+              value={companyContext.company_description}
+              onChange={(e) => handleCompanyContextChange('company_description', e.target.value)}
+              rows={3}
+            />
+            <p className="text-xs text-muted-foreground">
+              This context helps the AI provide more relevant and personalized responses.
+            </p>
+          </div>
+          <Button
+            onClick={() => saveCompanyContextMutation.mutate()}
+            disabled={!companyContextDirty || saveCompanyContextMutation.isPending}
+            className="w-full"
+          >
+            {saveCompanyContextMutation.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              'Save Company Context'
+            )}
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Mode Selection */}
       <Card>

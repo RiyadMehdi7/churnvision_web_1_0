@@ -14,9 +14,10 @@ import json
 
 from app.core.config import settings
 from app.models.chatbot import ChatMessage
-from app.models.hr_data import HRDataInput
-from app.models.churn import ChurnOutput, ChurnReasoning
+from app.models.hr_data import HRDataInput, InterviewData
+from app.models.churn import ChurnOutput, ChurnReasoning, ELTVOutput, BehavioralStage
 from app.models.treatment import TreatmentDefinition, TreatmentApplication
+from app.models.rag import KnowledgeBaseSettings, CustomHRRule
 from app.services.chatbot import ChatbotService
 from app.models.dataset import Dataset
 from app.services.project_service import ensure_default_project, get_active_project
@@ -26,6 +27,7 @@ from app.services.cached_queries import (
     get_cached_department_snapshot,
     get_cached_manager_team_summary,
 )
+from app.services.rag_service import RAGService
 
 
 class PatternType:
@@ -56,6 +58,7 @@ class IntelligentChatbotService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.chatbot_service = ChatbotService(db)
+        self.rag_service = RAGService(db)
 
     async def detect_pattern(self, message: str, employee_id: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         """
@@ -302,6 +305,9 @@ class IntelligentChatbotService:
         # Always include company-level overview so general/company queries are grounded
         context["company_overview"] = await self._get_company_overview(dataset_id)
 
+        # Include company context from Knowledge Base settings (for AI personalization)
+        context["company_context"] = await self._get_company_context()
+
         # Employee-specific patterns OR when employee_id is provided (user selected an employee)
         # Always fetch employee context when employee is selected, regardless of pattern
         needs_employee_context = pattern_type in [
@@ -350,21 +356,16 @@ class IntelligentChatbotService:
                 if employee.structure_name:
                     context["department_snapshot"] = await self._get_department_snapshot(employee.structure_name, dataset_id)
 
-                # Get churn prediction
+                # Get churn prediction (now returns dict with counterfactuals/uncertainty)
                 churn_data = await self._get_churn_data(employee.hr_code, dataset_id)
                 if churn_data:
-                    context["churn"] = {
-                        "resign_proba": float(churn_data.resign_proba),
-                        "shap_values": churn_data.shap_values or {},
-                        "confidence_score": float(churn_data.confidence_score) if churn_data.confidence_score else 0.8,
-                        "model_version": churn_data.model_version
-                    }
+                    context["churn"] = churn_data  # Already a dict with all fields
 
                 # Get churn reasoning
                 reasoning = await self._get_churn_reasoning(employee.hr_code, dataset_id)
+                ml_contributors = []
                 if reasoning:
                     # Parse ml_contributors and heuristic_alerts from JSON strings
-                    ml_contributors = []
                     heuristic_alerts = []
                     if reasoning.ml_contributors:
                         try:
@@ -391,10 +392,50 @@ class IntelligentChatbotService:
                         "calculation_breakdown": reasoning.calculation_breakdown
                     }
 
-                # Get treatments for retention plans
+                    # Get behavioral stage details if stage is known
+                    if reasoning.stage:
+                        stage_details = await self._get_behavioral_stage_details(reasoning.stage)
+                        if stage_details:
+                            context["stage_details"] = stage_details
+
+                # ===== NEW: COMPREHENSIVE CONTEXT GATHERING =====
+
+                # Get ELTV (Employee Lifetime Value) for business impact
+                eltv_data = await self._get_eltv_data(employee.hr_code)
+                if eltv_data:
+                    context["eltv"] = eltv_data
+
+                # Get interview insights for this employee
+                interviews = await self._get_interview_insights(employee.hr_code, dataset_id)
+                if interviews:
+                    context["interviews"] = interviews
+
+                # Get exit interview patterns from similar employees
+                if employee.position and employee.structure_name:
+                    interview_patterns = await self._get_similar_employee_interview_patterns(
+                        employee.position, employee.structure_name, dataset_id
+                    )
+                    if interview_patterns.get("total_analyzed", 0) > 0:
+                        context["exit_interview_patterns"] = interview_patterns
+
+                # Get treatment history for this employee
+                treatment_history = await self._get_treatment_history(employee.hr_code)
+                if treatment_history:
+                    context["treatment_history"] = treatment_history
+
+                # Extract employee risk factors for treatment matching
+                employee_risk_factors = []
+                if ml_contributors and isinstance(ml_contributors, list):
+                    employee_risk_factors = [c.get("feature", "") for c in ml_contributors if isinstance(c, dict)]
+
+                # Get treatments for retention plans (with relevance scoring)
                 if pattern_type == PatternType.RETENTION_PLAN:
-                    treatments = await self._get_available_treatments()
+                    treatments = await self._get_available_treatments(employee_risk_factors)
                     context["treatments"] = treatments
+                else:
+                    # Still fetch treatments for general context but without deep matching
+                    treatments = await self._get_available_treatments()
+                    context["available_treatments"] = treatments[:5]  # Top 5 for reference
 
                 # Get similar employees for comparison
                 if pattern_type == PatternType.EMPLOYEE_COMPARISON:
@@ -409,6 +450,21 @@ class IntelligentChatbotService:
                     context["email_context"] = entities.get("email_context")
                 elif pattern_type == PatternType.MEETING_ACTION:
                     context["meeting_context"] = entities.get("meeting_context")
+
+        # ===== RAG CONTEXT: Fetch documents and custom rules =====
+        # Retrieve RAG context for all patterns that might benefit from company policies
+        if pattern_type in [
+            PatternType.GENERAL_CHAT,
+            PatternType.RETENTION_PLAN,
+            PatternType.CHURN_RISK_DIAGNOSIS,
+            PatternType.EMPLOYEE_INFO
+        ]:
+            rag_context = await self._get_rag_context(
+                entities.get("original_message", "employee retention policies benefits"),
+                context.get("employee")
+            )
+            if rag_context.get("documents") or rag_context.get("custom_rules"):
+                context["rag_context"] = rag_context
 
         # Workforce trends
         if pattern_type == PatternType.WORKFORCE_TRENDS:
@@ -454,14 +510,35 @@ class IntelligentChatbotService:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
-    async def _get_churn_data(self, hr_code: str, dataset_id: str) -> Optional[ChurnOutput]:
-        """Fetch churn prediction data"""
+    async def _get_churn_data(self, hr_code: str, dataset_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch churn prediction data including counterfactuals and uncertainty."""
         query = select(ChurnOutput).where(
             ChurnOutput.hr_code == hr_code,
             ChurnOutput.dataset_id == dataset_id
         ).order_by(desc(ChurnOutput.generated_at)).limit(1)
         result = await self.db.execute(query)
-        return result.scalar_one_or_none()
+        churn = result.scalar_one_or_none()
+
+        if not churn:
+            return None
+
+        # Parse counterfactuals if available
+        counterfactuals = []
+        if churn.counterfactuals:
+            try:
+                counterfactuals = json.loads(churn.counterfactuals) if isinstance(churn.counterfactuals, str) else churn.counterfactuals
+            except (json.JSONDecodeError, TypeError):
+                counterfactuals = []
+
+        return {
+            "resign_proba": float(churn.resign_proba) if churn.resign_proba else 0,
+            "shap_values": churn.shap_values or {},
+            "confidence_score": float(churn.confidence_score) if churn.confidence_score else 0.8,
+            "model_version": churn.model_version,
+            "uncertainty_range": churn.uncertainty_range,
+            "counterfactuals": counterfactuals,
+            "prediction_date": churn.prediction_date
+        }
 
     async def _get_churn_reasoning(self, hr_code: str, dataset_id: str) -> Optional[ChurnReasoning]:
         """Fetch churn reasoning data scoped to dataset via HR data join."""
@@ -474,23 +551,72 @@ class IntelligentChatbotService:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
-    async def _get_available_treatments(self) -> List[Dict[str, Any]]:
-        """Get all active treatment definitions"""
+    async def _get_available_treatments(self, employee_risk_factors: List[str] = None) -> List[Dict[str, Any]]:
+        """Get all active treatment definitions with full metadata for context-aware matching."""
         query = select(TreatmentDefinition).where(TreatmentDefinition.is_active == 1)
         result = await self.db.execute(query)
         treatments = result.scalars().all()
 
-        return [
-            {
+        treatment_list = []
+        for t in treatments:
+            # Parse JSON fields
+            targeted_variables = []
+            best_for = []
+            risk_levels = []
+            impact_factors = []
+
+            if t.targeted_variables_json:
+                try:
+                    targeted_variables = json.loads(t.targeted_variables_json) if isinstance(t.targeted_variables_json, str) else t.targeted_variables_json
+                except (json.JSONDecodeError, TypeError):
+                    targeted_variables = []
+
+            if t.best_for_json:
+                try:
+                    best_for = json.loads(t.best_for_json) if isinstance(t.best_for_json, str) else t.best_for_json
+                except (json.JSONDecodeError, TypeError):
+                    best_for = []
+
+            if t.risk_levels_json:
+                try:
+                    risk_levels = json.loads(t.risk_levels_json) if isinstance(t.risk_levels_json, str) else t.risk_levels_json
+                except (json.JSONDecodeError, TypeError):
+                    risk_levels = []
+
+            if t.impact_factors_json:
+                try:
+                    impact_factors = json.loads(t.impact_factors_json) if isinstance(t.impact_factors_json, str) else t.impact_factors_json
+                except (json.JSONDecodeError, TypeError):
+                    impact_factors = []
+
+            # Calculate relevance score if employee risk factors provided
+            relevance_score = 0
+            if employee_risk_factors and targeted_variables:
+                matching_factors = set(str(v).lower() for v in targeted_variables) & set(str(f).lower() for f in employee_risk_factors)
+                relevance_score = len(matching_factors) / max(len(employee_risk_factors), 1)
+
+            treatment_list.append({
                 "id": t.id,
                 "name": t.name,
                 "description": t.description,
                 "base_cost": float(t.base_cost) if t.base_cost else 0,
                 "base_effect_size": float(t.base_effect_size) if t.base_effect_size else 0.1,
                 "time_to_effect": t.time_to_effect or "3 months",
-            }
-            for t in treatments
-        ]
+                "targeted_variables": targeted_variables,
+                "best_for": best_for,
+                "risk_levels": risk_levels,
+                "impact_factors": impact_factors,
+                "llm_prompt": t.llm_prompt,
+                "llm_reasoning": t.llm_reasoning,
+                "is_custom": t.is_custom == 1,
+                "relevance_score": relevance_score
+            })
+
+        # Sort by relevance score if employee context provided
+        if employee_risk_factors:
+            treatment_list.sort(key=lambda x: x["relevance_score"], reverse=True)
+
+        return treatment_list
 
     async def _get_similar_employees(
         self,
@@ -554,6 +680,185 @@ class IntelligentChatbotService:
     async def _get_department_snapshot(self, department: str, dataset_id: str) -> Optional[Dict[str, Any]]:
         """Return key stats for a department to enrich responses (cached)."""
         return await get_cached_department_snapshot(self.db, dataset_id, department)
+
+    async def _get_eltv_data(self, hr_code: str) -> Optional[Dict[str, Any]]:
+        """Fetch ELTV (Employee Lifetime Value) data for business impact context."""
+        query = select(ELTVOutput).where(ELTVOutput.hr_code == hr_code)
+        result = await self.db.execute(query)
+        eltv = result.scalar_one_or_none()
+
+        if not eltv:
+            return None
+
+        return {
+            "eltv_pre_treatment": float(eltv.eltv_pre_treatment) if eltv.eltv_pre_treatment else 0,
+            "eltv_post_treatment": float(eltv.eltv_post_treatment) if eltv.eltv_post_treatment else 0,
+            "treatment_effect": float(eltv.treatment_effect) if eltv.treatment_effect else 0,
+            "survival_probabilities": eltv.survival_probabilities or {},
+            "model_version": eltv.model_version
+        }
+
+    async def _get_interview_insights(self, hr_code: str, dataset_id: str) -> List[Dict[str, Any]]:
+        """Fetch interview data (exit/stay interviews) for this employee."""
+        query = select(InterviewData).where(
+            InterviewData.hr_code == hr_code
+        ).order_by(desc(InterviewData.interview_date)).limit(5)
+        result = await self.db.execute(query)
+        interviews = result.scalars().all()
+
+        return [
+            {
+                "interview_date": str(i.interview_date) if i.interview_date else None,
+                "interview_type": i.interview_type,
+                "notes": i.notes[:500] if i.notes else None,  # Truncate for context
+                "sentiment_score": float(i.sentiment_score) if i.sentiment_score else None,
+                "processed_insights": i.processed_insights
+            }
+            for i in interviews
+        ]
+
+    async def _get_similar_employee_interview_patterns(self, position: str, department: str, dataset_id: str) -> Dict[str, Any]:
+        """Analyze exit interview patterns from similar employees who left."""
+        # Get exit interviews from terminated employees in same position/department
+        query = select(InterviewData, HRDataInput).join(
+            HRDataInput, InterviewData.hr_code == HRDataInput.hr_code
+        ).where(
+            and_(
+                func.lower(HRDataInput.status) == "terminated",
+                HRDataInput.dataset_id == dataset_id,
+                InterviewData.interview_type == "exit",
+                or_(
+                    HRDataInput.position.ilike(f"%{position}%"),
+                    HRDataInput.structure_name.ilike(f"%{department}%")
+                )
+            )
+        ).limit(20)
+
+        result = await self.db.execute(query)
+        interviews = result.all()
+
+        if not interviews:
+            return {"patterns": [], "common_themes": [], "total_analyzed": 0}
+
+        # Extract common themes from notes
+        theme_counts = {}
+        all_notes = []
+        for interview, emp in interviews:
+            if interview.notes:
+                all_notes.append(interview.notes.lower())
+
+        # Simple keyword extraction for common themes
+        common_keywords = [
+            "compensation", "salary", "pay", "growth", "career", "promotion",
+            "management", "manager", "leadership", "work-life", "balance",
+            "culture", "environment", "stress", "workload", "recognition",
+            "communication", "opportunity", "development", "training"
+        ]
+
+        for keyword in common_keywords:
+            count = sum(1 for notes in all_notes if keyword in notes)
+            if count > 0:
+                theme_counts[keyword] = count
+
+        # Sort by frequency
+        common_themes = sorted(theme_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+
+        return {
+            "patterns": [{"theme": t, "frequency": c} for t, c in common_themes],
+            "common_themes": [t for t, c in common_themes],
+            "total_analyzed": len(interviews)
+        }
+
+    async def _get_treatment_history(self, hr_code: str) -> List[Dict[str, Any]]:
+        """Fetch treatment application history for this employee."""
+        query = select(TreatmentApplication).where(
+            TreatmentApplication.hr_code == hr_code
+        ).order_by(desc(TreatmentApplication.applied_date)).limit(10)
+        result = await self.db.execute(query)
+        treatments = result.scalars().all()
+
+        return [
+            {
+                "treatment_name": t.treatment_name,
+                "treatment_type": t.treatment_type,
+                "applied_date": str(t.applied_date) if t.applied_date else None,
+                "cost": float(t.cost) if t.cost else 0,
+                "pre_churn_probability": float(t.pre_churn_probability) if t.pre_churn_probability else 0,
+                "post_churn_probability": float(t.post_churn_probability) if t.post_churn_probability else 0,
+                "roi": float(t.roi) if t.roi else 0,
+                "status": t.status,
+                "success_indicator": t.success_indicator,
+                "notes": t.notes
+            }
+            for t in treatments
+        ]
+
+    async def _get_rag_context(self, query: str, employee: Optional[Dict] = None) -> Dict[str, Any]:
+        """Retrieve RAG context (documents + custom rules) relevant to the query."""
+        try:
+            # Build query with employee context if available
+            search_query = query
+            if employee:
+                search_query = f"{query} {employee.get('position', '')} {employee.get('structure_name', '')}"
+
+            # Retrieve from RAG service
+            rag_context = await self.rag_service.retrieve_context(
+                query=search_query,
+                include_custom_rules=True,
+                document_types=["policy", "benefit", "rule", "general"],
+                top_k=5
+            )
+
+            return rag_context
+        except Exception as e:
+            print(f"[RAG] Error retrieving context: {e}", flush=True)
+            return {"documents": [], "custom_rules": [], "sources": []}
+
+    async def _get_behavioral_stage_details(self, stage_name: str) -> Optional[Dict[str, Any]]:
+        """Get detailed behavioral stage information."""
+        query = select(BehavioralStage).where(
+            BehavioralStage.stage_name == stage_name,
+            BehavioralStage.is_active == 1
+        )
+        result = await self.db.execute(query)
+        stage = result.scalar_one_or_none()
+
+        if not stage:
+            return None
+
+        return {
+            "stage_name": stage.stage_name,
+            "stage_description": stage.stage_description,
+            "min_tenure": float(stage.min_tenure) if stage.min_tenure else 0,
+            "max_tenure": float(stage.max_tenure) if stage.max_tenure else None,
+            "stage_indicators": stage.stage_indicators,
+            "base_risk_score": float(stage.base_risk_score) if stage.base_risk_score else 0
+        }
+
+    async def _get_company_context(self) -> Optional[Dict[str, Any]]:
+        """Fetch company context from KnowledgeBaseSettings for AI personalization."""
+        query = select(KnowledgeBaseSettings).limit(1)
+        result = await self.db.execute(query)
+        settings_record = result.scalar_one_or_none()
+
+        if not settings_record:
+            return None
+
+        # Only return if at least one company field is set
+        if not any([
+            settings_record.company_name,
+            settings_record.industry,
+            settings_record.company_size,
+            settings_record.company_description
+        ]):
+            return None
+
+        return {
+            "company_name": settings_record.company_name,
+            "industry": settings_record.industry,
+            "company_size": settings_record.company_size,
+            "company_description": settings_record.company_description,
+        }
 
     async def _get_department_analysis(self, department: str, dataset_id: str) -> Dict[str, Any]:
         """Get detailed analysis for a specific department"""
@@ -1457,26 +1762,37 @@ Best regards,
         message: str,
         context: Dict[str, Any]
     ) -> str:
-        """Generate general response using LLM with comprehensive employee context"""
-        print(f"[GENERAL_RESPONSE] === Generating general LLM response ===", flush=True)
+        """Generate general response using LLM with COMPREHENSIVE context from ALL sources."""
+        print(f"[GENERAL_RESPONSE] === Generating general LLM response with FULL context ===", flush=True)
 
-        # Build context-aware prompt
+        # Extract all context sources
         employee = context.get("employee")
         churn = context.get("churn", {})
         reasoning = context.get("reasoning", {})
         additional_data = context.get("additional_data", {})
         company_overview = context.get("company_overview", {})
+        company_context_data = context.get("company_context")
 
-        print(f"[GENERAL_RESPONSE] Employee present: {employee is not None}", flush=True)
-        if employee:
-            print(f"[GENERAL_RESPONSE] Employee details: {employee.get('full_name')}, risk: {churn.get('resign_proba', reasoning.get('churn_risk', 'N/A'))}", flush=True)
+        # NEW: Additional context sources
+        eltv_data = context.get("eltv", {})
+        manager_team = context.get("manager_team", {})
+        department_snapshot = context.get("department_snapshot", {})
+        stage_details = context.get("stage_details", {})
+        treatment_history = context.get("treatment_history", [])
+        interviews = context.get("interviews", [])
+        exit_interview_patterns = context.get("exit_interview_patterns", {})
+        rag_context = context.get("rag_context", {})
+        available_treatments = context.get("available_treatments", [])
 
+        print(f"[GENERAL_RESPONSE] Employee: {employee is not None}, ELTV: {bool(eltv_data)}, RAG: {bool(rag_context.get('documents') or rag_context.get('custom_rules'))}", flush=True)
+
+        # ===== BUILD COMPREHENSIVE EMPLOYEE CONTEXT =====
         employee_context = ""
         if employee:
             risk = churn.get("resign_proba", reasoning.get("churn_risk", 0))
             risk_level = "High" if risk >= 0.6 else "Medium" if risk >= 0.3 else "Low"
 
-            # Basic employee info (employee is a dict from context)
+            # Basic employee info
             employee_context = f"""
 === SELECTED EMPLOYEE ===
 Name: {employee.get('full_name', 'Unknown')}
@@ -1485,25 +1801,29 @@ Position: {employee.get('position', 'N/A')}
 Department: {employee.get('structure_name', 'N/A')}
 Tenure: {employee.get('tenure', 0):.1f} years
 Status: {employee.get('status', 'Active')}
+Employee Cost: ${employee.get('employee_cost', 50000):,.0f}/year
 
 === CHURN RISK ASSESSMENT ===
 Overall Risk: {risk:.1%} ({risk_level})
 Behavioral Stage: {reasoning.get('stage', 'Unknown')}
 ML Score: {reasoning.get('ml_score', 0):.2f}
 Heuristic Score: {reasoning.get('heuristic_score', 0):.2f}
-Confidence Level: {reasoning.get('confidence_level', 0.7):.0%}
-"""
+Confidence Level: {reasoning.get('confidence_level', 0.7):.0%}"""
+
+            # Add uncertainty range if available
+            if churn.get('uncertainty_range'):
+                employee_context += f"\nUncertainty Range: {churn['uncertainty_range']}"
 
             # Add ML risk factors
             ml_contributors = reasoning.get('ml_contributors', [])
             if ml_contributors and isinstance(ml_contributors, list):
-                employee_context += "\n=== TOP RISK FACTORS (ML Model) ===\n"
+                employee_context += "\n\n=== TOP RISK FACTORS (ML Model) ===\n"
                 for contrib in ml_contributors[:5]:
                     if isinstance(contrib, dict):
                         feature = contrib.get('feature', 'Unknown')
                         importance = contrib.get('importance', 0)
                         value = contrib.get('value', 'N/A')
-                        employee_context += f"- {feature}: {value} (impact: {importance:.2f})\n"
+                        employee_context += f"• {feature}: {value} (impact: {importance:.2f})\n"
 
             # Add heuristic alerts
             heuristic_alerts = reasoning.get('heuristic_alerts', [])
@@ -1514,7 +1834,114 @@ Confidence Level: {reasoning.get('confidence_level', 0.7):.0%}
                         msg = alert.get('message', alert.get('rule_name', 'Alert'))
                         employee_context += f"⚠ {msg}\n"
 
-            # Add recommendations if available
+            # Add counterfactuals (What-If Analysis)
+            counterfactuals = churn.get('counterfactuals', [])
+            if counterfactuals and isinstance(counterfactuals, list):
+                employee_context += "\n=== WHAT-IF ANALYSIS (Counterfactuals) ===\n"
+                for cf in counterfactuals[:3]:
+                    if isinstance(cf, dict):
+                        change = cf.get('change', cf.get('description', 'Change'))
+                        new_risk = cf.get('new_risk', cf.get('projected_risk', 'N/A'))
+                        employee_context += f"• If {change} → Risk would be {new_risk}\n"
+                    elif isinstance(cf, str):
+                        employee_context += f"• {cf}\n"
+
+            # Add behavioral stage details
+            if stage_details:
+                employee_context += f"\n=== BEHAVIORAL STAGE DETAILS ===\n"
+                employee_context += f"Stage: {stage_details.get('stage_name', 'Unknown')}\n"
+                if stage_details.get('stage_description'):
+                    employee_context += f"Description: {stage_details['stage_description']}\n"
+                if stage_details.get('stage_indicators'):
+                    employee_context += f"Key Indicators: {stage_details['stage_indicators']}\n"
+
+            # Add ELTV Business Impact
+            if eltv_data:
+                employee_context += f"\n=== BUSINESS IMPACT (ELTV) ===\n"
+                employee_context += f"Employee Lifetime Value: ${eltv_data.get('eltv_pre_treatment', 0):,.0f}\n"
+                employee_context += f"Value After Treatment: ${eltv_data.get('eltv_post_treatment', 0):,.0f}\n"
+                treatment_effect = eltv_data.get('treatment_effect', 0)
+                if treatment_effect:
+                    employee_context += f"Potential Value Recovery: ${treatment_effect:,.0f}\n"
+                # Calculate replacement cost estimate
+                replacement_cost = employee.get('employee_cost', 50000) * 1.5
+                employee_context += f"Estimated Replacement Cost: ${replacement_cost:,.0f}\n"
+
+            # Add Team Context (Manager's perspective)
+            if manager_team:
+                employee_context += f"\n=== MANAGER'S TEAM CONTEXT ===\n"
+                employee_context += f"Team Size: {manager_team.get('team_size', 'N/A')} direct reports\n"
+                employee_context += f"Team Avg Tenure: {manager_team.get('avg_tenure', 0):.1f} years\n"
+                employee_context += f"Team Avg Risk: {manager_team.get('avg_risk', 0):.1%}\n"
+                employee_context += f"High-Risk Team Members: {manager_team.get('high_risk_count', 0)}\n"
+
+            # Add Department Comparative Context
+            if department_snapshot:
+                dept_avg_risk = department_snapshot.get('avg_risk', 0)
+                company_avg = company_overview.get('avg_risk', 0) if company_overview else 0
+                relative = "above" if risk > dept_avg_risk else "below"
+                employee_context += f"\n=== DEPARTMENT COMPARISON ===\n"
+                employee_context += f"Department: {employee.get('structure_name', 'N/A')}\n"
+                employee_context += f"Dept Headcount: {department_snapshot.get('headcount', 'N/A')}\n"
+                employee_context += f"Dept Avg Risk: {dept_avg_risk:.1%}\n"
+                employee_context += f"Company Avg Risk: {company_avg:.1%}\n"
+                employee_context += f"Employee is {relative} department average risk\n"
+                if dept_avg_risk > company_avg * 1.2:
+                    employee_context += f"⚠ Department risk is {((dept_avg_risk/company_avg)-1)*100:.0f}% above company average\n"
+
+            # Add Treatment History
+            if treatment_history:
+                employee_context += f"\n=== TREATMENT HISTORY ===\n"
+                for t in treatment_history[:3]:
+                    status_icon = "✓" if t.get('success_indicator') == 'successful' else "○" if t.get('success_indicator') == 'pending' else "✗"
+                    employee_context += f"{status_icon} {t.get('treatment_name', 'Treatment')} ({t.get('applied_date', 'N/A')[:10] if t.get('applied_date') else 'N/A'})\n"
+                    employee_context += f"   Status: {t.get('success_indicator', 'unknown')}, ROI: {t.get('roi', 0):.1f}x\n"
+
+            # Add Interview Insights for this employee
+            if interviews:
+                employee_context += f"\n=== EMPLOYEE INTERVIEWS ===\n"
+                for interview in interviews[:2]:
+                    employee_context += f"• {interview.get('interview_type', 'interview').title()} Interview ({interview.get('interview_date', 'N/A')})\n"
+                    if interview.get('sentiment_score'):
+                        employee_context += f"  Sentiment: {interview['sentiment_score']:.2f}\n"
+                    if interview.get('notes'):
+                        employee_context += f"  Notes: {interview['notes'][:200]}...\n"
+
+            # Add Exit Interview Patterns from Similar Employees
+            if exit_interview_patterns and exit_interview_patterns.get('common_themes'):
+                employee_context += f"\n=== EXIT PATTERNS FROM SIMILAR EMPLOYEES ===\n"
+                employee_context += f"Analyzed: {exit_interview_patterns.get('total_analyzed', 0)} exit interviews\n"
+                employee_context += "Common reasons for leaving:\n"
+                for theme in exit_interview_patterns.get('common_themes', [])[:5]:
+                    employee_context += f"• {theme}\n"
+
+            # Add additional employee data if available
+            if additional_data:
+                employee_context += "\n=== EMPLOYEE DETAILS ===\n"
+                detail_fields = [
+                    ('age', 'Age'),
+                    ('education', 'Education'),
+                    ('performance_rating', 'Performance Rating', '/5'),
+                    ('job_satisfaction', 'Job Satisfaction', '/4'),
+                    ('work_life_balance', 'Work-Life Balance', '/4'),
+                    ('environment_satisfaction', 'Environment Satisfaction', '/4'),
+                    ('relationship_satisfaction', 'Relationship Satisfaction', '/4'),
+                    ('years_since_last_promotion', 'Years Since Last Promotion'),
+                    ('years_in_current_role', 'Years in Current Role'),
+                    ('training_times_last_year', 'Training Sessions (Last Year)'),
+                    ('over_time', 'Works Overtime'),
+                    ('business_travel', 'Business Travel'),
+                    ('average_monthly_hours', 'Avg Monthly Hours'),
+                    ('number_project', 'Number of Projects')
+                ]
+                for field_info in detail_fields:
+                    key = field_info[0]
+                    label = field_info[1]
+                    suffix = field_info[2] if len(field_info) > 2 else ''
+                    if additional_data.get(key):
+                        employee_context += f"{label}: {additional_data[key]}{suffix}\n"
+
+            # Add AI Recommendations
             recommendations = reasoning.get('recommendations', [])
             if recommendations:
                 employee_context += "\n=== AI RECOMMENDATIONS ===\n"
@@ -1523,64 +1950,115 @@ Confidence Level: {reasoning.get('confidence_level', 0.7):.0%}
                         rec_text = rec.get('recommendation', str(rec)) if isinstance(rec, dict) else str(rec)
                         employee_context += f"→ {rec_text}\n"
                 elif isinstance(recommendations, str):
-                    employee_context += f"→ {recommendations}\n"
+                    for line in recommendations.split('\n')[:3]:
+                        if line.strip():
+                            employee_context += f"→ {line.strip()}\n"
 
-            # Add additional employee data if available
-            if additional_data:
-                employee_context += "\n=== EMPLOYEE DETAILS ===\n"
-                if additional_data.get('age'):
-                    employee_context += f"Age: {additional_data['age']}\n"
-                if additional_data.get('education'):
-                    employee_context += f"Education: {additional_data['education']}\n"
-                if additional_data.get('performance_rating'):
-                    employee_context += f"Performance Rating: {additional_data['performance_rating']}/5\n"
-                if additional_data.get('job_satisfaction'):
-                    employee_context += f"Job Satisfaction: {additional_data['job_satisfaction']}/4\n"
-                if additional_data.get('work_life_balance'):
-                    employee_context += f"Work-Life Balance: {additional_data['work_life_balance']}/4\n"
-                if additional_data.get('environment_satisfaction'):
-                    employee_context += f"Environment Satisfaction: {additional_data['environment_satisfaction']}/4\n"
-                if additional_data.get('relationship_satisfaction'):
-                    employee_context += f"Relationship Satisfaction: {additional_data['relationship_satisfaction']}/4\n"
-                if additional_data.get('years_since_last_promotion'):
-                    employee_context += f"Years Since Last Promotion: {additional_data['years_since_last_promotion']}\n"
-                if additional_data.get('years_in_current_role'):
-                    employee_context += f"Years in Current Role: {additional_data['years_in_current_role']}\n"
-                if additional_data.get('training_times_last_year'):
-                    employee_context += f"Training Sessions (Last Year): {additional_data['training_times_last_year']}\n"
-                if additional_data.get('over_time'):
-                    employee_context += f"Works Overtime: {additional_data['over_time']}\n"
-                if additional_data.get('business_travel'):
-                    employee_context += f"Business Travel: {additional_data['business_travel']}\n"
-
-        # Add company context for comparison
+        # ===== BUILD COMPANY CONTEXT =====
         company_context = ""
         if company_overview:
             company_context = f"""
 === COMPANY OVERVIEW ===
 Total Employees: {company_overview.get('total_employees', 'N/A')}
-High Risk: {company_overview.get('high_risk_count', 'N/A')}
+Active Employees: {company_overview.get('active_employees', 'N/A')}
+High Risk Count: {company_overview.get('high_risk_count', 'N/A')}
 Average Risk: {company_overview.get('avg_risk', 0):.1%}
+Average Tenure: {company_overview.get('avg_tenure', 0):.1f} years
 """
 
-        # Build messages with context - include employee data in user message for better model compliance
-        system_prompt = """You are ChurnVision AI - an expert HR analytics advisor. Analyze employee churn risk with detailed insights.
+        # Add company profile context from Knowledge Base settings
+        company_profile_context = ""
+        if company_context_data:
+            parts = []
+            if company_context_data.get("company_name"):
+                parts.append(f"Company: {company_context_data['company_name']}")
+            if company_context_data.get("industry"):
+                parts.append(f"Industry: {company_context_data['industry']}")
+            if company_context_data.get("company_size"):
+                parts.append(f"Size: {company_context_data['company_size']}")
+            if parts:
+                company_profile_context = f"\n=== COMPANY PROFILE ===\n" + " | ".join(parts)
+            if company_context_data.get("company_description"):
+                company_profile_context += f"\nContext: {company_context_data['company_description']}"
 
-Be thorough (2-3 paragraphs). Explain the "why" behind data. Give actionable recommendations.
-Never ask for clarification - use provided data only."""
+        # ===== BUILD RAG CONTEXT (Documents + Rules) =====
+        rag_formatted = ""
+        if rag_context:
+            docs = rag_context.get('documents', [])
+            rules = rag_context.get('custom_rules', [])
 
+            if docs:
+                rag_formatted += "\n=== COMPANY POLICIES & DOCUMENTS ===\n"
+                for i, doc in enumerate(docs[:3], 1):
+                    rag_formatted += f"[{i}] {doc.get('source', 'Policy')} (Relevance: {doc.get('similarity', 0):.0%})\n"
+                    content = doc.get('content', '')[:300]
+                    rag_formatted += f"   {content}...\n\n"
+
+            if rules:
+                rag_formatted += "\n=== COMPANY HR RULES (Must Comply) ===\n"
+                for rule in rules[:5]:
+                    priority = rule.get('priority', 5)
+                    category = rule.get('category', 'general').upper()
+                    rag_formatted += f"[{category}] Priority {priority}: {rule.get('name', 'Rule')}\n"
+                    rag_formatted += f"   {rule.get('rule_text', '')[:200]}\n"
+
+        # ===== BUILD AVAILABLE TREATMENTS CONTEXT =====
+        treatments_context = ""
+        if available_treatments:
+            treatments_context = "\n=== AVAILABLE RETENTION TREATMENTS ===\n"
+            for t in available_treatments[:5]:
+                treatments_context += f"• {t.get('name', 'Treatment')}: ${t.get('base_cost', 0):,.0f}, {t.get('time_to_effect', '3 months')}\n"
+                if t.get('targeted_variables'):
+                    treatments_context += f"  Targets: {', '.join(str(v) for v in t['targeted_variables'][:3])}\n"
+
+        # ===== BUILD ENHANCED SYSTEM PROMPT =====
+        system_prompt = """You are ChurnVision AI - an expert HR analytics advisor with access to comprehensive employee data, company policies, and business intelligence.
+
+Your capabilities:
+- Analyze employee churn risk with data-driven insights
+- Explain the "why" behind risk factors using ML model outputs and behavioral analysis
+- Provide actionable, personalized recommendations based on company policies
+- Calculate business impact (ELTV, replacement costs, ROI)
+- Reference historical treatments and their effectiveness
+- Cite relevant company policies and rules
+
+Guidelines:
+- Be thorough (2-3 paragraphs minimum)
+- Always reference specific data points from the context provided
+- If company policies/rules are provided, ensure recommendations comply with them
+- Quantify business impact where possible (dollars, percentages)
+- Consider the employee's treatment history when making recommendations
+- Compare employee metrics to team/department averages for context
+- Never ask for clarification - use all provided data
+
+Remember: You have access to comprehensive context including ML risk factors, behavioral analysis, ELTV calculations, interview insights, company policies, and treatment history."""
+
+        # ===== ASSEMBLE USER MESSAGE =====
         if employee:
-            # Include employee context in user message - models handle this better
-            user_message_with_context = f"""Employee Data:
+            user_message_with_context = f"""{company_profile_context}
+{company_context}
+
 {employee_context}
 
-Question: {message}
+{rag_formatted}
 
-Analyze in 2-3 detailed paragraphs. Include key insights, risk factors, and recommendations."""
+{treatments_context}
+
+User Question: {message}
+
+Provide a comprehensive response (2-3 paragraphs) that:
+1. Directly addresses the question using the data provided
+2. References specific metrics, risk factors, and insights
+3. Considers company policies and rules if relevant
+4. Includes actionable recommendations with business justification"""
         else:
-            user_message_with_context = f"""{company_context}
+            user_message_with_context = f"""{company_profile_context}
+{company_context}
+{rag_formatted}
 
-User question: {message}"""
+User question: {message}
+
+Provide a helpful response using the company and workforce data available."""
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -1588,7 +2066,6 @@ User question: {message}"""
         ]
 
         # Determine model based on DEFAULT_LLM_PROVIDER
-        # Default to Ollama (qwen3:4b) for local, privacy-focused inference
         provider = settings.DEFAULT_LLM_PROVIDER.lower()
         if provider == "openai" and settings.OPENAI_API_KEY:
             model = settings.OPENAI_MODEL
@@ -1601,46 +2078,52 @@ User question: {message}"""
         elif provider == "ibm" and settings.IBM_API_KEY:
             model = settings.IBM_MODEL
         else:
-            # Default to local Ollama
             model = settings.OLLAMA_MODEL
 
-        print(f"[GENERAL_RESPONSE] Using provider: {provider}, model: {model}", flush=True)
-        print(f"[GENERAL_RESPONSE] System prompt length: {len(system_prompt)} chars, has employee_context: {len(employee_context) > 0}", flush=True)
+        print(f"[GENERAL_RESPONSE] Provider: {provider}, Model: {model}", flush=True)
+        print(f"[GENERAL_RESPONSE] Context size: {len(user_message_with_context)} chars", flush=True)
+        print(f"[GENERAL_RESPONSE] Has RAG: {bool(rag_formatted)}, Has ELTV: {bool(eltv_data)}, Has Treatments: {bool(treatments_context)}", flush=True)
 
         try:
             response, _ = await self.chatbot_service._get_llm_response(
                 messages=messages,
                 model=model,
-                temperature=0.8  # Slightly higher for more creative, detailed responses
+                temperature=0.7  # Slightly lower for more consistent, data-grounded responses
             )
             print(f"[GENERAL_RESPONSE] LLM response length: {len(response) if response else 0}", flush=True)
-            # Check for empty response
             if response and response.strip():
                 return response
-            # Fallback if LLM returned empty
             raise ValueError("LLM returned empty response")
         except Exception as e:
             print(f"[GENERAL_RESPONSE] LLM call failed: {e}", flush=True)
 
-            # Return employee-specific fallback if employee is selected
+            # Return comprehensive fallback with available data
             if employee:
                 risk = churn.get("resign_proba", reasoning.get("churn_risk", 0))
                 risk_level = "High" if risk >= 0.6 else "Medium" if risk >= 0.3 else "Low"
-                return (
-                    f"I'm analyzing {employee.get('full_name', 'this employee')} ({employee.get('hr_code', 'N/A')}). "
-                    f"They have a {risk:.0%} churn risk ({risk_level} priority) "
-                    f"and have been with the company for {employee.get('tenure', 0):.1f} years. "
-                    "What would you like to know about this employee?"
+                fallback = (
+                    f"**{employee.get('full_name', 'Employee')}** ({employee.get('hr_code', 'N/A')})\n\n"
+                    f"**Risk Assessment:** {risk:.0%} churn probability ({risk_level} priority)\n"
+                    f"**Position:** {employee.get('position', 'N/A')} in {employee.get('structure_name', 'N/A')}\n"
+                    f"**Tenure:** {employee.get('tenure', 0):.1f} years\n\n"
                 )
+                if eltv_data:
+                    fallback += f"**Business Impact:** ${eltv_data.get('eltv_pre_treatment', 0):,.0f} employee lifetime value\n\n"
+                if ml_contributors:
+                    fallback += "**Top Risk Factors:**\n"
+                    for contrib in ml_contributors[:3]:
+                        if isinstance(contrib, dict):
+                            fallback += f"- {contrib.get('feature', 'Unknown')}: {contrib.get('value', 'N/A')}\n"
+                return fallback
 
             # Generic fallback
             stats = context.get("workforce_stats", {}) or {}
-            total = stats.get("totalEmployees", 0)
-            high = stats.get("highRisk", 0)
-            medium = stats.get("mediumRisk", 0)
             return (
-                f"Hi! I'm your ChurnVision AI Assistant. "
-                f"Currently tracking {total} employees ({high} high risk, {medium} medium risk). "
+                f"Hi! I'm your ChurnVision AI Assistant with comprehensive analytics capabilities.\n\n"
+                f"**Workforce Overview:**\n"
+                f"- Total Employees: {stats.get('totalEmployees', 0)}\n"
+                f"- High Risk: {stats.get('highRisk', 0)}\n"
+                f"- Medium Risk: {stats.get('mediumRisk', 0)}\n\n"
                 "How can I help you with employee retention today?"
             )
 
@@ -1663,8 +2146,8 @@ User question: {message}"""
         # Resolve dataset context first
         dataset_id = await self._resolve_dataset_id(dataset_id)
 
-        # Build entities from employee_id
-        entities = {"hr_code": employee_id} if employee_id else {}
+        # Build entities from employee_id and include original message for RAG
+        entities = {"hr_code": employee_id, "original_message": message} if employee_id else {"original_message": message}
 
         # Map action_type to pattern_type for structured responses
         action_to_pattern = {

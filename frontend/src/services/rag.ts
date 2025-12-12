@@ -47,6 +47,12 @@ export interface CustomHRRule {
 
 export interface KnowledgeBaseSettings {
   id: number;
+  // Company context (for AI personalization)
+  company_name?: string;
+  industry?: string;
+  company_size?: string;
+  company_description?: string;
+  // RAG configuration
   mode: KnowledgeBaseMode;
   chunk_size: number;
   chunk_overlap: number;
@@ -271,6 +277,12 @@ export async function getSettings(projectId?: string): Promise<KnowledgeBaseSett
  */
 export async function updateSettings(
   updates: Partial<{
+    // Company context
+    company_name: string;
+    industry: string;
+    company_size: string;
+    company_description: string;
+    // RAG configuration
     mode: KnowledgeBaseMode;
     chunk_size: number;
     chunk_overlap: number;

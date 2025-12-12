@@ -71,10 +71,10 @@ cd churnvision-enterprise
 
 ```bash
 # Copy the production template
-cp .env.production.template .env
+cp .env.production.template .env.production
 
 # Edit with your configuration
-nano .env
+nano .env.production
 ```
 
 Required environment variables:
@@ -114,10 +114,10 @@ chmod 600 /etc/churnvision/backup.key
 
 ```bash
 # Pull images and start services
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 
 # Check service status
-docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml --env-file .env.production ps
 ```
 
 ### Step 5: Run Database Migrations

@@ -10,7 +10,9 @@ services:
       - ENVIRONMENT=production
       - DEBUG=false
       - LICENSE_KEY=${LICENSE_KEY}
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?ssl=require
+      # NOTE: The bundled postgres container doesn't terminate TLS by default.
+      # If you need TLS, terminate at your DB layer or configure postgres/nginx accordingly.
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - LICENSE_SECRET_KEY=${LICENSE_SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - OLLAMA_BASE_URL=http://ollama:11434
@@ -60,7 +62,6 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - VITE_API_URL=http://backend:8000
     ports:
       - "3000:80"
     depends_on:

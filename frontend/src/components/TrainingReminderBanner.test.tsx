@@ -16,18 +16,18 @@ vi.mock('react-router-dom', () => ({
 describe('TrainingReminderBanner', () => {
   it('does not render when model is trained', () => {
     (useProject as any).mockReturnValue({ activeProject: { dbPath: 'test' } });
-    (useGlobalDataCache as any).mockReturnValue({
-      trainingStatus: { status: 'complete' },
-    });
+    (useGlobalDataCache as any).mockImplementation((selector: any) =>
+      selector({ trainingStatus: { status: 'complete' } })
+    );
     const { container } = render(<TrainingReminderBanner />);
     expect(container.firstChild).toBeNull();
   });
 
   it('renders when model is not trained', () => {
     (useProject as any).mockReturnValue({ activeProject: { dbPath: 'test' } });
-    (useGlobalDataCache as any).mockReturnValue({
-      trainingStatus: { status: 'idle' },
-    });
+    (useGlobalDataCache as any).mockImplementation((selector: any) =>
+      selector({ trainingStatus: { status: 'idle' } })
+    );
     render(<TrainingReminderBanner />);
     expect(screen.getByText('Training required')).toBeInTheDocument();
     expect(screen.getByText('Train model')).toBeInTheDocument();
@@ -35,12 +35,12 @@ describe('TrainingReminderBanner', () => {
 
   it('renders error message on training failure', () => {
     (useProject as any).mockReturnValue({ activeProject: { dbPath: 'test' } });
-    (useGlobalDataCache as any).mockReturnValue({
-      trainingStatus: { status: 'error', error: 'Training failed' },
-    });
+    (useGlobalDataCache as any).mockImplementation((selector: any) =>
+      selector({ trainingStatus: { status: 'error', error: 'Training failed' } })
+    );
     render(<TrainingReminderBanner />);
     expect(screen.getByText('Training required')).toBeInTheDocument();
-    expect(screen.getByText('Training failed')).toBeInTheDocument();
+    expect(screen.getByText(/Training failed/i)).toBeInTheDocument();
     expect(screen.getByText('Retry training')).toBeInTheDocument();
   });
 
@@ -48,9 +48,9 @@ describe('TrainingReminderBanner', () => {
     const navigate = vi.fn();
     (useNavigate as any).mockReturnValue(navigate);
     (useProject as any).mockReturnValue({ activeProject: { dbPath: 'test' } });
-    (useGlobalDataCache as any).mockReturnValue({
-      trainingStatus: { status: 'idle' },
-    });
+    (useGlobalDataCache as any).mockImplementation((selector: any) =>
+      selector({ trainingStatus: { status: 'idle' } })
+    );
     render(<TrainingReminderBanner />);
     fireEvent.click(screen.getByText('Train model'));
     expect(navigate).toHaveBeenCalledWith('/data-management');

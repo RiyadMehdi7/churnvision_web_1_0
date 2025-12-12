@@ -76,7 +76,8 @@ jobs:
       - name: Frontend tests
         run: |
           cd frontend
-          bun run test --runInBand
+          # Vitest doesn't support Jest's --runInBand; use --run instead.
+          bun run test -- --run
 
       - name: Build backend image
         run: docker build -t churnvision/backend:ci backend

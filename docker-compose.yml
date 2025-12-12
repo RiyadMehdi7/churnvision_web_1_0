@@ -5,7 +5,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/churnvision}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/churnvision}
       - LICENSE_KEY=${LICENSE_KEY:-dev-license-key}
       - LICENSE_SECRET_KEY=${LICENSE_SECRET_KEY:-churnvision-enterprise-secret-2024}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-this-in-production-min-32-chars}

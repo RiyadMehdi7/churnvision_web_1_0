@@ -23,11 +23,11 @@ tar -xzf churnvision-enterprise-v1.0.tar.gz
 cd churnvision-enterprise
 
 # 2. Configure environment
-cp .env.example .env.production
+cp .env.production.template .env.production
 # Edit .env.production with your settings
 
 # 3. Start services
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 
 # 4. Access the application
 # Frontend: http://your-server:3000

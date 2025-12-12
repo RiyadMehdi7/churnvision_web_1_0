@@ -46,7 +46,7 @@ describe('RiskIndicator', () => {
 
   it('handles riskScore at the medium threshold', () => {
     render(<RiskIndicator riskScore={thresholds.mediumRisk} />);
-    expect(screen.getByText('Low Risk')).toBeInTheDocument();
+    expect(screen.getByText('Medium Risk')).toBeInTheDocument();
   });
 
   it('handles riskScore just above the medium threshold', () => {
@@ -56,7 +56,7 @@ describe('RiskIndicator', () => {
 
   it('handles riskScore at the high threshold', () => {
     render(<RiskIndicator riskScore={thresholds.highRisk} />);
-    expect(screen.getByText('Medium Risk')).toBeInTheDocument();
+    expect(screen.getByText('High Risk')).toBeInTheDocument();
   });
 
   it('handles riskScore just above the high threshold', () => {

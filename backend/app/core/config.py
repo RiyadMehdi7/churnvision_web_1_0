@@ -1,5 +1,7 @@
 import secrets
 from typing import Optional, List
+from urllib.parse import urlsplit
+
 from pydantic import PostgresDsn, computed_field, Field, AliasChoices, field_validator
 from pydantic_settings import BaseSettings
 
@@ -21,6 +23,23 @@ _INSECURE_DB_PASSWORDS = {
     "changeme",
 }
 
+_INSECURE_ALLOWED_ORIGINS_DEFAULTS = {
+    "http://localhost:3000",
+    "http://localhost:4001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:4001",
+}
+
+
+def _extract_password_from_database_url(database_url: str | None) -> str | None:
+    if not database_url:
+        return None
+    try:
+        parts = urlsplit(database_url)
+        return parts.password
+    except Exception:
+        return None
+
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "ChurnVision Enterprise"
@@ -37,7 +56,10 @@ class Settings(BaseSettings):
     # Database settings
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
-    POSTGRES_SERVER: str = "db"
+    POSTGRES_SERVER: str = Field(
+        default="db",
+        validation_alias=AliasChoices("POSTGRES_SERVER", "POSTGRES_HOST", "POSTGRES_HOSTNAME"),
+    )
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "churnvision"
 
@@ -45,10 +67,11 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = Field(default=20, description="Number of persistent DB connections")
     DB_MAX_OVERFLOW: int = Field(default=40, description="Max additional connections under load")
 
-    @computed_field
-    @property
-    def DATABASE_URL(self) -> str:
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+    # Full DB URL (preferred in CI/containers). If not provided, we build it from POSTGRES_*.
+    DATABASE_URL: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("DATABASE_URL", "SQLALCHEMY_DATABASE_URI"),
+    )
 
     SQLALCHEMY_ECHO: bool = False
 
@@ -158,8 +181,16 @@ class Settings(BaseSettings):
         Validate configuration on startup. In production, fail hard if insecure defaults are detected.
         This prevents accidental deployment with development credentials.
         """
+        # Fill DATABASE_URL if it wasn't provided explicitly
+        if not self.DATABASE_URL:
+            self.DATABASE_URL = (
+                f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+                f"@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            )
+
         is_prod = self.ENVIRONMENT.lower() == "production"
         errors = []
+        db_url_password = _extract_password_from_database_url(self.DATABASE_URL)
 
         # Validate SECRET_KEY
         if self.SECRET_KEY in _INSECURE_SECRET_KEYS or len(self.SECRET_KEY) < 32:
@@ -178,12 +209,17 @@ class Settings(BaseSettings):
                 )
 
         # Validate database credentials
-        if self.POSTGRES_PASSWORD in _INSECURE_DB_PASSWORDS:
-            if is_prod:
+        if is_prod:
+            # Only require POSTGRES_PASSWORD to be strong if we're relying on POSTGRES_* to build DATABASE_URL
+            # (in CI/prod we often set DATABASE_URL directly and do not provide POSTGRES_PASSWORD).
+            relying_on_components = not bool(self.DATABASE_URL) or db_url_password is None
+            if relying_on_components and self.POSTGRES_PASSWORD in _INSECURE_DB_PASSWORDS:
                 errors.append(
                     "POSTGRES_PASSWORD is insecure. "
-                    "Set a strong password in your environment."
+                    "Set a strong password in your environment (or provide DATABASE_URL with a strong password)."
                 )
+            if db_url_password and db_url_password in _INSECURE_DB_PASSWORDS:
+                errors.append("DATABASE_URL contains an insecure password.")
 
         # Validate LICENSE_KEY
         if self.LICENSE_KEY in _INSECURE_LICENSE_KEYS:
@@ -191,6 +227,19 @@ class Settings(BaseSettings):
                 errors.append(
                     "LICENSE_KEY must be provided via environment or license file in production."
                 )
+
+        # Require encryption key for PII in production
+        if is_prod and not self.ENCRYPTION_KEY:
+            errors.append(
+                "ENCRYPTION_KEY is required in production. "
+                "Generate with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+            )
+
+        # Require explicit ALLOWED_ORIGINS in production (avoid accidental localhost defaults)
+        if is_prod and (not self.ALLOWED_ORIGINS or set(self.ALLOWED_ORIGINS).issubset(_INSECURE_ALLOWED_ORIGINS_DEFAULTS)):
+            errors.append(
+                "ALLOWED_ORIGINS must be set to your domain(s) in production (not localhost defaults)."
+            )
 
         # In production, DEBUG must be disabled
         if is_prod and self.DEBUG:

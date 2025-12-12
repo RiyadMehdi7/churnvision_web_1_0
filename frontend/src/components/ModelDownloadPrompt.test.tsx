@@ -25,6 +25,8 @@ const mockElectronApi = {
 describe('ModelDownloadPrompt', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockElectronApi.llm.startModelDownload.mockResolvedValue(undefined);
+    mockElectronApi.llm.retryInitialization.mockResolvedValue(undefined);
   });
 
   it('renders the initial prompt correctly', () => {
@@ -72,17 +74,35 @@ describe('ModelDownloadPrompt', () => {
   });
 
   it('retries initialization on button click', async () => {
-    // First, complete the download with an error
-    mockElectronApi.llm.retryInitialization.mockRejectedValue(new Error('Initialization Failed'));
-    render(<ModelDownloadPrompt />);
-    fireEvent.click(screen.getByText('Download Model (~4.4 GB)'));
-    await act(async () => {
-      (window as any).completeCallback();
-    });
+    vi.useFakeTimers();
+    try {
+      // Complete the download; initialization will auto-run after a delay and fail.
+      mockElectronApi.llm.retryInitialization.mockRejectedValue(new Error('Initialization Failed'));
+      render(<ModelDownloadPrompt />);
+      fireEvent.click(screen.getByText('Download Model (~4.4 GB)'));
+      await act(async () => {
+        (window as any).completeCallback();
+      });
 
-    // Now, click the retry button
-    const retryButton = await screen.findByText('Retry Initialization');
-    fireEvent.click(retryButton);
-    expect(mockElectronApi.llm.retryInitialization).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
+
+      // Flush promise microtasks from the auto-initialization attempt.
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(screen.getByText(/failed to initialize model/i)).toBeInTheDocument();
+
+      // Clear auto-init call so we can assert manual retry.
+      mockElectronApi.llm.retryInitialization.mockClear();
+
+      const retryButton = screen.getByRole('button', { name: /Retry Initialization/i });
+      fireEvent.click(retryButton);
+      expect(mockElectronApi.llm.retryInitialization).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

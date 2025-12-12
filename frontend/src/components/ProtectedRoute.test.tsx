@@ -50,7 +50,7 @@ describe('ProtectedRoute', () => {
     render(<ProtectedRoute feature="ai-assistant"><div>child</div></ProtectedRoute>);
 
     expect(screen.getByText('AI Assistant')).toBeInTheDocument();
-    expect(screen.getByText(/Upgrade to Advanced/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Upgrade to Advanced/i })).toBeInTheDocument();
   });
 
   it('displays correct feature info for "playground"', () => {
@@ -62,6 +62,6 @@ describe('ProtectedRoute', () => {
     render(<ProtectedRoute feature="playground"><div>child</div></ProtectedRoute>);
 
     expect(screen.getByText('Playground')).toBeInTheDocument();
-    expect(screen.getByText(/Upgrade to Enterprise/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Upgrade to Enterprise/i })).toBeInTheDocument();
   });
 });

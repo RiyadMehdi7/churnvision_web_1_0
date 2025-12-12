@@ -10,17 +10,17 @@ describe('LoadingSpinner', () => {
 
   it('renders the dots variant', () => {
     const { container } = render(<LoadingSpinner variant="dots" />);
-    expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
+    expect(container.querySelectorAll('.flex.space-x-1\\.5 > div').length).toBe(3);
   });
 
   it('renders the pulse variant', () => {
     const { container } = render(<LoadingSpinner variant="pulse" />);
-    expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
+    expect(container.querySelectorAll('.rounded-full').length).toBeGreaterThanOrEqual(2);
   });
 
   it('renders the bars variant', () => {
     const { container } = render(<LoadingSpinner variant="bars" />);
-    expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
+    expect(container.querySelectorAll('.w-1.rounded-full').length).toBe(5);
   });
 
   it('renders with small size', () => {
@@ -35,7 +35,7 @@ describe('LoadingSpinner', () => {
 
   it('renders with primary color', () => {
     const { container } = render(<LoadingSpinner color="primary" />);
-    expect(container.firstChild).toHaveClass('text-app-green');
+    expect(container.querySelector('.text-emerald-500')).toBeInTheDocument();
   });
 
   it('renders with white color', () => {
@@ -72,7 +72,7 @@ describe('LoadingStates', () => {
 
   it('renders TableLoading', () => {
     const { container } = render(<LoadingStates.TableLoading />);
-    expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
+    expect(container.querySelector('[class*="shimmer_2s_infinite"]')).toBeInTheDocument();
   });
 
   it('renders OverlayLoading', () => {

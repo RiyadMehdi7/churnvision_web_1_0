@@ -61,8 +61,9 @@ describe('Login Page', () => {
     it('should render link to register page', () => {
       renderLogin();
 
-      const registerLink = screen.queryByText(/register|sign up|create account/i);
-      expect(registerLink).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: /register|sign up|create (an )?account/i })
+      ).toBeInTheDocument();
     });
   });
 

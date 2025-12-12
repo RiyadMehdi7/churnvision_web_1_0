@@ -36,6 +36,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const fetchCurrentUser = useCallback(async (): Promise<UserData> => {
+    const service: any = authService;
+    if (typeof service.getCurrentUserExtended === 'function') {
+      return service.getCurrentUserExtended();
+    }
+    if (typeof service.getCurrentUser === 'function') {
+      return service.getCurrentUser();
+    }
+    throw new Error('Auth service does not implement getCurrentUserExtended/getCurrentUser');
+  }, []);
+
   // Initialize auth state on mount
   useEffect(() => {
     const initializeAuth = async () => {
@@ -50,7 +61,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setTimeout(() => reject(new Error('Auth check timeout')), 5000)
           );
           const currentUser = await Promise.race([
-            authService.getCurrentUserExtended(),
+            fetchCurrentUser(),
             timeoutPromise
           ]) as typeof storedUser;
           setUser(currentUser);
@@ -77,22 +88,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return () => {
       window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
     };
-  }, []);
+  }, [fetchCurrentUser]);
 
   const login = useCallback(async (credentials: LoginCredentials) => {
     setIsLoading(true);
     try {
-      await authService.login(credentials);
-      // Fetch extended user info with role and permissions after login
-      const extendedUser = await authService.getCurrentUserExtended();
-      setUser(extendedUser);
+      const result = await authService.login(credentials);
+      setUser(result.user);
+
+      // Optionally refresh with extended role/permission info (don't block login UX)
+      try {
+        const extendedUser = await fetchCurrentUser();
+        if (extendedUser) setUser(extendedUser);
+      } catch {
+        // Keep user from login response
+      }
     } catch (error) {
       console.error('Login error:', error);
       throw error;
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [fetchCurrentUser]);
 
   const register = useCallback(async (data: RegisterData) => {
     setIsLoading(true);
@@ -122,14 +139,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const refreshUser = useCallback(async () => {
     try {
       // Fetch extended user info with role and permissions
-      const currentUser = await authService.getCurrentUserExtended();
+      const currentUser = await fetchCurrentUser();
       setUser(currentUser);
     } catch (error) {
       console.error('Refresh user error:', error);
       authService.clearAuth();
       setUser(null);
     }
-  }, []);
+  }, [fetchCurrentUser]);
 
   // Permission checking helpers
   const hasPermission = useCallback((permission: string): boolean => {

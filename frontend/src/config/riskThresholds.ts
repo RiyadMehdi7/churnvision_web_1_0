@@ -107,6 +107,40 @@ export function getRiskLevelWithStyles(
 }
 
 /**
+ * Get extended risk color styling for rendering components
+ * Returns bg, text, light, and border color classes
+ */
+export function getRiskColorExtended(
+  probability: number,
+  thresholds: RiskThresholds = DEFAULT_RISK_THRESHOLDS
+) {
+  const validProb = Math.max(0, Math.min(1, Number(probability) || 0));
+
+  if (validProb > thresholds.highRisk) {
+    return {
+      bg: 'bg-red-500',
+      text: 'text-red-600',
+      light: 'bg-red-50 dark:bg-red-900/20',
+      border: 'border-red-200 dark:border-red-800'
+    };
+  }
+  if (validProb > thresholds.mediumRisk) {
+    return {
+      bg: 'bg-orange-500',
+      text: 'text-orange-600',
+      light: 'bg-orange-50 dark:bg-orange-900/20',
+      border: 'border-orange-200 dark:border-orange-800'
+    };
+  }
+  return {
+    bg: 'bg-green-500',
+    text: 'text-green-600',
+    light: 'bg-green-50 dark:bg-green-900/20',
+    border: 'border-green-200 dark:border-green-800'
+  };
+}
+
+/**
  * Calculate risk distribution from employee data
  */
 export function calculateRiskDistribution(

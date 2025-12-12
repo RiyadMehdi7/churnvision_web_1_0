@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { cn } from '../../utils/cn'
+import { cn } from '../../lib/utils'
 import { Bot, Lock, LogOut, Shield } from 'lucide-react'
 import { ThemeToggle } from '../ui/ThemeToggle'
 import { Home, Beaker, Settings as SettingsIcon, Database, BookOpen } from 'lucide-react'

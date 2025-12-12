@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Users, Shield, ScrollText, BarChart3, KeyRound } from 'lucide-react';
-import { cn } from '../../utils/cn';
+import { cn } from '../../lib/utils';
 import { AdminUsers } from './AdminUsers';
 import { AdminRoles } from './AdminRoles';
 import { AdminAuditLogs } from './AdminAuditLogs';

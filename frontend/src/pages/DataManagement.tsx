@@ -26,6 +26,7 @@ import { InterviewUploadWindow } from '../components/InterviewUploadWindow';
 import { EngagementUploadWindow } from '../components/EngagementUploadWindow';
 import { ModelPerformanceGauge } from '../components/ModelPerformanceGauge';
 import { DatabaseSyncFlow } from '../components/DatabaseSyncFlow';
+import { authService } from '@/services/authService';
 
 // Define accepted file types for CSV and Excel
 const ACCEPTED_FILE_TYPES = [
@@ -733,7 +734,7 @@ export function DataManagement(): React.ReactElement {
     // --- Project API Functions ---
     // Fetch project list (now uses isProjectListLoading state)
     const fetchProjects = useCallback(async () => {
-        const hasToken = !!(localStorage.getItem('access_token') || localStorage.getItem('churnvision_access_token'));
+        const hasToken = authService.isAuthenticated();
         if (!hasToken) {
             logger.warn('DataManagement: fetchProjects skipped - no access token present.', undefined, 'DataManagement');
             setProjects([]);

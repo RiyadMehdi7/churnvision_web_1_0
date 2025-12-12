@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { adminService, PermissionsByResource } from '../../services/adminService';
 import { Shield, Check, X } from 'lucide-react';
 import { Skeleton } from '../../components/ui/skeleton';
-import { cn } from '../../utils/cn';
+import { cn } from '../../lib/utils';
 
 export function AdminRoles() {
   const { data: roles, isLoading: rolesLoading } = useQuery({

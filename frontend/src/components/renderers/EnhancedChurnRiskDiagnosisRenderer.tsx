@@ -15,7 +15,7 @@ import {
   CheckSquare,
   ChevronDown
 } from 'lucide-react';
-import { getCurrentThresholds } from '@/config/riskThresholds';
+import { getCurrentThresholds, getRiskColorExtended } from '@/config/riskThresholds';
 import { EnhancedChurnRiskDiagnosisData } from '@/types/analysisData';
 
 interface EnhancedChurnRiskDiagnosisRendererProps {
@@ -31,27 +31,6 @@ export const EnhancedChurnRiskDiagnosisRenderer: React.FC<EnhancedChurnRiskDiagn
     setExpandedSection(expandedSection === section ? null : section);
   };
 
-  const getRiskColor = (risk: number) => {
-    if (risk > thresholds.highRisk) return { 
-      bg: 'bg-red-500', 
-      text: 'text-red-600', 
-      light: 'bg-red-50 dark:bg-red-900/20',
-      border: 'border-red-200 dark:border-red-800'
-    };
-    if (risk > thresholds.mediumRisk) return { 
-      bg: 'bg-orange-500', 
-      text: 'text-orange-600', 
-      light: 'bg-orange-50 dark:bg-orange-900/20',
-      border: 'border-orange-200 dark:border-orange-800'
-    };
-    return { 
-      bg: 'bg-green-500', 
-      text: 'text-green-600', 
-      light: 'bg-green-50 dark:bg-green-900/20',
-      border: 'border-green-200 dark:border-green-800'
-    };
-  };
-
   const getUrgencyStyle = (urgency: string) => {
     switch (urgency) {
       case 'Critical': return 'bg-red-100 text-red-800 border-red-300';
@@ -61,7 +40,7 @@ export const EnhancedChurnRiskDiagnosisRenderer: React.FC<EnhancedChurnRiskDiagn
     }
   };
 
-  const riskColors = getRiskColor(data.overallRisk);
+  const riskColors = getRiskColorExtended(data.overallRisk, thresholds);
 
   return (
     <div className="border rounded-2xl bg-white dark:bg-gray-800 shadow-2xl my-6 overflow-hidden">

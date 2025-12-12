@@ -14,6 +14,7 @@ from sqlalchemy import select, desc
 from typing import List, Dict, Any
 
 from app.api.deps import get_current_user, get_db
+from app.api.helpers import get_latest_employee_by_hr_code, get_latest_churn_output, extract_employee_values
 from app.models.user import User
 from app.models.hr_data import HRDataInput
 from app.models.churn import ChurnOutput, ChurnReasoning
@@ -46,21 +47,10 @@ async def get_playground_data(
     """
 
     # 1. Get Employee Data (get most recent if duplicates exist)
-    query = select(HRDataInput).where(
-        HRDataInput.hr_code == employee_id
-    ).order_by(desc(HRDataInput.report_date)).limit(1)
-    result = await db.execute(query)
-    employee = result.scalar_one_or_none()
-
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
+    employee = await get_latest_employee_by_hr_code(db, employee_id)
 
     # 2. Get Churn Data
-    query = select(ChurnOutput).where(
-        ChurnOutput.hr_code == employee_id
-    ).order_by(desc(ChurnOutput.generated_at)).limit(1)
-    result = await db.execute(query)
-    churn_data = result.scalar_one_or_none()
+    churn_data = await get_latest_churn_output(db, employee_id)
 
     # 3. Get Reasoning Data (optional - for SHAP values)
     query = select(ChurnReasoning).where(ChurnReasoning.hr_code == employee_id)
@@ -145,26 +135,15 @@ async def get_treatment_suggestions(
     - ROI (ELTV gain vs treatment cost)
     """
 
-    # Get employee data
-    query = select(HRDataInput).where(
-        HRDataInput.hr_code == employee_id
-    ).order_by(desc(HRDataInput.report_date)).limit(1)
-    result = await db.execute(query)
-    employee = result.scalar_one_or_none()
+    # Get employee and churn data
+    employee = await get_latest_employee_by_hr_code(db, employee_id)
+    churn_data = await get_latest_churn_output(db, employee_id)
 
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-
-    # Get churn data
-    query = select(ChurnOutput).where(
-        ChurnOutput.hr_code == employee_id
-    ).order_by(desc(ChurnOutput.generated_at)).limit(1)
-    result = await db.execute(query)
-    churn_data = result.scalar_one_or_none()
-
-    churn_prob = float(churn_data.resign_proba) if churn_data else 0.3
-    salary = float(employee.employee_cost) if employee.employee_cost else 50000
-    tenure = float(employee.tenure) if employee.tenure else 0
+    # Extract values with defaults
+    values = extract_employee_values(employee, churn_data)
+    churn_prob = values['churn_prob']
+    salary = values['salary']
+    tenure = values['tenure']
 
     # Build employee data dict for treatment service
     employee_data = {

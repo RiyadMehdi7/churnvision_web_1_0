@@ -11,7 +11,7 @@ import {
   CheckCircle,
   ChevronDown
 } from 'lucide-react';
-import { getCurrentThresholds } from '@/config/riskThresholds';
+import { getCurrentThresholds, getRiskColorExtended } from '@/config/riskThresholds';
 import { EnhancedRetentionPlaybookData } from '@/types/analysisData';
 
 interface EnhancedRetentionPlaybookRendererProps {
@@ -25,27 +25,6 @@ export const EnhancedRetentionPlaybookRenderer: React.FC<EnhancedRetentionPlaybo
 
   const toggleCategory = (category: string) => {
     setExpandedCategory(expandedCategory === category ? null : category);
-  };
-
-  const getRiskColor = (risk: number) => {
-    if (risk > thresholds.highRisk) return { 
-      bg: 'bg-red-500', 
-      text: 'text-red-600', 
-      light: 'bg-red-50 dark:bg-red-900/20',
-      border: 'border-red-200 dark:border-red-800'
-    };
-    if (risk > thresholds.mediumRisk) return { 
-      bg: 'bg-orange-500', 
-      text: 'text-orange-600', 
-      light: 'bg-orange-50 dark:bg-orange-900/20',
-      border: 'border-orange-200 dark:border-orange-800'
-    };
-    return { 
-      bg: 'bg-green-500', 
-      text: 'text-green-600', 
-      light: 'bg-green-50 dark:bg-green-900/20',
-      border: 'border-green-200 dark:border-green-800'
-    };
   };
 
   const getPriorityColor = (priority: string) => {
@@ -67,7 +46,7 @@ export const EnhancedRetentionPlaybookRenderer: React.FC<EnhancedRetentionPlaybo
     }
   };
 
-  const riskColors = getRiskColor(data.currentRisk);
+  const riskColors = getRiskColorExtended(data.currentRisk, thresholds);
 
   const categorizedActions = {
     immediate: data.actionPlan.filter(action => action.category === 'immediate'),

@@ -2,6 +2,7 @@ import api from '@/services/api';
 // import authService from './auth';
 import { Employee, RiskLevel, RiskFactor, ShapValue } from '@/types/employee';
 import { getRiskLevel as getCentralizedRiskLevel } from '../config/riskThresholds';
+import { authService } from '@/services/authService';
 
 // Utility function to convert SQLite INTEGER (0/1) to JavaScript boolean
 function sqliteBooleanToJS(value: number | boolean | null | undefined): boolean {
@@ -66,10 +67,7 @@ class EmployeeService {
   // private activeRequests = new Map<string, AbortController>(); // Unused 
 
   private hasAccessToken(): boolean {
-    return !!(
-      localStorage.getItem('access_token') ||
-      localStorage.getItem('churnvision_access_token')
-    );
+    return authService.isAuthenticated();
   }
 
   constructor() {

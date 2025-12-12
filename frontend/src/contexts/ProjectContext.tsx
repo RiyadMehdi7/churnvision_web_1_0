@@ -3,6 +3,7 @@ import React, { createContext, useState, useEffect, useContext, ReactNode, useMe
 import { useGlobalDataCache } from '@/hooks/useGlobalDataCache';
 import { logger } from '@/utils/clientLogger';
 import api from '@/services/api';
+import { authService } from '@/services/authService';
 
 // Define the interface for the project data
 interface ActiveProject {
@@ -31,13 +32,6 @@ interface ProjectProviderProps {
     children: ReactNode;
 }
 
-const hasAccessToken = () => {
-    return !!(
-        localStorage.getItem('access_token') ||
-        localStorage.getItem('churnvision_access_token')
-    );
-};
-
 // Create the Provider component
 export function ProjectProvider({ children }: ProjectProviderProps): JSX.Element {
     const [activeProject, setActiveProjectState] = useState<ActiveProject | null>(null);
@@ -46,7 +40,7 @@ export function ProjectProvider({ children }: ProjectProviderProps): JSX.Element
 
     // Function to refresh projects
     const refreshProjects = useCallback(async () => {
-        if (!hasAccessToken()) {
+        if (!authService.isAuthenticated()) {
             logger.project.warn('refreshProjects skipped: no access token present (user not authenticated).');
             setActiveProjectState(null);
             setIsLoadingProject(false);
@@ -90,7 +84,7 @@ export function ProjectProvider({ children }: ProjectProviderProps): JSX.Element
             setIsLoadingProject(true);
             logger.project.info('Attempting to fetch initial active project...');
 
-            if (!hasAccessToken()) {
+            if (!authService.isAuthenticated()) {
                 logger.project.warn('Skipping initial project fetch: no access token present (user not authenticated).');
                 setActiveProjectState(null);
                 resetGlobalCache();

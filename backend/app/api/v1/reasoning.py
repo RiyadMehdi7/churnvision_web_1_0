@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 
 from app.api.deps import get_current_user, get_db
+from app.api.helpers import get_latest_employee_by_hr_code, build_employee_data_dict
 from app.models.user import User
 from app.services.churn_reasoning_orchestrator import (
     churn_reasoning_orchestrator,
@@ -294,27 +295,9 @@ async def get_behavioral_stage(
     Returns the stage (Onboarding, Early Career, Established, Senior, Veteran)
     along with stage-specific risk factors and recommendations.
     """
-    from sqlalchemy import select, desc
-    from app.models.hr_data import HRDataInput
-
-    # Get employee data
-    query = select(HRDataInput).where(
-        HRDataInput.hr_code == hr_code
-    ).order_by(desc(HRDataInput.report_date)).limit(1)
-
-    result = await db.execute(query)
-    employee = result.scalar_one_or_none()
-
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-
-    employee_data = {
-        'hr_code': employee.hr_code,
-        'tenure': float(employee.tenure) if employee.tenure else 0,
-        'position': employee.position,
-        'status': employee.status,
-        'employee_cost': float(employee.employee_cost) if employee.employee_cost else 0
-    }
+    # Get employee data using helper
+    employee = await get_latest_employee_by_hr_code(db, hr_code)
+    employee_data = build_employee_data_dict(employee, include_structure=False)
 
     stage_result = await behavioral_stage_service.classify_employee(employee_data, 0.0, db)
 
@@ -339,28 +322,9 @@ async def get_heuristic_evaluation(
 
     Returns which rules were triggered and their risk adjustments.
     """
-    from sqlalchemy import select, desc
-    from app.models.hr_data import HRDataInput
-
-    # Get employee data
-    query = select(HRDataInput).where(
-        HRDataInput.hr_code == hr_code
-    ).order_by(desc(HRDataInput.report_date)).limit(1)
-
-    result = await db.execute(query)
-    employee = result.scalar_one_or_none()
-
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-
-    employee_data = {
-        'hr_code': employee.hr_code,
-        'tenure': float(employee.tenure) if employee.tenure else 0,
-        'position': employee.position,
-        'status': employee.status,
-        'structure_name': employee.structure_name,
-        'employee_cost': float(employee.employee_cost) if employee.employee_cost else 0
-    }
+    # Get employee data using helper
+    employee = await get_latest_employee_by_hr_code(db, hr_code)
+    employee_data = build_employee_data_dict(employee, include_structure=True)
 
     heuristic_result = await business_rule_service.evaluate_employee(employee_data, 0.3, db)
 

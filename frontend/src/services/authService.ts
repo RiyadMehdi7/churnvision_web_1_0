@@ -220,7 +220,11 @@ class AuthService {
    * Get access token from localStorage
    */
   getAccessToken(): string | null {
-    return localStorage.getItem(this.TOKEN_KEY);
+    return (
+      localStorage.getItem(this.TOKEN_KEY) ||
+      localStorage.getItem('access_token') ||
+      null
+    );
   }
 
   /**

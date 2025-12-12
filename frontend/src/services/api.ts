@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { API_BASE_URL } from '@config/apiConfig';
 import { authService } from './authService';
+import { logger } from '@/utils/clientLogger';
 
 const DEBUG = import.meta.env.DEV;
 let isRedirectingToLogin = false;
@@ -15,37 +16,29 @@ const api = axios.create({
 // Request logging (dev only)
 if (DEBUG) {
   api.interceptors.request.use((config) => {
-    try {
-      console.log(`API → ${config.method?.toUpperCase()} ${(config.baseURL || api.defaults.baseURL) + (config.url || '')}`);
-    } catch { }
+    const method = config.method?.toUpperCase() || 'GET';
+    const url = `${config.baseURL || api.defaults.baseURL || ''}${config.url || ''}`;
+    logger.debug('Request', { method, url }, 'API');
     return config;
   });
   api.interceptors.response.use(
     (response) => {
-      try {
-        console.log(`API ← ${response.status} ${response.config.url}`);
-      } catch { }
+      logger.debug('Response', { status: response.status, url: response.config.url }, 'API');
       return response;
     },
     (error) => {
-      try {
-        console.error(`API × ${error.config?.url}`, error.response?.data || error.message);
-      } catch { }
+      logger.error(
+        'Request failed',
+        { url: error.config?.url, status: error.response?.status, message: error.message },
+        'API'
+      );
       return Promise.reject(error);
     }
   );
 }
 
-const getStoredAccessToken = (): string | null => {
-  return (
-    localStorage.getItem('access_token') ||
-    localStorage.getItem('churnvision_access_token') || // legacy key used by authService
-    null
-  );
-};
-
 // Seed default Authorization header on load if a token already exists
-const initialToken = getStoredAccessToken();
+const initialToken = authService.getAccessToken();
 if (initialToken) {
   api.defaults.headers.common.Authorization = `Bearer ${initialToken}`;
 }
@@ -53,7 +46,7 @@ if (initialToken) {
 // Add authentication token to requests
 api.interceptors.request.use(
   (config) => {
-    const token = getStoredAccessToken();
+    const token = authService.getAccessToken();
     if (token) {
       // Normalize headers object before attaching Authorization to avoid AxiosHeaders mutation issues
       const normalizedHeaders =
@@ -63,10 +56,8 @@ api.interceptors.request.use(
       normalizedHeaders.Authorization = `Bearer ${token}`;
       config.headers = normalizedHeaders as any;
       if (DEBUG) {
-        try {
-          const preview = token.length > 12 ? `${token.slice(0, 6)}...${token.slice(-4)}` : token;
-          console.log(`[API] Attaching Authorization header: Bearer ${preview}`);
-        } catch { }
+        const preview = token.length > 12 ? `${token.slice(0, 6)}...${token.slice(-4)}` : token;
+        logger.debug('Attaching Authorization header', { preview }, 'API');
       }
     }
     return config;
@@ -83,7 +74,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      const token = getStoredAccessToken();
+      const token = authService.getAccessToken();
       const hasAuthHeader =
         !!(originalRequest?.headers?.Authorization || originalRequest?.headers?.authorization);
 
@@ -97,9 +88,11 @@ api.interceptors.response.use(
         retryHeaders.Authorization = `Bearer ${token}`;
         originalRequest.headers = retryHeaders as any;
         if (DEBUG) {
-          try {
-            console.warn('[API] 401 without Authorization header; retrying once with token for', originalRequest.url);
-          } catch { }
+          logger.warn(
+            '401 without Authorization header; retrying once with token',
+            { url: originalRequest.url },
+            'API'
+          );
         }
         return api(originalRequest);
       }

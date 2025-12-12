@@ -6,6 +6,7 @@ import { ChurnReasoning } from '@/types/reasoning';
 import api from '../services/api';
 import { calculateRiskDistribution } from '../config/riskThresholds';
 import { filterActiveEmployees } from '../utils/employeeFilters';
+import { authService } from '@/services/authService';
 
 const DEBUG = import.meta.env.DEV;
 
@@ -179,7 +180,7 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
 
         // Fetch Home page data
         fetchHomeData: async (projectId, forceRefresh = false) => {
-            const hasToken = !!(localStorage.getItem('access_token') || localStorage.getItem('churnvision_access_token'));
+            const hasToken = authService.isAuthenticated();
 
             if (!hasToken) {
                 console.log('[fetchHomeData] No access token, skipping fetch.');
@@ -573,7 +574,7 @@ export const useGlobalDataCache = create<GlobalCacheState>((set, get) => {
                 return;
             }
 
-            const hasToken = !!(localStorage.getItem('access_token') || localStorage.getItem('churnvision_access_token'));
+            const hasToken = authService.isAuthenticated();
             if (!hasToken) {
                 console.log('[fetchTrainingStatus] No access token found, skipping status fetch.');
                 return;

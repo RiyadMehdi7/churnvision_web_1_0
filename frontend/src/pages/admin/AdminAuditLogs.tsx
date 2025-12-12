@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
-import { cn } from '../../utils/cn';
+import { cn } from '../../lib/utils';
 
 export function AdminAuditLogs() {
   const [page, setPage] = useState(1);

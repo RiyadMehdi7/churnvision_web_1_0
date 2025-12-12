@@ -18,7 +18,7 @@ import {
   Beaker
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
-import { cn } from '../utils/cn';
+import { cn } from '../lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useProject } from '@/contexts/ProjectContext';
 import ErrorBoundary from '@/components/ErrorBoundary';

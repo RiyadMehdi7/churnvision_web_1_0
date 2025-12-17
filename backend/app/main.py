@@ -94,12 +94,16 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # CORS origins configuration (defined early for use in exception handler)
-is_dev_env = settings.DEBUG or settings.ENVIRONMENT.lower() == "development"
-cors_origins = (
-    ["http://localhost:3000", "http://localhost:4001", "http://127.0.0.1:3000", "http://127.0.0.1:4001"]
-    if is_dev_env
-    else (settings.ALLOWED_ORIGINS or ["http://localhost:3000", "http://localhost:4001"])
-)
+# Always allow explicit env-configured origins; fall back to dev defaults only if none were provided.
+_default_dev_origins = [
+    "http://localhost:3000",
+    "http://localhost:3002",
+    "http://localhost:4001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3002",
+    "http://127.0.0.1:4001",
+]
+cors_origins = settings.ALLOWED_ORIGINS or _default_dev_origins
 
 
 def get_cors_headers(request: Request) -> dict:

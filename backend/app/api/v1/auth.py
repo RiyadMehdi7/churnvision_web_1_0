@@ -1,5 +1,5 @@
 from datetime import timedelta, datetime
-from typing import Any, Dict, List
+from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,7 @@ from app.api.deps import get_db, get_current_user, get_current_active_user, oaut
 from app.core.config import settings
 from app.core.security import create_access_token, verify_password, get_password_hash
 from app.core.token_blacklist import blacklist_token
+from app.core.login_tracker import get_login_tracker
 from app.models.user import User
 from app.models.auth import Role, UserRole, UserAccount
 from app.schemas.token import Token, LoginRequest, LoginResponse
@@ -17,52 +18,43 @@ from sqlalchemy import or_
 
 router = APIRouter()
 
-# In-memory rate limiting buckets (per user + IP)
-_FAILED_LOGIN_ATTEMPTS: Dict[str, List[datetime]] = {}
-_LOCKED_UNTIL: Dict[str, datetime] = {}
-
 
 def _login_key(username: str, request: Request | None) -> str:
+    """Generate a unique key for login tracking (username + client IP)."""
     client_ip = request.client.host if request and request.client else "unknown"
     return f"{username.lower()}::{client_ip}"
 
 
-def _prune_attempts(key: str) -> None:
-    """Drop attempts outside the configured window."""
-    window = timedelta(minutes=settings.LOGIN_ATTEMPT_WINDOW_MINUTES)
-    cutoff = datetime.utcnow() - window
-    attempts = _FAILED_LOGIN_ATTEMPTS.get(key, [])
-    _FAILED_LOGIN_ATTEMPTS[key] = [ts for ts in attempts if ts >= cutoff]
-
-
-def _assert_not_locked(key: str):
-    locked_until = _LOCKED_UNTIL.get(key)
-    if locked_until and locked_until > datetime.utcnow():
-        remaining = int((locked_until - datetime.utcnow()).total_seconds() // 60) + 1
+async def _assert_not_locked(key: str) -> None:
+    """Check if account is locked and raise HTTPException if so."""
+    tracker = get_login_tracker()
+    is_locked, remaining_seconds = await tracker.is_locked(key)
+    if is_locked:
+        remaining_minutes = (remaining_seconds // 60) + 1
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Too many login attempts. Try again in {remaining} minutes."
+            detail=f"Too many login attempts. Try again in {remaining_minutes} minutes."
         )
-    # Expired locks are cleared
-    if locked_until:
-        _LOCKED_UNTIL.pop(key, None)
 
 
-def _register_failed_attempt(key: str):
-    _prune_attempts(key)
-    _FAILED_LOGIN_ATTEMPTS.setdefault(key, []).append(datetime.utcnow())
-    if len(_FAILED_LOGIN_ATTEMPTS[key]) >= settings.LOGIN_MAX_ATTEMPTS:
-        lockout = datetime.utcnow() + timedelta(minutes=settings.LOGIN_LOCKOUT_MINUTES)
-        _LOCKED_UNTIL[key] = lockout
+async def _register_failed_attempt(key: str) -> None:
+    """Record a failed login attempt and lock account if threshold reached."""
+    tracker = get_login_tracker()
+    attempt_count = await tracker.record_failed_attempt(key)
+
+    if attempt_count >= settings.LOGIN_MAX_ATTEMPTS:
+        lockout_seconds = settings.LOGIN_LOCKOUT_MINUTES * 60
+        await tracker.set_locked(key, lockout_seconds)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Account temporarily locked due to repeated failures. Please wait before retrying."
         )
 
 
-def _reset_attempts(key: str):
-    _FAILED_LOGIN_ATTEMPTS.pop(key, None)
-    _LOCKED_UNTIL.pop(key, None)
+async def _reset_attempts(key: str) -> None:
+    """Reset login attempts on successful authentication."""
+    tracker = get_login_tracker()
+    await tracker.reset(key)
 
 
 def _validate_password_policy(password: str) -> None:
@@ -90,7 +82,7 @@ async def login(
     OAuth2 compatible token login, get an access token for future requests.
     """
     key = _login_key(login_data.username, request)
-    _assert_not_locked(key)
+    await _assert_not_locked(key)
 
     # Try to find user by username or email
     result = await db.execute(
@@ -101,7 +93,7 @@ async def login(
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(login_data.password, user.hashed_password):
-        _register_failed_attempt(key)
+        await _register_failed_attempt(key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -118,7 +110,7 @@ async def login(
     user.last_login = datetime.utcnow()
     await db.commit()
 
-    _reset_attempts(key)
+    await _reset_attempts(key)
 
     # Create access token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -164,7 +156,7 @@ async def login_oauth2(
     This endpoint is used by FastAPI's automatic interactive API docs.
     """
     key = _login_key(form_data.username, request)
-    _assert_not_locked(key)
+    await _assert_not_locked(key)
 
     # Try to find user by username or email
     result = await db.execute(
@@ -175,7 +167,7 @@ async def login_oauth2(
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(form_data.password, user.hashed_password):
-        _register_failed_attempt(key)
+        await _register_failed_attempt(key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -192,7 +184,7 @@ async def login_oauth2(
     user.last_login = datetime.utcnow()
     await db.commit()
 
-    _reset_attempts(key)
+    await _reset_attempts(key)
 
     # Create access token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)

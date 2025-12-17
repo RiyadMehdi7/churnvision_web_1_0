@@ -6,6 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -15,12 +16,18 @@ RUN pip install uv
 COPY pyproject.toml .
 COPY README.md .
 COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini .
 
 # Install dependencies
 RUN uv pip install --system .
 
+# Copy and setup entrypoint
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Expose port
 EXPOSE 8000
 
-# Run application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run application via entrypoint (handles migrations)
+ENTRYPOINT ["/entrypoint.sh"]

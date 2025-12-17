@@ -3,7 +3,7 @@ from typing import Optional, List
 from urllib.parse import urlsplit
 
 from pydantic import PostgresDsn, computed_field, Field, AliasChoices, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 # Known insecure default values that must be changed in production
@@ -42,13 +42,18 @@ def _extract_password_from_database_url(database_url: str | None) -> str | None:
 
 
 class Settings(BaseSettings):
+    # Allow comma-separated env vars for list fields like ALLOWED_ORIGINS
+    model_config = SettingsConfigDict(env_file=".env", env_parse_delimiter=",")
     PROJECT_NAME: str = "ChurnVision Enterprise"
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
 
     # CORS
-    ALLOWED_ORIGINS: List[str] = Field(
+    # NOTE: Pydantic Settings treats list fields as "complex" env values (expects JSON).
+    # We accept either a JSON array or a comma-separated string by allowing `str` here
+    # and normalizing via the field validator below.
+    ALLOWED_ORIGINS: List[str] | str = Field(
         default_factory=lambda: ["http://localhost:3000", "http://localhost:4001"],
         validation_alias=AliasChoices("ALLOWED_ORIGINS", "BACKEND_CORS_ORIGINS"),
     )
@@ -256,8 +261,5 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [v.strip() for v in value.split(",") if v.strip()]
         return value
-
-    class Config:
-        env_file = ".env"
 
 settings = Settings()

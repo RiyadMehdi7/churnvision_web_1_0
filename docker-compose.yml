@@ -3,12 +3,13 @@ services:
     build: ./backend
     image: churnvision/backend:latest
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/churnvision}
       - LICENSE_KEY=${LICENSE_KEY:-dev-license-key}
       - LICENSE_SECRET_KEY=${LICENSE_SECRET_KEY:-churnvision-enterprise-secret-2024}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-this-in-production-min-32-chars}
+      - ALLOWED_ORIGINS=http://localhost:3002,http://127.0.0.1:3002
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma3:4b}
       - DEFAULT_LLM_PROVIDER=ollama
@@ -44,17 +45,17 @@ services:
       - ./frontend:/app
       - /app/node_modules  # Anonymous volume to prevent host node_modules from overwriting container's
     ports:
-      - "3000:4001"
+      - "3002:4001"
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=http://localhost:8001
     command: sh -c "rm -f bun.lock package-lock.json && bun install && bun run dev --host"
     depends_on:
       - backend
 
   db:
     image: postgres:15-alpine
-    ports:
-      - "5432:5432"
+    # No host port published by default to avoid conflicts with local Postgres/Docker stacks.
+    # Connect from other services via the Docker network (service name `db`).
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -96,8 +97,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # No host port published by default to avoid conflicts with local Redis/Docker stacks.
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
@@ -110,7 +110,7 @@ services:
   prometheus:
     image: prom/prometheus:latest
     ports:
-      - "9090:9090"
+      - "9091:9090"
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
@@ -126,7 +126,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3001:3000"
+      - "3003:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
@@ -141,7 +141,7 @@ services:
   alertmanager:
     image: prom/alertmanager:latest
     ports:
-      - "9093:9093"
+      - "9094:9093"
     volumes:
       - ./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     command:

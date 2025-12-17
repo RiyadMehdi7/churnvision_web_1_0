@@ -248,6 +248,71 @@ ollama:
 
 ---
 
+## Frontend API Configuration
+
+### Recommended Strategy: Relative Paths with Nginx Proxy
+
+The frontend uses `VITE_API_URL` to determine where to send API requests. For production deployments, we recommend using **relative paths** with nginx proxying:
+
+**Why this approach?**
+- No hardcoded URLs in the build artifacts
+- Works with any customer domain without rebuilding
+- Single nginx handles both frontend and API routing
+- Simplifies SSL termination
+
+### Configuration
+
+1. **Build with relative path**:
+```bash
+# In docker-compose.prod.yml or build args:
+VITE_API_URL=/api
+```
+
+2. **Nginx proxies `/api/` to backend**:
+```nginx
+# Already configured in infra/nginx.conf
+location /api/ {
+    proxy_pass http://backend:8000/api/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+3. **Frontend serves from same origin**:
+```nginx
+location / {
+    root /usr/share/nginx/html;
+    try_files $uri $uri/ /index.html;
+}
+```
+
+### Alternative: Direct Backend URL
+
+If you need the frontend to call the backend directly (e.g., separate domains):
+
+```bash
+# Build with absolute URL
+VITE_API_URL=https://api.yourcompany.com/api/v1
+```
+
+**Note**: This requires:
+- Proper CORS configuration (`ALLOWED_ORIGINS` in backend)
+- Separate SSL certificate for the API domain
+- Rebuilding frontend for each customer
+
+### Verifying Configuration
+
+After deployment, verify API connectivity:
+```bash
+# From browser dev tools, check network requests go to correct URL
+# Or test directly:
+curl https://yourcompany.com/api/v1/health
+```
+
+---
+
 ## Security Recommendations
 
 1. **Change all default passwords** before first start

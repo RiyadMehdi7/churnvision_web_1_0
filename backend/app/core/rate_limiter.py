@@ -53,19 +53,35 @@ def get_user_identifier(request: Request) -> str:
 
 # Redis URL for distributed rate limiting (falls back to in-memory if Redis unavailable)
 REDIS_URL = getattr(settings, "REDIS_URL", None)
+IS_PRODUCTION = getattr(settings, "ENVIRONMENT", "development").lower() == "production"
 
 # Configure storage backend
+storage_uri = None
+_using_redis = False
+
 if REDIS_URL:
     try:
-        from slowapi.middleware import SlowAPIMiddleware
+        # Verify redis package is available
+        import redis
         storage_uri = REDIS_URL
-        logger.info(f"Rate limiter using Redis backend: {REDIS_URL.split('@')[-1] if '@' in REDIS_URL else REDIS_URL}")
+        _using_redis = True
+        # Mask password in logs
+        logged_url = REDIS_URL.split('@')[-1] if '@' in REDIS_URL else REDIS_URL
+        logger.info(f"Rate limiter using Redis backend: {logged_url}")
     except ImportError:
-        storage_uri = None
-        logger.warning("Redis not available, using in-memory rate limiting (not recommended for production)")
-else:
-    storage_uri = None
-    logger.info("Rate limiter using in-memory storage (suitable for single-instance deployments)")
+        logger.warning(
+            "Redis package not installed. Install with: pip install redis"
+        )
+
+if not _using_redis:
+    if IS_PRODUCTION:
+        logger.warning(
+            "PRODUCTION WARNING: Rate limiting is using in-memory storage. "
+            "This is NOT suitable for horizontal scaling - rate limits won't sync across instances. "
+            "Configure REDIS_URL for distributed rate limiting."
+        )
+    else:
+        logger.info("Rate limiter using in-memory storage (suitable for single-instance deployments)")
 
 
 # Create the limiter instance

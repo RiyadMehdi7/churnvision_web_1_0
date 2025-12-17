@@ -1,4 +1,4 @@
-import api from './api';
+import api from './apiService';
 
 const ADMIN_ENDPOINT = '/admin';
 

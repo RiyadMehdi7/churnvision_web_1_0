@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 // Remove the import for the HTTP api client if it's no longer needed for this service
-import api from '@/services/api';
+import api from '@/services/apiService';
 import { ChatMessage, ChatResponse } from '@/types/chat';
 
 // --- Define window interface augmentation for Electron preload ---

@@ -25,7 +25,7 @@ import { ModelTrainingRequired } from '../components/ModelTrainingRequired';
 import { TrainingReminderBanner } from '../components/TrainingReminderBanner';
 import { ModelIntelligenceTab } from '../components/ModelIntelligenceTab';
 import { CohortAnalysisTab } from '../components/CohortAnalysisTab';
-import { modelIntelligenceService, DepartureTimeline } from '../services/modelIntelligence';
+import { modelIntelligenceService, DepartureTimeline } from '../services/modelIntelligenceService';
 
 import {
   Select,

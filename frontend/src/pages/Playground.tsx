@@ -45,8 +45,8 @@ import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { TrainingReminderBanner } from '../components/TrainingReminderBanner';
 import { ModelTrainingRequired } from '../components/ModelTrainingRequired';
-import api from '../services/api';
-import { employeeService } from '../services/employee';
+import api from '../services/apiService';
+import { employeeService } from '../services/employeeService';
 
 // --- What‑If Adjustments State ---
 interface WhatIfState {

@@ -1,5 +1,6 @@
 import { defineConfig, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import { visualizer } from 'rollup-plugin-visualizer'
 import path from 'path'
 import fs from 'fs'
 
@@ -48,11 +49,26 @@ const versionInfoPlugin: Plugin = {
   }
 }
 
+// Bundle analysis mode: ANALYZE=true bun run build
+const isAnalyzeMode = process.env.ANALYZE === 'true'
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
-    versionInfoPlugin
+    versionInfoPlugin,
+    // Bundle visualizer - generates stats.html when ANALYZE=true
+    ...(isAnalyzeMode
+      ? [
+          visualizer({
+            filename: 'dist/stats.html',
+            open: true,
+            gzipSize: true,
+            brotliSize: true,
+            template: 'treemap', // treemap, sunburst, or network
+          }),
+        ]
+      : []),
   ],
   // Set base path for Electron vs web builds
   base: isElectron ? './' : '/',
@@ -103,8 +119,8 @@ export default defineConfig({
     // Ensure consistent environment variables
     'import.meta.env.VITE_IS_ELECTRON': isElectron,
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(packageVersion),
-    // Disable service worker in development to prevent offline caching issues
-    'import.meta.env.VITE_DISABLE_SW': true
+    // Enable service worker only in production (disable in dev to prevent caching issues)
+    'import.meta.env.VITE_DISABLE_SW': process.env.NODE_ENV !== 'production'
   },
   // Configure build options
   build: {
@@ -140,42 +156,44 @@ export default defineConfig({
       },
     },
     // Configure rollup options for better code splitting
+    // Consolidated from 8 chunks to 4 to reduce HTTP overhead while maintaining cacheability
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // Vendor chunks for better caching
           if (id.includes('node_modules')) {
-            // React core
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
-              return 'vendor-react';
+            // Core framework (React + TanStack) - these load together on every page
+            if (
+              id.includes('react') ||
+              id.includes('react-dom') ||
+              id.includes('react-router') ||
+              id.includes('@tanstack')
+            ) {
+              return 'vendor-core';
             }
-            // TanStack libraries
-            if (id.includes('@tanstack')) {
-              return 'vendor-tanstack';
-            }
-            // UI libraries
-            if (id.includes('@radix-ui') || id.includes('@headlessui') || id.includes('framer-motion')) {
+            // UI libraries (components, animations, charts, icons) - visual layer
+            if (
+              id.includes('@radix-ui') ||
+              id.includes('@headlessui') ||
+              id.includes('framer-motion') ||
+              id.includes('recharts') ||
+              id.includes('d3') ||
+              id.includes('lucide') ||
+              id.includes('@heroicons') ||
+              id.includes('@ant-design/icons')
+            ) {
               return 'vendor-ui';
             }
-            // Charts
-            if (id.includes('recharts') || id.includes('d3')) {
-              return 'vendor-charts';
-            }
-            // Icons
-            if (id.includes('lucide') || id.includes('@heroicons') || id.includes('@ant-design/icons')) {
-              return 'vendor-icons';
-            }
-            // Form and validation
-            if (id.includes('react-hook-form') || id.includes('zod') || id.includes('@hookform')) {
-              return 'vendor-forms';
-            }
-            // Date utilities
-            if (id.includes('date-fns')) {
-              return 'vendor-date';
-            }
-            // Export libraries
-            if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('exceljs')) {
-              return 'vendor-export';
+            // Utilities (forms, validation, dates, export) - helper functionality
+            if (
+              id.includes('react-hook-form') ||
+              id.includes('zod') ||
+              id.includes('@hookform') ||
+              id.includes('date-fns') ||
+              id.includes('jspdf') ||
+              id.includes('html2canvas') ||
+              id.includes('exceljs')
+            ) {
+              return 'vendor-utils';
             }
             // Everything else
             return 'vendor-misc';

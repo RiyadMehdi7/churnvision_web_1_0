@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Upload, X, AlertCircle, FileText, MessageSquare, Brain } from 'lucide-react';
 import { cn } from '../lib/utils';
-import api from '../services/api';
+import api from '../services/apiService';
 import { 
   parseFile, 
   autoMapColumns, 

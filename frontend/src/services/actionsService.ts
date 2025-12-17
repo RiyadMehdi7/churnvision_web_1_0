@@ -5,7 +5,7 @@
  * and their execution workflow.
  */
 
-import api from '@/services/api';
+import api from '@/services/apiService';
 import type { ActionProposal, ActionType } from '@/types/agent';
 import { v4 as uuidv4 } from 'uuid';
 

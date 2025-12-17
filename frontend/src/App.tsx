@@ -32,12 +32,15 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-// Create a stable QueryClient instance
+// Create a stable QueryClient instance with optimized caching
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 2 * 60 * 1000, // 2 minutes - reasonable default for most data
+      gcTime: 10 * 60 * 1000, // 10 minutes - keep unused data in cache longer
       retry: 1,
+      refetchOnWindowFocus: false, // Prevent aggressive refetching on tab switch
+      refetchOnReconnect: true, // Refetch when network reconnects
     },
   },
 });

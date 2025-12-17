@@ -43,7 +43,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
-import api from '@/services/api';
+import api from '@/services/apiService';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
 import { uiLogger } from '@/utils/clientLogger';
 import { useToast } from '@/hooks/use-toast';

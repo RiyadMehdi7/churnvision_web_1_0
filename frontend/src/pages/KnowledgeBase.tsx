@@ -66,7 +66,7 @@ import ragService, {
   type KnowledgeBaseSettings,
   type DocumentType,
   type RuleCategory,
-} from '@/services/rag';
+} from '@/services/ragService';
 
 // ============================================================================
 // Types

@@ -22,7 +22,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import treatmentTrackingService, { TreatmentApplication as AppType, TreatmentEffectiveness as EffType, ABTestResult as ABType } from '@/services/treatmentTrackingService';
-import api from '@/services/api';
+import api from '@/services/apiService';
 import { useProject } from '@/contexts/ProjectContext';
 
 interface TreatmentApplication {

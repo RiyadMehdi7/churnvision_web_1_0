@@ -5,7 +5,7 @@
  * Handles document management, custom rules, and knowledge base queries.
  */
 
-import api from './api';
+import api from './apiService';
 
 // ============================================================================
 // Types

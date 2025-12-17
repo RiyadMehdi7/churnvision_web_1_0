@@ -1,6 +1,6 @@
 import { Employee } from '../types/employee';
 import { ChurnReasoning } from '../types/reasoning';
-import reasoningService from './reasoning';
+import reasoningService from './reasoningService';
 import { getCurrentThresholds } from '../config/riskThresholds';
 import { aiCacheManager } from './aiCacheManager';
 

@@ -1,4 +1,4 @@
-import api from '@/services/api';
+import api from '@/services/apiService';
 
 // Types for engagement data
 export interface EngagementData {

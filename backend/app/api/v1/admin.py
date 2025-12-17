@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from typing import Optional, List
 from datetime import datetime
 
-from app.api.deps import get_db, get_current_user, get_user_permissions_by_id
+from app.api.deps import get_db, get_current_user, get_user_permissions_by_id, invalidate_user_permissions_cache
 from app.models.user import User
 from app.models.auth import UserAccount, Role, Permission, UserRole
 from app.core.audit import AuditLog, AuditLogger
@@ -434,6 +434,9 @@ async def update_user(
         # Update super admin flag
         user.is_super_admin = 1 if user_data.role_id == 'super_admin' else 0
 
+        # Invalidate permission cache since role changed
+        await invalidate_user_permissions_cache(int(user_id) if user_id.isdigit() else 0)
+
     user.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(user)
@@ -493,6 +496,9 @@ async def delete_user(
     user.is_active = 0
     user.updated_at = datetime.utcnow()
     await db.commit()
+
+    # Invalidate permission cache for deleted user
+    await invalidate_user_permissions_cache(int(user_id) if user_id.isdigit() else 0)
 
     # Log action
     await log_admin_action(db, admin_user, "user_deleted", "user", user_id, f"Deactivated user {user.username}")

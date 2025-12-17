@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authService, LoginCredentials, RegisterData, UserData } from '../services/authService';
-import { UNAUTHORIZED_EVENT } from '../services/api';
+import { UNAUTHORIZED_EVENT } from '../services/apiService';
 
 interface AuthContextType {
   user: UserData | null;

@@ -32,7 +32,7 @@ from app.schemas.churn import (
     ModelTrainingResponse,
     ModelMetricsResponse,
 )
-from app.services.churn_prediction import ChurnPredictionService
+from app.services.churn_prediction_service import ChurnPredictionService
 from app.services.dataset_service import get_active_dataset, get_active_dataset_id
 
 router = APIRouter()

@@ -205,28 +205,57 @@ instrumentator = Instrumentator(
 instrumentator.instrument(app).expose(app, include_in_schema=False)
 
 
+import time
+
+# Health check cache to reduce overhead from frequent probes (e.g., Kubernetes)
+_health_cache: dict[str, dict] = {
+    "redis": {"healthy": None, "timestamp": 0},
+    "ollama": {"healthy": None, "timestamp": 0},
+}
+_HEALTH_CACHE_TTL = 15  # seconds
+
+
 async def check_redis_connection() -> bool:
-    """Check Redis connectivity for caching and rate limiting."""
+    """Check Redis connectivity with caching to reduce probe overhead."""
+    now = time.time()
+    cached = _health_cache["redis"]
+
+    # Return cached result if still valid
+    if cached["healthy"] is not None and (now - cached["timestamp"]) < _HEALTH_CACHE_TTL:
+        return cached["healthy"]
+
     try:
         from app.core.cache import get_cache
         cache = await get_cache()
         await cache.set("health_check", "ok", ttl=10)
+        _health_cache["redis"] = {"healthy": True, "timestamp": now}
         return True
     except Exception as e:
         logger.warning(f"Redis health check failed: {e}")
+        _health_cache["redis"] = {"healthy": False, "timestamp": now}
         return False
 
 
 async def check_ollama_connection() -> bool:
-    """Check Ollama LLM service availability (optional, graceful degradation)."""
+    """Check Ollama LLM service with caching (optional, graceful degradation)."""
+    now = time.time()
+    cached = _health_cache["ollama"]
+
+    # Return cached result if still valid
+    if cached["healthy"] is not None and (now - cached["timestamp"]) < _HEALTH_CACHE_TTL:
+        return cached["healthy"]
+
     try:
         import httpx
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
-            return resp.status_code == 200
+            healthy = resp.status_code == 200
     except Exception as e:
         logger.debug(f"Ollama health check failed (AI features degraded): {e}")
-        return False
+        healthy = False
+
+    _health_cache["ollama"] = {"healthy": healthy, "timestamp": now}
+    return healthy
 
 
 @app.get("/health", response_model=HealthResponse)

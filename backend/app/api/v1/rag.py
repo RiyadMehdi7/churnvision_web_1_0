@@ -22,7 +22,7 @@ from app.core.security_utils import sanitize_filename, sanitize_error_message
 
 logger = logging.getLogger(__name__)
 from app.services.rag_service import RAGService
-from app.services.vector_store import get_vector_store
+from app.services.vector_store_service import get_vector_store
 from app.schemas.rag import (
     DocumentUploadResponse,
     DocumentSummary,

@@ -4,7 +4,7 @@ import { Settings, Eye, Sparkles } from 'lucide-react';
 import { Home } from './Home';
 import { CustomizableHome } from './CustomizableHome';
 import { useNavigate } from 'react-router-dom';
-import api from '@/services/api';
+import api from '@/services/apiService';
 
 export const HomeWrapper: React.FC = () => {
   const navigate = useNavigate();

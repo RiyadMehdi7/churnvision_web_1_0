@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import reasoningService from '../services/reasoning';
+import reasoningService from '../services/reasoningService';
 import {
   ChurnReasoning,
   BusinessRule,

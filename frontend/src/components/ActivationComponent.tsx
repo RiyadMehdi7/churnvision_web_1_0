@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, AlertCircle } from 'lucide-react';
-import api from '@/services/api';
+import api from '@/services/apiService';
 
 type ActivationResult = { success?: boolean; error?: string; message?: string; licenseData?: any };
 

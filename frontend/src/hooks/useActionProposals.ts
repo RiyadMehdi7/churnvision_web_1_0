@@ -6,7 +6,7 @@
 
 import { useState, useCallback } from 'react';
 import type { ActionProposal } from '@/types/agent';
-import actionsService from '@/services/actions';
+import actionsService from '@/services/actionsService';
 
 interface UseActionProposalsReturn {
   proposals: ActionProposal[];

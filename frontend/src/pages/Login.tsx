@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Alert } from '../components/ui/alert';
 import { Eye, EyeOff, Loader2, LogIn, KeyRound } from 'lucide-react';
-import api from '../services/api';
+import api from '../services/apiService';
 
 interface SSOStatus {
   sso_enabled: boolean;

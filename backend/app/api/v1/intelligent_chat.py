@@ -303,7 +303,7 @@ async def refine_content(
     - "translate to German"
     - "make it friendlier"
     """
-    from app.services.chatbot import ChatbotService
+    from app.services.chatbot_service import ChatbotService
     from app.core.config import settings
     import json
     import re

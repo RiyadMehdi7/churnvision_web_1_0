@@ -2,7 +2,7 @@
  * Model Intelligence Service
  * Provides API calls for backtesting, prediction tracking, departure timelines, cohorts, and alerts
  */
-import api from './api';
+import api from './apiService';
 
 // Types for Model Intelligence features
 

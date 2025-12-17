@@ -2,7 +2,7 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode, useMemo, useCallback, useRef } from 'react';
 import { useGlobalDataCache } from '@/hooks/useGlobalDataCache';
 import { logger } from '@/utils/clientLogger';
-import api from '@/services/api';
+import api from '@/services/apiService';
 import { authService } from '@/services/authService';
 
 // Define the interface for the project data

@@ -1,4 +1,4 @@
-import api from '@/services/api';
+import api from '@/services/apiService';
 // import authService from './auth';
 import { Employee, RiskLevel, RiskFactor, ShapValue } from '@/types/employee';
 import { getRiskLevel as getCentralizedRiskLevel } from '../config/riskThresholds';

@@ -1,9 +1,9 @@
 import { create } from 'zustand';
-import { employeeService } from '../services/employee';
+import { employeeService } from '../services/employeeService';
 import { Employee } from '@/types/employee';
-import reasoningService from '../services/reasoning';
+import reasoningService from '../services/reasoningService';
 import { ChurnReasoning } from '@/types/reasoning';
-import api from '../services/api';
+import api from '../services/apiService';
 import { calculateRiskDistribution } from '../config/riskThresholds';
 import { filterActiveEmployees } from '../utils/employeeFilters';
 import { authService } from '@/services/authService';

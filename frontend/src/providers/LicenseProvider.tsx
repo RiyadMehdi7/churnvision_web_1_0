@@ -7,7 +7,7 @@ import React, {
     useCallback,
     ReactNode,
 } from 'react';
-import api from '@/services/api';
+import api from '@/services/apiService';
 // import type { LicenseState } from '../types/electron';
 
 interface LicenseState {

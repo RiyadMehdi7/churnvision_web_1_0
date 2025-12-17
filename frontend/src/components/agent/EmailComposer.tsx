@@ -33,7 +33,7 @@ import {
   Loader2,
   CornerDownLeft,
 } from 'lucide-react';
-import api from '@/services/api';
+import api from '@/services/apiService';
 
 interface EmailComposerProps {
   to: string[];

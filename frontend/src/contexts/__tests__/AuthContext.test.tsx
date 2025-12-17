@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { AuthProvider, useAuth } from '../AuthContext';
 import { authService } from '../../services/authService';
-import { UNAUTHORIZED_EVENT } from '../../services/api';
+import { UNAUTHORIZED_EVENT } from '../../services/apiService';
 
 // Mock authService
 vi.mock('../../services/authService', () => ({
@@ -23,7 +23,7 @@ vi.mock('../../services/authService', () => ({
 }));
 
 // Mock api module
-vi.mock('../../services/api', () => ({
+vi.mock('../../services/apiService', () => ({
   UNAUTHORIZED_EVENT: 'churnvision:unauthorized',
   default: {},
 }));

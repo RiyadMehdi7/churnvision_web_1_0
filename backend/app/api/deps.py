@@ -1,3 +1,5 @@
+import json
+import logging
 from typing import AsyncGenerator, Optional, List, Callable
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
@@ -8,9 +10,15 @@ from sqlalchemy import select, or_
 from app.db.session import AsyncSessionLocal
 from app.core.config import settings
 from app.core.token_blacklist import is_token_blacklisted
+from app.core.cache import get_cache, CacheTTL
 from app.models.user import User
 from app.models.auth import UserAccount, UserRole, RolePermission, Permission
 from app.schemas.token import TokenPayload
+
+logger = logging.getLogger("churnvision.deps")
+
+# Permission cache TTL (5 minutes)
+PERMISSIONS_CACHE_TTL = CacheTTL.MEDIUM
 
 # Allow graceful handling when Authorization header is absent so we can fall back to cookies
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login", auto_error=False)
@@ -176,6 +184,98 @@ async def get_user_permissions(db: AsyncSession, user: User) -> List[str]:
     return [row[0] for row in result.fetchall()]
 
 
+async def get_cached_user_permissions(db: AsyncSession, user: User) -> List[str]:
+    """
+    Get user permissions with Redis caching.
+
+    This function wraps get_user_permissions with a cache layer to reduce
+    database queries on permission-protected endpoints.
+
+    Cache key: permissions:user:{user_id}
+    TTL: 5 minutes (PERMISSIONS_CACHE_TTL)
+
+    Args:
+        db: Database session
+        user: Current user
+
+    Returns:
+        List of permission IDs the user has
+    """
+    cache_key = f"permissions:user:{user.id}"
+
+    # Try cache first
+    try:
+        cache = await get_cache()
+        cached = await cache.get(cache_key)
+        if cached:
+            permissions = json.loads(cached)
+            logger.debug(f"Permission cache hit for user {user.id}")
+            return permissions
+    except Exception as e:
+        logger.warning(f"Permission cache read error: {e}")
+
+    # Fall back to database query
+    permissions = await get_user_permissions(db, user)
+
+    # Cache the result
+    try:
+        cache = await get_cache()
+        await cache.set(cache_key, json.dumps(permissions), PERMISSIONS_CACHE_TTL)
+        logger.debug(f"Cached permissions for user {user.id}")
+    except Exception as e:
+        logger.warning(f"Permission cache write error: {e}")
+
+    return permissions
+
+
+async def invalidate_user_permissions_cache(user_id: int) -> bool:
+    """
+    Invalidate cached permissions for a user.
+
+    Call this when:
+    - User roles are changed
+    - Role permissions are modified
+    - User is deleted
+
+    Args:
+        user_id: The user's ID
+
+    Returns:
+        True if cache was invalidated, False otherwise
+    """
+    cache_key = f"permissions:user:{user_id}"
+    try:
+        cache = await get_cache()
+        result = await cache.delete(cache_key)
+        if result:
+            logger.info(f"Invalidated permission cache for user {user_id}")
+        return result
+    except Exception as e:
+        logger.warning(f"Failed to invalidate permission cache: {e}")
+        return False
+
+
+async def invalidate_all_permissions_cache() -> int:
+    """
+    Invalidate all cached permissions.
+
+    Call this when:
+    - Global permission changes occur
+    - Role definitions are modified
+
+    Returns:
+        Number of cache entries invalidated
+    """
+    try:
+        cache = await get_cache()
+        count = await cache.clear_pattern("permissions:user:*")
+        logger.info(f"Invalidated {count} permission cache entries")
+        return count
+    except Exception as e:
+        logger.warning(f"Failed to invalidate all permission caches: {e}")
+        return 0
+
+
 async def get_user_permissions_by_id(db: AsyncSession, user_id: str) -> List[str]:
     """
     Get all permissions for a user by user_id string.
@@ -251,7 +351,8 @@ def require_permission(*permissions: str) -> Callable:
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_user)
     ) -> User:
-        user_permissions = await get_user_permissions(db, current_user)
+        # Use cached permissions to reduce DB queries
+        user_permissions = await get_cached_user_permissions(db, current_user)
 
         # Check if user has any of the required permissions
         if not any(p in user_permissions for p in permissions):
@@ -279,7 +380,8 @@ def require_all_permissions(*permissions: str) -> Callable:
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_user)
     ) -> User:
-        user_permissions = await get_user_permissions(db, current_user)
+        # Use cached permissions to reduce DB queries
+        user_permissions = await get_cached_user_permissions(db, current_user)
 
         # Check if user has all required permissions
         missing = [p for p in permissions if p not in user_permissions]

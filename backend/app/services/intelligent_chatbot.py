@@ -18,10 +18,10 @@ from app.models.hr_data import HRDataInput, InterviewData
 from app.models.churn import ChurnOutput, ChurnReasoning, ELTVOutput, BehavioralStage
 from app.models.treatment import TreatmentDefinition, TreatmentApplication
 from app.models.rag import KnowledgeBaseSettings, CustomHRRule
-from app.services.chatbot import ChatbotService
+from app.services.chatbot_service import ChatbotService
 from app.models.dataset import Dataset
 from app.services.project_service import ensure_default_project, get_active_project
-from app.services.cached_queries import (
+from app.services.cached_queries_service import (
     get_cached_company_overview,
     get_cached_workforce_statistics,
     get_cached_department_snapshot,

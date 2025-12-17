@@ -29,7 +29,7 @@ import {
   Bar,
   Legend
 } from 'recharts';
-import { modelIntelligenceService, BacktestingResults, PredictionOutcomesResult } from '../services/modelIntelligence';
+import { modelIntelligenceService, BacktestingResults, PredictionOutcomesResult } from '../services/modelIntelligenceService';
 
 interface ModelIntelligenceTabProps {
   className?: string;

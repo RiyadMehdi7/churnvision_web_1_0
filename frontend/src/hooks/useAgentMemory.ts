@@ -11,7 +11,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { AgentContext, MemoryItem } from '@/types/agent';
-import api from '@/services/api';
+import api from '@/services/apiService';
 
 const STORAGE_KEY = 'churnvision_agent_memory';
 const MEMORY_VERSION = 1;

@@ -1,4 +1,4 @@
-import api from '@/services/api';
+import api from '@/services/apiService';
 import { InterviewData } from '../types/employee';
 
 export interface InterviewUploadResponse {

@@ -19,8 +19,8 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.models.rag import RAGDocument, RAGChunk, CustomHRRule, KnowledgeBaseSettings
-from app.services.document_processor import DocumentProcessor
-from app.services.vector_store import get_vector_store, VectorStoreService
+from app.services.document_processor_service import DocumentProcessor
+from app.services.vector_store_service import get_vector_store, VectorStoreService
 
 logger = logging.getLogger(__name__)
 

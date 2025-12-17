@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
-from app.services.chatbot import ChatbotService
+from app.services.chatbot_service import ChatbotService
 from app.models.hr_data import HRDataInput, InterviewData
 from app.models.churn import ChurnOutput, ChurnReasoning, ELTVOutput
 from app.models.treatment import TreatmentApplication

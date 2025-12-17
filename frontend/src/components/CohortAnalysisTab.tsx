@@ -29,7 +29,7 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
-import { modelIntelligenceService, CohortOverview, CohortAnalysis } from '../services/modelIntelligence';
+import { modelIntelligenceService, CohortOverview, CohortAnalysis } from '../services/modelIntelligenceService';
 
 interface CohortAnalysisTabProps {
   className?: string;

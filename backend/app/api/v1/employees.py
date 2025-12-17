@@ -11,10 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.models.churn import ChurnOutput, ChurnReasoning
-from app.models.dataset import Dataset as DatasetModel
 from app.models.hr_data import HRDataInput
 from app.models.user import User
-from app.services.project_service import get_active_project, ensure_default_project
+from app.services.dataset_service import get_active_dataset_entry
 
 router = APIRouter()
 
@@ -40,23 +39,12 @@ class EmployeeRecord(BaseModel):
     eltv_pre_treatment: Optional[float] = None
 
 
-async def _get_active_dataset_entry(db: AsyncSession) -> Optional[DatasetModel]:
-    await ensure_default_project(db)
-    active_project = await get_active_project(db)
-    return await db.scalar(
-        select(DatasetModel).where(
-            DatasetModel.project_id == active_project.id,
-            DatasetModel.is_active == 1,
-        )
-    )
-
-
 async def _hydrate_hr_data_from_active_dataset(db: AsyncSession) -> Optional[str]:
     """
     If the HR data table is empty for the active dataset, hydrate it from the
     dataset file so the Home page has something to display.
     """
-    dataset_entry = await _get_active_dataset_entry(db)
+    dataset_entry = await get_active_dataset_entry(db)
     if not dataset_entry or not dataset_entry.file_path:
         return None
 
@@ -176,7 +164,7 @@ async def read_employees(
     """
     try:
         # Ensure we have HR data for the active dataset
-        dataset_entry = await _get_active_dataset_entry(db)
+        dataset_entry = await get_active_dataset_entry(db)
         dataset_id = dataset_entry.dataset_id if dataset_entry else None
         hydrated_dataset_id = await _hydrate_hr_data_from_active_dataset(db)
         dataset_id = dataset_id or hydrated_dataset_id

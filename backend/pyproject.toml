@@ -66,7 +66,33 @@ build-backend = "hatchling.build"
 dev-dependencies = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.4",
+    "pytest-cov>=4.1.0",
     "httpx>=0.26.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--cov=app --cov-report=term-missing --cov-report=html:htmlcov"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "app/alembic/*",
+    "app/__pycache__/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
 ]
 
 [tool.hatch.build.targets.wheel]

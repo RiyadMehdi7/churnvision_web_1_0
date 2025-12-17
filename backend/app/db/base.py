@@ -8,6 +8,7 @@ from app.models.user import User  # noqa
 
 # Authentication and RBAC models
 from app.models.auth import UserAccount, Session, Role, Permission, RolePermission, UserRole  # noqa
+from app.models.refresh_token import RefreshToken  # noqa
 
 # Dataset and connection models
 from app.models.dataset import Dataset, Connection, ScopedProject, ImportProfile  # noqa

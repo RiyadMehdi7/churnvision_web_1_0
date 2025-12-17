@@ -205,34 +205,68 @@ instrumentator = Instrumentator(
 instrumentator.instrument(app).expose(app, include_in_schema=False)
 
 
+async def check_redis_connection() -> bool:
+    """Check Redis connectivity for caching and rate limiting."""
+    try:
+        from app.core.cache import get_cache
+        cache = await get_cache()
+        await cache.set("health_check", "ok", ttl=10)
+        return True
+    except Exception as e:
+        logger.warning(f"Redis health check failed: {e}")
+        return False
+
+
+async def check_ollama_connection() -> bool:
+    """Check Ollama LLM service availability (optional, graceful degradation)."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
+            return resp.status_code == 200
+    except Exception as e:
+        logger.debug(f"Ollama health check failed (AI features degraded): {e}")
+        return False
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """
     Comprehensive health check endpoint that verifies all dependencies.
-    Returns 503 if any critical dependency is unhealthy.
+    Returns 503 if critical dependencies (database, redis) are unhealthy.
+    Ollama is optional - AI features degrade gracefully if unavailable.
     """
     db_healthy = await check_db_connection()
+    redis_healthy = await check_redis_connection()
+    ollama_healthy = await check_ollama_connection()
 
     checks = {
         "database": db_healthy,
+        "redis": redis_healthy,
+        "ollama": ollama_healthy,
     }
 
+    # Database and Redis are critical; Ollama is optional
+    critical_healthy = db_healthy and redis_healthy
     all_healthy = all(checks.values())
 
     response = HealthResponse(
-        status="healthy" if all_healthy else "degraded",
+        status="healthy" if all_healthy else ("degraded" if critical_healthy else "unhealthy"),
         service="churnvision-backend",
         version="1.0.0",
         environment=settings.ENVIRONMENT,
         checks=checks,
     )
 
-    if not all_healthy:
-        logger.warning(f"Health check failed: {checks}")
+    if not critical_healthy:
+        logger.warning(f"Health check failed (critical): {checks}")
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=response.model_dump(),
         )
+
+    if not all_healthy:
+        logger.info(f"Health check degraded (non-critical): {checks}")
 
     return response
 

@@ -176,6 +176,29 @@ async def get_user_permissions(db: AsyncSession, user: User) -> List[str]:
     return [row[0] for row in result.fetchall()]
 
 
+async def get_user_permissions_by_id(db: AsyncSession, user_id: str) -> List[str]:
+    """
+    Get all permissions for a user by user_id string.
+
+    This is a simpler version that takes user_id directly,
+    useful when UserAccount is already known.
+
+    Args:
+        db: Database session
+        user_id: User ID string from RBAC users table
+
+    Returns:
+        List of permission IDs the user has
+    """
+    result = await db.execute(
+        select(Permission.permission_id)
+        .join(RolePermission, RolePermission.permission_id == Permission.permission_id)
+        .join(UserRole, UserRole.role_id == RolePermission.role_id)
+        .where(UserRole.user_id == user_id)
+    )
+    return [row[0] for row in result.fetchall()]
+
+
 async def get_user_role(db: AsyncSession, user: User) -> Optional[str]:
     """
     Get the primary role for a user.

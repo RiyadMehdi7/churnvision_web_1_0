@@ -8,9 +8,6 @@ import logging
 from datetime import datetime
 from typing import Optional
 import httpx
-from cryptography.fernet import Fernet
-import base64
-import hashlib
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,36 +17,27 @@ from pydantic import BaseModel, Field
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
 from app.models.sso_config import SSOConfig
-from app.core.config import settings
+from app.core.encryption import encrypt_field, decrypt_field, EncryptionError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-# Encryption helper for client secrets
-def get_encryption_key() -> bytes:
-    """Derive encryption key from JWT secret."""
-    key = hashlib.sha256(settings.JWT_SECRET_KEY.encode()).digest()
-    return base64.urlsafe_b64encode(key)
-
-
 def encrypt_secret(secret: str) -> str:
-    """Encrypt a secret value."""
+    """Encrypt a secret value using centralized encryption."""
     if not secret:
         return ""
-    f = Fernet(get_encryption_key())
-    return f.encrypt(secret.encode()).decode()
+    return encrypt_field(secret)
 
 
 def decrypt_secret(encrypted: str) -> str:
-    """Decrypt a secret value."""
+    """Decrypt a secret value using centralized encryption."""
     if not encrypted:
         return ""
     try:
-        f = Fernet(get_encryption_key())
-        return f.decrypt(encrypted.encode()).decode()
-    except Exception:
+        return decrypt_field(encrypted)
+    except EncryptionError:
         return ""
 
 

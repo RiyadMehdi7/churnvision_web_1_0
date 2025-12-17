@@ -33,7 +33,7 @@ from app.schemas.churn import (
     ModelMetricsResponse,
 )
 from app.services.churn_prediction import ChurnPredictionService
-from app.services.project_service import get_active_project, ensure_default_project
+from app.services.dataset_service import get_active_dataset, get_active_dataset_id
 
 router = APIRouter()
 
@@ -59,7 +59,7 @@ async def predict_employee_churn(
     start_time = time.time()
 
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         prediction = await churn_service.predict_churn(request, dataset.dataset_id)
 
         # Calculate duration
@@ -112,7 +112,7 @@ async def predict_batch_churn(
     - Aggregated statistics (total, high/medium/low risk counts)
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         predictions = await churn_service.predict_batch(request, dataset.dataset_id)
         return predictions
     except Exception as e:
@@ -122,47 +122,9 @@ async def predict_batch_churn(
         )
 
 
-async def _get_active_dataset_for_project(db: AsyncSession) -> DatasetModel:
-    """Return the active dataset row for the active project."""
-    await ensure_default_project(db)
-    active_project = await get_active_project(db)
-    dataset = await db.scalar(
-        select(DatasetModel).where(
-            DatasetModel.project_id == active_project.id,
-            DatasetModel.is_active == 1,
-        )
-    )
-    if not dataset:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active dataset for project")
-
-    if not dataset.file_path:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Active dataset missing file path")
-
-    if not Path(dataset.file_path).exists():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Active dataset file not found on disk")
-
-    return dataset
-
-
-async def _get_active_dataset_id_for_project(db: AsyncSession) -> Optional[str]:
-    """Return the active dataset ID for the active project (without validating file existence)."""
-    try:
-        await ensure_default_project(db)
-        active_project = await get_active_project(db)
-        dataset = await db.scalar(
-            select(DatasetModel).where(
-                DatasetModel.project_id == active_project.id,
-                DatasetModel.is_active == 1,
-            )
-        )
-        return dataset.dataset_id if dataset else None
-    except Exception:
-        return None
-
-
 async def _load_active_dataset_with_mapping(db: AsyncSession) -> tuple[pd.DataFrame, Optional[Dict[str, Any]], DatasetModel]:
     """Load the active dataset CSV and return it with any stored column mapping."""
-    dataset = await _get_active_dataset_for_project(db)
+    dataset = await get_active_dataset(db)
     mapping = dataset.column_mapping
     df = pd.read_csv(dataset.file_path)
     return df, mapping, dataset
@@ -808,7 +770,7 @@ async def train_churn_model(
             mapping = None
             # Best effort: tie to active dataset if one exists
             try:
-                dataset_used = await _get_active_dataset_for_project(db)
+                dataset_used = await get_active_dataset(db)
             except HTTPException:
                 dataset_used = None
         else:
@@ -816,7 +778,7 @@ async def train_churn_model(
 
         if not dataset_used:
             # Training must be tied to an active dataset so results stay isolated per upload
-            dataset_used = await _get_active_dataset_for_project(db)
+            dataset_used = await get_active_dataset(db)
 
         dataset_id_for_training = dataset_used.dataset_id
 
@@ -922,7 +884,7 @@ async def get_model_metrics(
     - Number of predictions made
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         dataset_id = dataset.dataset_id
         cache_key = dataset_id or "default"
 
@@ -1028,7 +990,7 @@ async def get_training_status(
     """Return training status for the active dataset, including progress if available."""
     try:
         # Get dataset ID without requiring the file to exist on disk
-        dataset_id = await _get_active_dataset_id_for_project(db)
+        dataset_id = await get_active_dataset_id(db)
         if not dataset_id:
             return {
                 "status": "idle",
@@ -1164,7 +1126,7 @@ async def predict_all_employees(
 
     try:
         # Get active dataset
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         df, mapping, _ = await _load_active_dataset_with_mapping(db)
         churn_service.ensure_model_for_dataset(dataset.dataset_id)
 
@@ -1352,7 +1314,7 @@ async def get_backtesting_results(
     - Historical trend data
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         results = await model_intelligence_service.get_backtesting_results(
             db, dataset.dataset_id, periods
         )
@@ -1380,7 +1342,7 @@ async def get_prediction_outcomes(
     - Summary statistics
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         results = await model_intelligence_service.get_prediction_outcomes(
             db, dataset.dataset_id, limit
         )
@@ -1409,7 +1371,7 @@ async def get_departure_timeline(
     - Urgency level
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         timeline = await model_intelligence_service.get_departure_timeline(
             db, hr_code, dataset.dataset_id
         )
@@ -1438,7 +1400,7 @@ async def get_batch_departure_timelines(
     Get departure timelines for multiple high-risk employees.
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         timelines = await model_intelligence_service.get_batch_departure_timelines(
             db, dataset.dataset_id, limit
         )
@@ -1468,7 +1430,7 @@ async def get_cohort_analysis(
     - Retention insights
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         analysis = await model_intelligence_service.get_cohort_analysis(
             db, hr_code, dataset.dataset_id
         )
@@ -1507,7 +1469,7 @@ async def get_cohort_overview(
     - Tenure cohort statistics
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         overview = await model_intelligence_service.get_cohort_overview(
             db, dataset.dataset_id
         )
@@ -1542,7 +1504,7 @@ async def get_risk_alerts(
     - Severity breakdown
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         alerts = await risk_alert_service.get_recent_alerts(
             db, dataset.dataset_id, limit, include_read
         )
@@ -1612,7 +1574,7 @@ async def fit_survival_model(
     Returns model metrics including concordance index.
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         metrics = await survival_service.fit_survival_model(db, dataset.dataset_id)
 
         return {
@@ -1652,7 +1614,7 @@ async def get_survival_prediction(
     - Hazard ratio relative to baseline
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         prediction = await survival_service.predict_survival(db, hr_code, dataset.dataset_id)
 
         if not prediction:
@@ -1684,7 +1646,7 @@ async def get_batch_survival_predictions(
     Returns predictions sorted by urgency (critical first).
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         predictions = await survival_service.get_batch_predictions(db, dataset.dataset_id, limit)
 
         return {
@@ -1724,7 +1686,7 @@ async def get_realized_metrics(
     These metrics prove (or disprove) that the model is useful.
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         metrics = await outcome_tracking_service.calculate_realized_metrics(
             db, dataset.dataset_id
         )
@@ -1757,7 +1719,7 @@ async def get_outcome_tracking(
     Use this to audit specific predictions and understand model behavior.
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         outcomes = await outcome_tracking_service.verify_predictions(
             db, dataset.dataset_id, lookback_days
         )
@@ -1785,7 +1747,7 @@ async def get_accuracy_by_cohort(
     - Human-readable interpretation
     """
     try:
-        dataset = await _get_active_dataset_for_project(db)
+        dataset = await get_active_dataset(db)
         results = await outcome_tracking_service.get_accuracy_by_cohort(
             db, dataset.dataset_id
         )

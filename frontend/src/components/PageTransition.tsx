@@ -1,6 +1,6 @@
 import { motion, Variants } from 'framer-motion';
 import React, { memo } from 'react';
-import { LoadingOverlay } from './LoadingOverlay';
+import { LoadingOverlay } from './LoadingSpinner';
 
 interface PageTransitionProps {
   children: React.ReactNode;

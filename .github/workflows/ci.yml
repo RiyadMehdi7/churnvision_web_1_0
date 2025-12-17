@@ -42,7 +42,7 @@ jobs:
         run: |
           cd backend
           uv pip install --system -e .
-          uv pip install --system pytest pytest-asyncio httpx
+          uv pip install --system pytest pytest-asyncio pytest-cov httpx
 
       - name: Run migrations
         env:
@@ -51,12 +51,31 @@ jobs:
           cd backend
           uv run alembic upgrade head
 
-      - name: Backend tests
+      - name: Backend tests with coverage
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
         run: |
           cd backend
-          uv run pytest -q
+          uv run pytest --cov=app --cov-report=term-missing --cov-report=xml -q
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        with:
+          files: backend/coverage.xml
+          fail_ci_if_error: false
+        continue-on-error: true
+
+      - name: Security scan (Bandit)
+        run: |
+          cd backend
+          uv pip install --system bandit
+          uv run bandit -r app/ -ll -ii -x app/__pycache__
+
+      - name: Dependency audit (pip-audit)
+        run: |
+          cd backend
+          uv pip install --system pip-audit
+          uv run pip-audit || true  # Non-blocking initially
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -78,6 +97,11 @@ jobs:
           cd frontend
           # Vitest doesn't support Jest's --runInBand; use --run instead.
           bun run test -- --run
+
+      - name: Frontend dependency audit
+        run: |
+          cd frontend
+          bun audit || true  # Non-blocking initially
 
       - name: Build backend image
         run: docker build -t churnvision/backend:ci backend

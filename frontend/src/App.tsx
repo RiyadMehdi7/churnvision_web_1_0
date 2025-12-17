@@ -3,7 +3,7 @@ import { Navigate, useLocation, useParams, useNavigate, type RouteObject } from 
 import { Header } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
 import { PageTransition } from './components/PageTransition';
-import { LoadingOverlay } from './components/LoadingOverlay';
+import { LoadingOverlay } from './components/LoadingSpinner';
 import { AppLaunchAnimation } from './components/AppLaunchAnimation';
 import { useGlobalDataCache } from './hooks/useGlobalDataCache';
 import { useOnboarding } from './hooks/useOnboarding';

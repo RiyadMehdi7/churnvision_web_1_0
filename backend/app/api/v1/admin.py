@@ -9,10 +9,10 @@ from sqlalchemy.orm import selectinload
 from typing import Optional, List
 from datetime import datetime
 
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, get_user_permissions_by_id
 from app.models.user import User
-from app.models.auth import UserAccount, Role, Permission, RolePermission, UserRole
-from app.core.audit import AuditLog
+from app.models.auth import UserAccount, Role, Permission, UserRole
+from app.core.audit import AuditLog, AuditLogger
 from app.core.security import get_password_hash
 from app.schemas.admin import (
     RoleResponse,
@@ -37,17 +37,6 @@ router = APIRouter()
 
 # ============ Permission Check Helpers ============
 
-async def get_user_permissions(db: AsyncSession, user_id: str) -> List[str]:
-    """Get all permissions for a user based on their roles"""
-    result = await db.execute(
-        select(Permission.permission_id)
-        .join(RolePermission, RolePermission.permission_id == Permission.permission_id)
-        .join(UserRole, UserRole.role_id == RolePermission.role_id)
-        .where(UserRole.user_id == user_id)
-    )
-    return [row[0] for row in result.fetchall()]
-
-
 async def check_admin_access(db: AsyncSession, current_user: User) -> UserAccount:
     """Check if current user has admin access and return UserAccount"""
     # Get UserAccount from users table
@@ -71,8 +60,8 @@ async def check_admin_access(db: AsyncSession, current_user: User) -> UserAccoun
     if user_account.is_super_admin == 1:
         return user_account
 
-    # Check permissions
-    permissions = await get_user_permissions(db, user_account.user_id)
+    # Check permissions (using centralized function from deps.py)
+    permissions = await get_user_permissions_by_id(db, user_account.user_id)
     if 'admin:access' not in permissions:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -90,18 +79,16 @@ async def log_admin_action(
     resource_id: str = None,
     details: str = None
 ):
-    """Log an admin action to audit log"""
-    log_entry = AuditLog(
-        timestamp=datetime.utcnow(),
+    """Log an admin action using centralized AuditLogger."""
+    await AuditLogger.log(
+        db=db,
+        action=action,
         user_id=int(user.user_id) if user.user_id.isdigit() else None,
         username=user.username,
-        action=action,
         resource_type=resource_type,
         resource_id=resource_id,
-        log_metadata=details
+        metadata={"details": details} if details else None
     )
-    db.add(log_entry)
-    await db.commit()
 
 
 # ============ Stats Endpoint ============

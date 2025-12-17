@@ -206,6 +206,45 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Automated Database Backup (Daily at 2 AM)
+  backup:
+    image: postgres:15-alpine
+    container_name: churnvision-backup
+    restart: unless-stopped
+    environment:
+      - PGHOST=db
+      - PGUSER=${POSTGRES_USER:-churnvision}
+      - PGPASSWORD=${POSTGRES_PASSWORD}
+      - PGDATABASE=${POSTGRES_DB:-churnvision}
+      - BACKUP_ENCRYPTION_KEY=${BACKUP_ENCRYPTION_KEY}
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - ./db/backup.sh:/usr/local/bin/backup.sh:ro
+      - ./backups:/backups
+    entrypoint: >
+      sh -c "apk add --no-cache dcron openssl bash &&
+             chmod +x /usr/local/bin/backup.sh &&
+             echo '0 2 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1' | crontab - &&
+             crond -f -l 2"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - churnvision-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   postgres_data:
     driver: local

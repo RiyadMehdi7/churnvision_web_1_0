@@ -335,27 +335,109 @@ ALLOWED_ORIGINS = [
 
 ## Compliance
 
-### GDPR Readiness
+### GDPR Compliance (Full Implementation)
 
-ChurnVision supports GDPR compliance:
+ChurnVision provides comprehensive GDPR compliance for on-premise deployments:
 
-| Requirement | Implementation |
-|-------------|----------------|
-| Right to Access | Data export API |
-| Right to Deletion | Delete employee endpoint |
-| Data Minimization | Configurable data retention |
-| Consent Management | Audit trail of consent |
-| Data Portability | CSV/JSON export |
-| Breach Notification | Alert system + audit logs |
+| GDPR Article | Requirement | Implementation |
+|--------------|-------------|----------------|
+| Art. 15 | Right to Access | `GET /api/v1/gdpr/export/{hr_code}` - Export all personal data |
+| Art. 16 | Right to Rectification | Manual process via data management |
+| Art. 17 | Right to Erasure | `POST /api/v1/gdpr/erase` - Delete/anonymize all data |
+| Art. 18 | Right to Restriction | Data subject request tracking |
+| Art. 20 | Right to Portability | JSON/CSV export in machine-readable format |
+| Art. 21 | Right to Object | Consent withdrawal API |
+| Art. 30 | Records of Processing | ROPA management via `/api/v1/gdpr/ropa` |
+| Art. 33/34 | Breach Notification | Breach tracking via `/api/v1/gdpr/breaches` |
 
-**Data Subject Requests:**
+**Data Subject Requests (DSARs):**
 ```http
-# Export all data for an employee
-GET /api/v1/employees/{hr_code}/export
+# Create a data subject request
+POST /api/v1/gdpr/requests
+{
+  "data_subject_id": "CV000185",
+  "request_type": "access",  # access, erasure, portability, restriction, objection
+  "description": "Employee requested copy of all personal data"
+}
 
-# Delete employee data
-DELETE /api/v1/employees/{hr_code}
+# Export all data for an employee (Art. 15 & 20)
+GET /api/v1/gdpr/export/{hr_code}
+
+# Erase employee data (Art. 17 - Right to be Forgotten)
+POST /api/v1/gdpr/erase
+{
+  "hr_code": "CV000185",
+  "dry_run": false,
+  "exclude_categories": ["validation"]  # Optional: exclude for legal retention
+}
+
+# Delete employee data (alternative DELETE method)
+DELETE /api/v1/gdpr/employees/{hr_code}
 ```
+
+**Consent Management:**
+```http
+# Record consent (typically for legitimate interests)
+POST /api/v1/gdpr/consent
+{
+  "data_subject_id": "CV000185",
+  "consent_type": "data_processing",
+  "purpose": "Employment-related churn risk analysis",
+  "lawful_basis": "legitimate_interests"
+}
+
+# Withdraw consent
+POST /api/v1/gdpr/consent/{data_subject_id}/withdraw?consent_type=analytics
+
+# Get consent status
+GET /api/v1/gdpr/consent/{data_subject_id}
+```
+
+**Records of Processing Activities (ROPA):**
+```http
+# List all processing activities
+GET /api/v1/gdpr/ropa
+
+# Export ROPA for audit
+GET /api/v1/gdpr/ropa/export
+
+# Create processing record
+POST /api/v1/gdpr/ropa
+```
+
+**Data Breach Management:**
+```http
+# Report a breach (must notify authority within 72 hours if risk to subjects)
+POST /api/v1/gdpr/breaches
+{
+  "title": "Unauthorized access detected",
+  "description": "...",
+  "detected_at": "2024-12-18T10:00:00Z",
+  "risk_level": "medium"
+}
+
+# Update breach status
+PATCH /api/v1/gdpr/breaches/{breach_id}
+```
+
+**Compliance Dashboard:**
+```http
+# Get overall GDPR compliance status
+GET /api/v1/gdpr/status
+
+# Get data categories managed by system
+GET /api/v1/gdpr/categories
+
+# Get erasure audit logs
+GET /api/v1/gdpr/erasure-logs
+```
+
+**On-Premise Considerations:**
+- Data never leaves organization infrastructure
+- Processing based on legitimate interests (employment relationship)
+- Organization acts as data controller
+- No third-party data transfers by default
+- Local LLM (Ollama) ensures AI queries stay on-premise
 
 ### SOC 2 Alignment
 

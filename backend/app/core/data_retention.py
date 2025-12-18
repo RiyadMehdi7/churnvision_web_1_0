@@ -6,9 +6,10 @@ Automatically cleans up old data based on configured retention policies.
 import asyncio
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import delete, select, func, text
+from sqlalchemy import delete, select, func, text, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -40,6 +41,12 @@ class RetentionPolicy:
 
     # Anonymization period for departed employees
     DEPARTED_EMPLOYEE_ANONYMIZE_DAYS: int = 90
+
+    # Refresh tokens - keep revoked/expired for audit trail then delete
+    REFRESH_TOKEN_DAYS: int = 30
+
+    # Agent insights - organizational learning data
+    AGENT_INSIGHTS_DAYS: int = 180
 
 
 class DataRetentionService:
@@ -112,15 +119,21 @@ class DataRetentionService:
             # Try multiple possible chat history tables
             deleted_total = 0
 
-            for table_name in ["chat_messages", "chat_history", "agent_memory"]:
+            # Allowlist of valid table names to prevent SQL injection
+            ALLOWED_CHAT_TABLES = frozenset({"chat_messages", "chat_history", "agent_memory"})
+
+            for table_name in ALLOWED_CHAT_TABLES:
                 try:
+                    # Use identifier quoting for additional safety (though allowlist is primary defense)
+                    from sqlalchemy import text as sql_text
                     result = await db.execute(
-                        text(f"DELETE FROM {table_name} WHERE created_at < :cutoff"),
+                        sql_text(f'DELETE FROM "{table_name}" WHERE created_at < :cutoff'),
                         {"cutoff": cutoff_date}
                     )
                     deleted_total += result.rowcount
-                except Exception:
-                    pass  # Table doesn't exist or different schema
+                except Exception as e:
+                    # Log the error but continue - table may not exist or have different schema
+                    logger.debug(f"Could not clean up table {table_name}: {e}")
 
             if deleted_total > 0:
                 await db.commit()
@@ -210,6 +223,148 @@ class DataRetentionService:
             await db.rollback()
             return 0
 
+    async def cleanup_refresh_tokens(self, db: AsyncSession) -> int:
+        """
+        Delete expired and revoked refresh tokens beyond retention period.
+
+        Tokens are kept briefly after expiration/revocation for:
+        - Security auditing (detecting token reuse attacks)
+        - Debugging authentication issues
+        """
+        try:
+            cutoff_date = datetime.utcnow() - timedelta(days=self.policy.REFRESH_TOKEN_DAYS)
+
+            try:
+                from app.models.refresh_token import RefreshToken
+
+                # Delete tokens that are both old AND (expired OR revoked)
+                result = await db.execute(
+                    delete(RefreshToken).where(
+                        RefreshToken.created_at < cutoff_date,
+                        or_(
+                            RefreshToken.expires_at < datetime.utcnow(),
+                            RefreshToken.revoked_at.isnot(None)
+                        )
+                    )
+                )
+                deleted_count = result.rowcount
+                await db.commit()
+                logger.info(f"Deleted {deleted_count} expired/revoked refresh tokens")
+                return deleted_count
+            except ImportError:
+                logger.debug("RefreshToken model not found, skipping cleanup")
+                return 0
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup refresh tokens: {e}")
+            await db.rollback()
+            return 0
+
+    async def cleanup_prediction_history(self, db: AsyncSession) -> int:
+        """
+        Delete old churn prediction records beyond retention period.
+
+        Preserves recent predictions for:
+        - Model accuracy tracking
+        - Trend analysis
+        - Audit compliance
+        """
+        try:
+            cutoff_date = datetime.utcnow() - timedelta(days=self.policy.PREDICTION_HISTORY_DAYS)
+
+            try:
+                from app.models.churn import ChurnOutput
+
+                result = await db.execute(
+                    delete(ChurnOutput).where(ChurnOutput.generated_at < cutoff_date)
+                )
+                deleted_count = result.rowcount
+                await db.commit()
+                logger.info(f"Deleted {deleted_count} old prediction records")
+                return deleted_count
+            except ImportError:
+                logger.debug("ChurnOutput model not found, skipping prediction cleanup")
+                return 0
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup prediction history: {e}")
+            await db.rollback()
+            return 0
+
+    async def cleanup_temp_uploads(self) -> int:
+        """
+        Delete orphaned temporary upload files beyond retention period.
+
+        Cleans up files from:
+        - RAG document uploads that failed processing
+        - Abandoned file uploads
+        - Temporary analysis files
+        """
+        deleted_count = 0
+        cutoff_time = datetime.utcnow() - timedelta(days=self.policy.TEMP_UPLOADS_DAYS)
+
+        # Directories to clean
+        upload_paths = [
+            getattr(settings, 'RAG_UPLOAD_PATH', './churnvision_data/uploads/rag'),
+        ]
+
+        for upload_dir in upload_paths:
+            upload_path = Path(upload_dir)
+            if not upload_path.exists():
+                continue
+
+            try:
+                for file_path in upload_path.iterdir():
+                    if not file_path.is_file():
+                        continue
+
+                    # Check file modification time
+                    try:
+                        mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                        if mtime < cutoff_time:
+                            file_path.unlink()
+                            deleted_count += 1
+                            logger.debug(f"Deleted old temp file: {file_path.name}")
+                    except OSError as e:
+                        logger.warning(f"Could not delete temp file {file_path}: {e}")
+
+            except Exception as e:
+                logger.error(f"Error scanning upload directory {upload_dir}: {e}")
+
+        if deleted_count > 0:
+            logger.info(f"Deleted {deleted_count} orphaned temporary files")
+
+        return deleted_count
+
+    async def cleanup_agent_insights(self, db: AsyncSession) -> int:
+        """
+        Delete old agent insights beyond retention period.
+
+        Preserves organizational learning patterns while removing
+        stale conversational insights.
+        """
+        try:
+            cutoff_date = datetime.utcnow() - timedelta(days=self.policy.AGENT_INSIGHTS_DAYS)
+
+            try:
+                from app.models.agent_memory import AgentInsight
+
+                result = await db.execute(
+                    delete(AgentInsight).where(AgentInsight.created_at < cutoff_date)
+                )
+                deleted_count = result.rowcount
+                await db.commit()
+                logger.info(f"Deleted {deleted_count} old agent insights")
+                return deleted_count
+            except ImportError:
+                logger.debug("AgentInsight model not found, skipping cleanup")
+                return 0
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup agent insights: {e}")
+            await db.rollback()
+            return 0
+
     async def run_all_cleanups(self) -> dict:
         """Run all retention cleanup tasks."""
         logger.info("Starting data retention cleanup...")
@@ -220,10 +375,15 @@ class DataRetentionService:
             "chat_history": 0,
             "departed_employees": 0,
             "failed_logins": 0,
+            "refresh_tokens": 0,
+            "prediction_history": 0,
+            "temp_uploads": 0,
+            "agent_insights": 0,
             "timestamp": datetime.utcnow().isoformat(),
             "success": True,
         }
 
+        # Database cleanup tasks
         async with AsyncSessionLocal() as db:
             try:
                 results["audit_logs"] = await self.cleanup_audit_logs(db)
@@ -231,10 +391,21 @@ class DataRetentionService:
                 results["chat_history"] = await self.cleanup_chat_history(db)
                 results["departed_employees"] = await self.anonymize_departed_employees(db)
                 results["failed_logins"] = await self.cleanup_failed_logins(db)
+                results["refresh_tokens"] = await self.cleanup_refresh_tokens(db)
+                results["prediction_history"] = await self.cleanup_prediction_history(db)
+                results["agent_insights"] = await self.cleanup_agent_insights(db)
             except Exception as e:
                 logger.error(f"Data retention cleanup failed: {e}")
                 results["success"] = False
                 results["error"] = str(e)
+
+        # File system cleanup tasks (no DB session needed)
+        try:
+            results["temp_uploads"] = await self.cleanup_temp_uploads()
+        except Exception as e:
+            logger.error(f"Temp uploads cleanup failed: {e}")
+            results["success"] = False
+            results["error"] = results.get("error", "") + f"; Temp uploads: {e}"
 
         total_deleted = sum(
             v for k, v in results.items()
@@ -245,19 +416,34 @@ class DataRetentionService:
         return results
 
     async def generate_retention_report(self) -> dict:
-        """Generate a report of data subject to retention policies."""
+        """
+        Generate a comprehensive report of data subject to retention policies.
+
+        Returns:
+            Report containing:
+            - Current policy settings
+            - Counts of records pending cleanup for each data type
+            - Storage usage for temp files
+            - Compliance status
+        """
         report = {
             "generated_at": datetime.utcnow().isoformat(),
             "policies": {
                 "audit_logs_retention_days": self.policy.AUDIT_LOGS_DAYS,
                 "chat_history_retention_days": self.policy.CHAT_HISTORY_DAYS,
                 "departed_employee_anonymize_days": self.policy.DEPARTED_EMPLOYEE_ANONYMIZE_DAYS,
+                "prediction_history_retention_days": self.policy.PREDICTION_HISTORY_DAYS,
+                "refresh_token_retention_days": self.policy.REFRESH_TOKEN_DAYS,
+                "temp_uploads_retention_days": self.policy.TEMP_UPLOADS_DAYS,
+                "agent_insights_retention_days": self.policy.AGENT_INSIGHTS_DAYS,
             },
             "pending_cleanup": {},
+            "storage": {},
+            "compliance_status": "compliant",
         }
 
         async with AsyncSessionLocal() as db:
-            # Count records pending cleanup
+            # Count audit logs pending cleanup
             try:
                 from app.models.audit import AuditLog
                 cutoff = datetime.utcnow() - timedelta(days=self.policy.AUDIT_LOGS_DAYS)
@@ -268,7 +454,92 @@ class DataRetentionService:
                 )
                 report["pending_cleanup"]["audit_logs"] = result.scalar() or 0
             except Exception:
-                pass
+                report["pending_cleanup"]["audit_logs"] = "unavailable"
+
+            # Count refresh tokens pending cleanup
+            try:
+                from app.models.refresh_token import RefreshToken
+                cutoff = datetime.utcnow() - timedelta(days=self.policy.REFRESH_TOKEN_DAYS)
+                result = await db.execute(
+                    select(func.count()).select_from(RefreshToken).where(
+                        RefreshToken.created_at < cutoff,
+                        or_(
+                            RefreshToken.expires_at < datetime.utcnow(),
+                            RefreshToken.revoked_at.isnot(None)
+                        )
+                    )
+                )
+                report["pending_cleanup"]["refresh_tokens"] = result.scalar() or 0
+            except Exception:
+                report["pending_cleanup"]["refresh_tokens"] = "unavailable"
+
+            # Count prediction records pending cleanup
+            try:
+                from app.models.churn import ChurnOutput
+                cutoff = datetime.utcnow() - timedelta(days=self.policy.PREDICTION_HISTORY_DAYS)
+                result = await db.execute(
+                    select(func.count()).select_from(ChurnOutput).where(
+                        ChurnOutput.generated_at < cutoff
+                    )
+                )
+                report["pending_cleanup"]["prediction_history"] = result.scalar() or 0
+            except Exception:
+                report["pending_cleanup"]["prediction_history"] = "unavailable"
+
+            # Count agent insights pending cleanup
+            try:
+                from app.models.agent_memory import AgentInsight
+                cutoff = datetime.utcnow() - timedelta(days=self.policy.AGENT_INSIGHTS_DAYS)
+                result = await db.execute(
+                    select(func.count()).select_from(AgentInsight).where(
+                        AgentInsight.created_at < cutoff
+                    )
+                )
+                report["pending_cleanup"]["agent_insights"] = result.scalar() or 0
+            except Exception:
+                report["pending_cleanup"]["agent_insights"] = "unavailable"
+
+        # Check temp upload storage
+        try:
+            upload_path = Path(getattr(settings, 'RAG_UPLOAD_PATH', './churnvision_data/uploads/rag'))
+            if upload_path.exists():
+                cutoff_time = datetime.utcnow() - timedelta(days=self.policy.TEMP_UPLOADS_DAYS)
+                total_size = 0
+                stale_count = 0
+                stale_size = 0
+
+                for file_path in upload_path.iterdir():
+                    if file_path.is_file():
+                        size = file_path.stat().st_size
+                        total_size += size
+                        mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                        if mtime < cutoff_time:
+                            stale_count += 1
+                            stale_size += size
+
+                report["storage"]["temp_uploads"] = {
+                    "total_files": sum(1 for _ in upload_path.iterdir() if _.is_file()),
+                    "total_size_mb": round(total_size / (1024 * 1024), 2),
+                    "stale_files": stale_count,
+                    "stale_size_mb": round(stale_size / (1024 * 1024), 2),
+                }
+                report["pending_cleanup"]["temp_uploads"] = stale_count
+            else:
+                report["storage"]["temp_uploads"] = {"status": "directory_not_found"}
+                report["pending_cleanup"]["temp_uploads"] = 0
+        except Exception as e:
+            report["storage"]["temp_uploads"] = {"error": str(e)}
+            report["pending_cleanup"]["temp_uploads"] = "unavailable"
+
+        # Determine compliance status
+        total_pending = sum(
+            v for v in report["pending_cleanup"].values()
+            if isinstance(v, int)
+        )
+        if total_pending > 1000:
+            report["compliance_status"] = "action_required"
+        elif total_pending > 100:
+            report["compliance_status"] = "review_recommended"
 
         return report
 

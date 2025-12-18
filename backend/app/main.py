@@ -3,7 +3,7 @@ import traceback
 from datetime import datetime
 from typing import Any
 
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -18,6 +18,8 @@ from app.core.rate_limiter import limiter, rate_limit_exceeded_handler
 from app.core.shutdown import lifespan_manager, RequestTrackingMiddleware, get_shutdown_manager
 from app.core.data_retention import get_retention_service
 from app.core.csrf import CSRFMiddleware, RequestSizeLimitMiddleware
+from app.api.deps import get_current_superuser
+from app.models.user import User
 from prometheus_fastapi_instrumentator import Instrumentator
 
 # Configure structured logging (JSON in production, colored in development)
@@ -107,13 +109,28 @@ cors_origins = settings.ALLOWED_ORIGINS or _default_dev_origins
 
 
 def get_cors_headers(request: Request) -> dict:
-    """Get CORS headers based on request origin."""
+    """Get CORS headers based on request origin with strict validation."""
     origin = request.headers.get("origin", "")
-    if origin in cors_origins:
-        return {
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Credentials": "true",
-        }
+    if not origin:
+        return {}
+
+    # Strict origin matching - prevent subdomain bypass attacks
+    # e.g., "localhost:3000.attacker.com" should NOT match "localhost:3000"
+    from urllib.parse import urlparse
+    try:
+        parsed_origin = urlparse(origin)
+        # Reconstruct origin to normalize it (handles trailing slashes, etc.)
+        normalized_origin = f"{parsed_origin.scheme}://{parsed_origin.netloc}"
+
+        # Check against exact origins in allowlist
+        if normalized_origin in cors_origins:
+            return {
+                "Access-Control-Allow-Origin": normalized_origin,
+                "Access-Control-Allow-Credentials": "true",
+            }
+    except Exception:
+        pass  # Invalid origin format, reject silently
+
     return {}
 
 
@@ -340,20 +357,22 @@ async def startup_event():
 
 
 @app.get("/admin/retention/run", tags=["admin"])
-async def run_data_retention():
+async def run_data_retention(
+    current_user: User = Depends(get_current_superuser)
+):
     """
     Manually trigger data retention cleanup.
-    Requires admin authentication (handled by router).
+    Requires superuser authentication.
     """
-    from app.api.deps import get_current_admin_user
-
     retention_service = get_retention_service()
     results = await retention_service.run_all_cleanups()
     return results
 
 
 @app.get("/admin/retention/report", tags=["admin"])
-async def get_retention_report():
-    """Get data retention compliance report."""
+async def get_retention_report(
+    current_user: User = Depends(get_current_superuser)
+):
+    """Get data retention compliance report. Requires superuser authentication."""
     retention_service = get_retention_service()
     return await retention_service.generate_retention_report()

@@ -26,18 +26,33 @@ export const Login: React.FC = () => {
   const [ssoStatus, setSsoStatus] = useState<SSOStatus | null>(null);
   const [ssoLoading, setSsoLoading] = useState(false);
 
-  // Check SSO status on mount
+  // Check SSO status on mount with proper cleanup
   useEffect(() => {
+    const abortController = new AbortController();
+    let isMounted = true;
+
     const checkSSOStatus = async () => {
       try {
-        const response = await api.get<SSOStatus>('/auth/sso/status');
-        setSsoStatus(response.data);
+        const response = await api.get<SSOStatus>('/auth/sso/status', {
+          signal: abortController.signal
+        });
+        if (isMounted) {
+          setSsoStatus(response.data);
+        }
       } catch {
-        // SSO not available, that's fine
-        setSsoStatus(null);
+        // SSO not available or request aborted, that's fine
+        if (isMounted) {
+          setSsoStatus(null);
+        }
       }
     };
     checkSSOStatus();
+
+    // Cleanup function to prevent state updates on unmounted component
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
   }, []);
 
   const handleSSOLogin = () => {
@@ -210,7 +225,7 @@ export const Login: React.FC = () => {
               required
               autoComplete="username"
               autoFocus
-              className="h-11 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 focus:border-emerald-500 dark:focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200 rounded-lg"
+              className="h-11 bg-transparent dark:bg-transparent border-slate-200 dark:border-slate-700 focus:border-emerald-500 dark:focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200 rounded-lg placeholder:text-emerald-500/70 dark:placeholder:text-emerald-400/70"
             />
           </div>
 
@@ -228,7 +243,7 @@ export const Login: React.FC = () => {
                 disabled={isLoading}
                 required
                 autoComplete="current-password"
-                className="h-11 pr-10 bg-slate-50/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 focus:border-emerald-500 dark:focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200 rounded-lg"
+                className="h-11 pr-10 bg-transparent dark:bg-transparent border-slate-200 dark:border-slate-700 focus:border-emerald-500 dark:focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200 rounded-lg placeholder:text-emerald-500/70 dark:placeholder:text-emerald-400/70"
               />
               <button
                 type="button"

@@ -64,10 +64,33 @@ async def _hydrate_hr_data_from_active_dataset(db: AsyncSession) -> Optional[str
     mapping = dataset_entry.column_mapping or {}
     try:
         df = pd.read_csv(path_obj)
-    except Exception as e:
+    except pd.errors.EmptyDataError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to read active dataset: {e}"
+            detail="The dataset file is empty or contains no data"
+        )
+    except pd.errors.ParserError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to parse CSV file: invalid format or encoding"
+        )
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to read dataset: file encoding not supported. Please use UTF-8."
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset file not found. Please re-upload the dataset."
+        )
+    except Exception as e:
+        # Log the actual error for debugging but don't expose internal paths
+        import logging
+        logging.getLogger(__name__).error(f"Failed to read dataset {dataset_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to read dataset due to an internal error"
         )
 
     rename_map = {}

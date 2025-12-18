@@ -96,17 +96,19 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if _is_csrf_exempt(request):
             return await call_next(request)
 
-        # Validate CSRF for state-changing methods in production
-        if settings.ENVIRONMENT.lower() == "production":
-            if not self._validate_csrf(request):
-                logger.warning(
-                    f"CSRF validation failed: {request.method} {request.url.path} "
-                    f"from {request.client.host if request.client else 'unknown'}"
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="CSRF token validation failed"
-                )
+        # Validate CSRF for state-changing methods in all environments
+        # This is critical security - don't skip even in development
+        if not self._validate_csrf(request):
+            client_host = request.client.host if request.client else 'unknown'
+            logger.warning(
+                f"CSRF validation failed: {request.method} {request.url.path} "
+                f"from {client_host}"
+            )
+            # In development, log but still reject to catch issues early
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="CSRF token validation failed"
+            )
 
         response = await call_next(request)
         return response

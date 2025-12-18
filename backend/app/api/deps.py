@@ -32,7 +32,7 @@ async def get_db() -> AsyncGenerator:
 async def get_current_user(
     db: AsyncSession = Depends(get_db),
     token: Optional[str] = Depends(oauth2_scheme),
-    request: Request = None
+    request: Optional[Request] = None
 ) -> User:
     """
     Get the current authenticated user from JWT token.
@@ -55,11 +55,13 @@ async def get_current_user(
     )
 
     # If no Authorization header was provided, fall back to a secure cookie
-    if not token and request:
+    if not token and request is not None:
         token = request.cookies.get("access_token") or request.cookies.get("churnvision_access_token")
         # Support "Bearer <token>" value stored in cookie if present
         if token and token.lower().startswith("bearer "):
-            token = token.split(" ", 1)[1]
+            parts = token.split(" ", 1)
+            # Ensure we have a value after "bearer "
+            token = parts[1] if len(parts) > 1 and parts[1].strip() else None
 
     if not token:
         raise credentials_exception
@@ -100,20 +102,18 @@ async def get_current_active_user(
     """
     Get the current active user.
 
+    Note: get_current_user already validates that the user is active,
+    so this dependency is effectively a pass-through. Kept for backwards
+    compatibility and explicit intent in route definitions.
+
     Args:
-        current_user: Current user from token
+        current_user: Current user from token (already validated as active)
 
     Returns:
         Active user
-
-    Raises:
-        HTTPException: If user is inactive
     """
-    if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user"
-        )
+    # Note: is_active check already performed by get_current_user
+    # This function exists for semantic clarity in route definitions
     return current_user
 
 

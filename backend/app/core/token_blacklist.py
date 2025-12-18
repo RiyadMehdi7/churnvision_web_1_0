@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 _memory_blacklist: Dict[str, datetime] = {}
 _last_cleanup: datetime = datetime.utcnow()
 _cleanup_interval = timedelta(minutes=5)
+# Thread-safe lock for in-memory blacklist operations
+import threading
+_blacklist_lock = threading.Lock()
 
 # Redis client (lazy-initialized)
 _redis_client: Optional[object] = None
@@ -88,18 +91,19 @@ def _cleanup_expired_tokens() -> None:
     if now - _last_cleanup < _cleanup_interval:
         return
 
-    expired_tokens = [
-        token for token, expiry in _memory_blacklist.items()
-        if expiry < now
-    ]
+    with _blacklist_lock:
+        expired_tokens = [
+            token for token, expiry in _memory_blacklist.items()
+            if expiry < now
+        ]
 
-    for token in expired_tokens:
-        _memory_blacklist.pop(token, None)
+        for token in expired_tokens:
+            _memory_blacklist.pop(token, None)
 
-    if expired_tokens:
-        logger.debug(f"Cleaned up {len(expired_tokens)} expired tokens from in-memory blacklist")
+        if expired_tokens:
+            logger.debug(f"Cleaned up {len(expired_tokens)} expired tokens from in-memory blacklist")
 
-    _last_cleanup = now
+        _last_cleanup = now
 
 
 async def blacklist_token_async(token: str, expires_at: datetime) -> None:
@@ -146,7 +150,8 @@ def blacklist_token(token: str, expires_at: datetime) -> None:
     """
     # Only blacklist if token hasn't already expired
     if expires_at > datetime.utcnow():
-        _memory_blacklist[token] = expires_at
+        with _blacklist_lock:
+            _memory_blacklist[token] = expires_at
         logger.debug(f"Token blacklisted until {expires_at.isoformat()}")
 
     # Periodic cleanup
@@ -187,18 +192,19 @@ def is_token_blacklisted(token: str) -> bool:
     Returns:
         True if token is blacklisted and not expired, False otherwise
     """
-    if token not in _memory_blacklist:
-        return False
+    with _blacklist_lock:
+        if token not in _memory_blacklist:
+            return False
 
-    expiry = _memory_blacklist[token]
-    now = datetime.utcnow()
+        expiry = _memory_blacklist[token]
+        now = datetime.utcnow()
 
-    # If expired, remove from blacklist and return False
-    if expiry < now:
-        _memory_blacklist.pop(token, None)
-        return False
+        # If expired, remove from blacklist and return False
+        if expiry < now:
+            _memory_blacklist.pop(token, None)
+            return False
 
-    return True
+        return True
 
 
 async def get_blacklist_size_async() -> int:

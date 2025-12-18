@@ -17,24 +17,80 @@ from app.core.config import settings
 logger = logging.getLogger("churnvision.rate_limiter")
 
 
+def _is_valid_ip(ip: str) -> bool:
+    """Validate that a string is a valid IPv4 or IPv6 address."""
+    import ipaddress
+    try:
+        ipaddress.ip_address(ip.strip())
+        return True
+    except ValueError:
+        return False
+
+
+def _is_trusted_proxy(request: Request) -> bool:
+    """
+    Check if request comes from a trusted proxy.
+    In production, only trust headers when behind a known proxy.
+    """
+    # Get direct connection IP
+    direct_ip = get_remote_address(request)
+
+    # Trusted proxy networks (Docker internal, localhost, private networks)
+    # In production, this should be configured via environment variable
+    trusted_proxies = getattr(settings, "TRUSTED_PROXY_IPS", [
+        "127.0.0.1",
+        "::1",
+        "172.17.0.1",  # Docker default bridge
+        "172.18.0.1",  # Docker compose network
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+    ])
+
+    import ipaddress
+    try:
+        client_ip = ipaddress.ip_address(direct_ip)
+        for proxy in trusted_proxies:
+            if "/" in proxy:
+                # CIDR notation
+                if client_ip in ipaddress.ip_network(proxy, strict=False):
+                    return True
+            else:
+                if client_ip == ipaddress.ip_address(proxy):
+                    return True
+    except ValueError:
+        pass
+
+    return False
+
+
 def get_real_client_ip(request: Request) -> str:
     """
     Get the real client IP, accounting for reverse proxies.
-    Checks X-Forwarded-For header first, then falls back to direct IP.
+    Only trusts forwarded headers when request comes from a trusted proxy.
     """
-    # Check for forwarded IP (from reverse proxy)
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        # Take the first IP in the chain (original client)
-        return forwarded_for.split(",")[0].strip()
+    direct_ip = get_remote_address(request)
 
-    # Check X-Real-IP header (common in nginx)
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip.strip()
+    # Only trust X-Forwarded-For if request comes from a trusted proxy
+    if _is_trusted_proxy(request):
+        # Check for forwarded IP (from reverse proxy)
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            # Take the first IP in the chain (original client)
+            candidate_ip = forwarded_for.split(",")[0].strip()
+            # Validate the IP format to prevent spoofing with malformed values
+            if _is_valid_ip(candidate_ip):
+                return candidate_ip
+            else:
+                logger.warning(f"Invalid IP in X-Forwarded-For header: {candidate_ip}")
+
+        # Check X-Real-IP header (common in nginx)
+        real_ip = request.headers.get("X-Real-IP")
+        if real_ip and _is_valid_ip(real_ip.strip()):
+            return real_ip.strip()
 
     # Fall back to direct connection IP
-    return get_remote_address(request)
+    return direct_ip
 
 
 def get_user_identifier(request: Request) -> str:

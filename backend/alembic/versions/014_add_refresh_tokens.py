@@ -26,7 +26,7 @@ def upgrade() -> None:
         'refresh_tokens',
         sa.Column('id', sa.Integer(), primary_key=True, index=True),
         sa.Column('token_hash', sa.String(64), unique=True, nullable=False, index=True),
-        sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('user_id', sa.Integer(), sa.ForeignKey('legacy_users.id', ondelete='CASCADE'), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
         sa.Column('expires_at', sa.DateTime(), nullable=False),
         sa.Column('revoked_at', sa.DateTime(), nullable=True),

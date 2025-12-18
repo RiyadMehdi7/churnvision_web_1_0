@@ -183,8 +183,8 @@ async def delete_dataset(
     if dataset.file_path:
         try:
             Path(dataset.file_path).unlink(missing_ok=True)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to delete file {dataset.file_path}: {e}")
 
     await db.execute(
         delete(DatasetModel).where(
@@ -466,6 +466,9 @@ async def upload_file(
     except HTTPException:
         raise
     except Exception as exc:
+        # Rollback any partial changes on error
+        await db.rollback()
+        logger.error(f"File upload failed: {exc}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=sanitize_error_message(exc, "file upload"),

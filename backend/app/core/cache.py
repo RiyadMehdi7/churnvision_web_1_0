@@ -131,6 +131,8 @@ class RedisCache(CacheBackend):
                 self._url,
                 encoding="utf-8",
                 decode_responses=True,
+                socket_timeout=5.0,  # Timeout for individual operations
+                socket_connect_timeout=5.0,  # Timeout for connection establishment
             )
             # Test connection
             await self._redis.ping()

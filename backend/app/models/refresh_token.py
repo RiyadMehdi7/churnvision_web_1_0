@@ -27,8 +27,8 @@ class RefreshToken(Base):
     # SHA256 hash of the refresh token (never store raw token)
     token_hash = Column(String(64), unique=True, nullable=False, index=True)
 
-    # User association
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # User association (references legacy_users.id which is Integer)
+    user_id = Column(Integer, ForeignKey("legacy_users.id", ondelete="CASCADE"), nullable=False)
 
     # Lifecycle timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -39,7 +39,7 @@ class RefreshToken(Base):
     device_info = Column(String(255), nullable=True)
     ip_address = Column(String(45), nullable=True)  # IPv6 max length
 
-    # Relationship
+    # Relationship to User model (legacy_users table)
     user = relationship("User", backref="refresh_tokens")
 
     # Composite index for efficient cleanup queries

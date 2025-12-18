@@ -51,19 +51,9 @@ def upgrade() -> None:
         if_not_exists=True
     )
 
-    # Additional index for batch reasoning queries
-    # Optimizes queries that filter by multiple hr_codes at once
-    op.create_index(
-        'idx_churn_reasoning_hrcode_created',
-        'churn_reasoning',
-        ['hr_code', 'created_at'],
-        if_not_exists=True
-    )
-
 
 def downgrade() -> None:
     """Drop hr_code lookup indexes."""
-    op.drop_index('idx_churn_reasoning_hrcode_created', table_name='churn_reasoning', if_exists=True)
     op.drop_index('idx_churn_reasoning_hrcode', table_name='churn_reasoning', if_exists=True)
     op.drop_index('idx_churn_output_dataset_hrcode', table_name='churn_output', if_exists=True)
     op.drop_index('idx_hr_data_dataset_hrcode', table_name='hr_data_input', if_exists=True)

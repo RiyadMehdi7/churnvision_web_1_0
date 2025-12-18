@@ -45,9 +45,9 @@ async def get_db_session():
 
 
 async def get_current_user(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     token: Optional[str] = Depends(oauth2_scheme),
-    request: Optional[Request] = None
 ) -> User:
     """
     Get the current authenticated user from JWT token.
@@ -70,7 +70,7 @@ async def get_current_user(
     )
 
     # If no Authorization header was provided, fall back to a secure cookie
-    if not token and request is not None:
+    if not token:
         token = request.cookies.get("access_token") or request.cookies.get("churnvision_access_token")
         # Support "Bearer <token>" value stored in cookie if present
         if token and token.lower().startswith("bearer "):

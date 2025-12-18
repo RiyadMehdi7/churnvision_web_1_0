@@ -76,9 +76,48 @@ export function AdminUsers() {
     return error?.message || 'An error occurred';
   };
 
-  // Mutations
+  // Helper type for optimistic user state
+  type OptimisticUser = UserAdminResponse & { _optimistic?: boolean };
+
+  // Query key helper
+  const getUsersQueryKey = () => ['admin-users', page, search, roleFilter, statusFilter];
+
+  // Mutations with optimistic updates for instant UI feedback
   const createUserMutation = useMutation({
-    mutationFn: adminService.createUser.bind(adminService),
+    mutationFn: (data: typeof formData) => adminService.createUser(data),
+    onMutate: async (newUser: typeof formData) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['admin-users'] });
+
+      // Snapshot the previous value
+      const previousData = queryClient.getQueryData(getUsersQueryKey());
+
+      // Optimistically add the new user (with pending state)
+      const optimisticUser: OptimisticUser = {
+        user_id: `temp-${Date.now()}`,
+        username: newUser.username,
+        email: newUser.email || null,
+        full_name: newUser.full_name || null,
+        is_active: true,
+        is_super_admin: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_login_at: null,
+        role: roles?.find(r => r.role_id === newUser.role_id) || null,
+        _optimistic: true,
+      };
+
+      queryClient.setQueryData(getUsersQueryKey(), (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          users: [optimisticUser, ...old.users],
+          total: old.total + 1,
+        };
+      });
+
+      return { previousData };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
@@ -86,7 +125,11 @@ export function AdminUsers() {
       setFormData({ username: '', email: '', full_name: '', password: '', role_id: 'analyst' });
       toast({ title: 'User created successfully' });
     },
-    onError: (error: any) => {
+    onError: (error: any, _variables, context) => {
+      // Rollback on error
+      if (context?.previousData) {
+        queryClient.setQueryData(getUsersQueryKey(), context.previousData);
+      }
       toast({ title: 'Failed to create user', description: getErrorMessage(error), variant: 'destructive' });
     },
   });
@@ -94,25 +137,82 @@ export function AdminUsers() {
   const updateUserMutation = useMutation({
     mutationFn: ({ userId, data }: { userId: string; data: Parameters<typeof adminService.updateUser>[1] }) =>
       adminService.updateUser(userId, data),
+    onMutate: async ({ userId, data }) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['admin-users'] });
+
+      // Snapshot the previous value
+      const previousData = queryClient.getQueryData(getUsersQueryKey());
+
+      // Optimistically update the user
+      queryClient.setQueryData(getUsersQueryKey(), (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          users: old.users.map((user: OptimisticUser) =>
+            user.user_id === userId
+              ? {
+                  ...user,
+                  ...data,
+                  role: data.role_id ? roles?.find(r => r.role_id === data.role_id) || user.role : user.role,
+                  _optimistic: true,
+                }
+              : user
+          ),
+        };
+      });
+
+      return { previousData };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       setIsEditOpen(false);
       setSelectedUser(null);
       toast({ title: 'User updated successfully' });
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _variables, context) => {
+      // Rollback on error
+      if (context?.previousData) {
+        queryClient.setQueryData(getUsersQueryKey(), context.previousData);
+      }
       toast({ title: 'Failed to update user', description: error.message, variant: 'destructive' });
     },
   });
 
   const deleteUserMutation = useMutation({
-    mutationFn: adminService.deleteUser.bind(adminService),
+    mutationFn: (userId: string) => adminService.deleteUser(userId),
+    onMutate: async (userId: string) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['admin-users'] });
+
+      // Snapshot the previous value
+      const previousData = queryClient.getQueryData(getUsersQueryKey());
+
+      // Optimistically mark the user as inactive
+      queryClient.setQueryData(getUsersQueryKey(), (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          users: old.users.map((user: OptimisticUser) =>
+            user.user_id === userId
+              ? { ...user, is_active: false, _optimistic: true }
+              : user
+          ),
+        };
+      });
+
+      return { previousData };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
       toast({ title: 'User deactivated successfully' });
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _variables, context) => {
+      // Rollback on error
+      if (context?.previousData) {
+        queryClient.setQueryData(getUsersQueryKey(), context.previousData);
+      }
       toast({ title: 'Failed to deactivate user', description: error.message, variant: 'destructive' });
     },
   });
@@ -248,8 +348,14 @@ export function AdminUsers() {
                 </td>
               </tr>
             ) : (
-              usersData?.users.map((user) => (
-                <tr key={user.user_id} className="border-b border-border hover:bg-surface-subtle/50">
+              usersData?.users.map((user: OptimisticUser) => (
+                <tr
+                  key={user.user_id}
+                  className={cn(
+                    "border-b border-border hover:bg-surface-subtle/50 transition-opacity duration-200",
+                    user._optimistic && "opacity-60"
+                  )}
+                >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="h-9 w-9 rounded-full bg-surface-muted border border-border flex items-center justify-center">

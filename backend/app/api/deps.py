@@ -29,6 +29,21 @@ async def get_db() -> AsyncGenerator:
         yield session
 
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def get_db_session():
+    """
+    Context manager version of get_db for use in WebSocket handlers.
+
+    Usage:
+        async with get_db_session() as db:
+            # use db session
+    """
+    async with AsyncSessionLocal() as session:
+        yield session
+
+
 async def get_current_user(
     db: AsyncSession = Depends(get_db),
     token: Optional[str] = Depends(oauth2_scheme),

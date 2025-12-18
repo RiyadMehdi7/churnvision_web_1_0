@@ -612,3 +612,183 @@ export const LoadingOverlay = memo(({ isLoading, text = 'Loading...' }: LoadingO
 });
 
 LoadingOverlay.displayName = 'LoadingOverlay';
+
+// Contextual loading messages for different operations
+const CONTEXTUAL_MESSAGES: Record<string, Record<string, string>> = {
+  'file-upload': {
+    'selecting': 'Select a file to upload...',
+    'uploading': 'Uploading your file...',
+    'parsing': 'Parsing file contents...',
+    'validating': 'Validating data structure...',
+    'mapping': 'Auto-mapping columns...',
+    'saving': 'Saving to database...',
+    'complete': 'Upload complete!',
+  },
+  'training': {
+    'preparing': 'Preparing training data...',
+    'feature-engineering': 'Engineering features...',
+    'training': 'Training ML model...',
+    'evaluating': 'Evaluating model performance...',
+    'saving': 'Saving trained model...',
+    'complete': 'Training complete!',
+  },
+  'prediction': {
+    'loading': 'Loading employee data...',
+    'calculating': 'Calculating risk scores...',
+    'analyzing': 'Analyzing patterns...',
+    'generating': 'Generating insights...',
+    'complete': 'Analysis complete!',
+  },
+  'chat': {
+    'connecting': 'Connecting to AI assistant...',
+    'thinking': 'AI is thinking...',
+    'generating': 'Generating response...',
+    'streaming': 'Receiving response...',
+  },
+  'data-fetch': {
+    'loading': 'Loading data...',
+    'processing': 'Processing results...',
+    'filtering': 'Applying filters...',
+    'sorting': 'Sorting results...',
+    'complete': 'Data loaded!',
+  },
+  'export': {
+    'preparing': 'Preparing export...',
+    'generating': 'Generating file...',
+    'downloading': 'Starting download...',
+    'complete': 'Export complete!',
+  },
+};
+
+export type LoadingContext = keyof typeof CONTEXTUAL_MESSAGES;
+export type LoadingStep<T extends LoadingContext> = keyof typeof CONTEXTUAL_MESSAGES[T];
+
+interface ContextualLoadingSpinnerProps {
+  context: LoadingContext;
+  step?: string;
+  progress?: number;
+  showProgress?: boolean;
+  variant?: 'spinner' | 'dots' | 'pulse' | 'bars' | 'gradient';
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
+}
+
+export const ContextualLoadingSpinner = memo(({
+  context,
+  step,
+  progress,
+  showProgress = true,
+  variant = 'pulse',
+  size = 'md',
+  className,
+}: ContextualLoadingSpinnerProps) => {
+  const message = step
+    ? CONTEXTUAL_MESSAGES[context]?.[step] || `${step.charAt(0).toUpperCase() + step.slice(1).replace(/-/g, ' ')}...`
+    : 'Processing...';
+
+  const sizeClasses = {
+    sm: 'gap-2',
+    md: 'gap-3',
+    lg: 'gap-4',
+  };
+
+  const progressBarWidths = {
+    sm: 'w-32',
+    md: 'w-48',
+    lg: 'w-64',
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 5 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -5 }}
+      className={cn(
+        "flex flex-col items-center",
+        sizeClasses[size],
+        className
+      )}
+    >
+      <LoadingSpinner variant={variant} size={size} />
+
+      <motion.span
+        key={message}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="text-sm font-medium text-gray-600 dark:text-gray-400"
+      >
+        {message}
+      </motion.span>
+
+      {showProgress && progress !== undefined && (
+        <div className={cn("h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden", progressBarWidths[size])}>
+          <motion.div
+            className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full"
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+          />
+        </div>
+      )}
+
+      {showProgress && progress !== undefined && (
+        <span className="text-xs text-gray-500 dark:text-gray-500">
+          {Math.round(progress)}%
+        </span>
+      )}
+    </motion.div>
+  );
+});
+
+ContextualLoadingSpinner.displayName = 'ContextualLoadingSpinner';
+
+// Contextual overlay loading - for blocking operations
+interface ContextualLoadingOverlayProps {
+  isLoading: boolean;
+  context: LoadingContext;
+  step?: string;
+  progress?: number;
+}
+
+export const ContextualLoadingOverlay = memo(({
+  isLoading,
+  context,
+  step,
+  progress,
+}: ContextualLoadingOverlayProps) => {
+  return (
+    <AnimatePresence mode="wait">
+      {isLoading && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="fixed inset-0 bg-white/90 dark:bg-gray-950/90 backdrop-blur-sm z-50 flex items-center justify-center"
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            className="bg-white dark:bg-gray-900 rounded-2xl p-8 shadow-xl border border-gray-200 dark:border-gray-800"
+          >
+            <ContextualLoadingSpinner
+              context={context}
+              step={step}
+              progress={progress}
+              size="lg"
+              variant="gradient"
+            />
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+});
+
+ContextualLoadingOverlay.displayName = 'ContextualLoadingOverlay';
+
+// Helper to get context message programmatically
+export function getContextualMessage(context: LoadingContext, step: string): string {
+  return CONTEXTUAL_MESSAGES[context]?.[step] || `${step.charAt(0).toUpperCase() + step.slice(1).replace(/-/g, ' ')}...`;
+}

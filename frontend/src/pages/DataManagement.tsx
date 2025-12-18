@@ -26,6 +26,8 @@ import { InterviewUploadWindow } from '../components/InterviewUploadWindow';
 import { EngagementUploadWindow } from '../components/EngagementUploadWindow';
 import { ModelPerformanceGauge } from '../components/ModelPerformanceGauge';
 import { DatabaseSyncFlow } from '../components/DatabaseSyncFlow';
+import { StepIndicator, UPLOAD_WORKFLOW_STEPS, type Step } from '../components/StepIndicator';
+import { ContextualLoadingSpinner } from '../components/LoadingSpinner';
 import { authService } from '@/services/authService';
 
 // Define accepted file types for CSV and Excel
@@ -3196,106 +3198,92 @@ export function DataManagement(): React.ReactElement {
                                                 <motion.div
                                                     initial={{ opacity: 0, y: 10 }}
                                                     animate={{ opacity: 1, y: 0 }}
-                                                    className="mt-6 border border-gray-200 dark:border-gray-700/50 rounded-lg p-4 bg-white dark:bg-gray-800/80 shadow"
+                                                    className="mt-6 border border-gray-200 dark:border-gray-700/50 rounded-lg p-5 bg-white dark:bg-gray-800/80 shadow"
                                                 >
-                                                    <div className="space-y-4">
+                                                    <div className="space-y-5">
                                                         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                                                             Processing Status
                                                         </h3>
 
-                                                        <div className="relative">
-                                                            <div className="absolute left-5 top-0 h-full w-0.5 bg-gray-200 dark:bg-gray-700"></div>
+                                                        {/* Step Indicator */}
+                                                        <StepIndicator
+                                                            steps={[
+                                                                { id: 'uploading', label: 'Upload', description: 'Uploading file' },
+                                                                { id: 'processing', label: 'Validate', description: 'Processing data' },
+                                                                { id: 'saving', label: 'Save', description: 'To database' },
+                                                                { id: 'training', label: 'Train', description: 'ML model' },
+                                                            ]}
+                                                            currentStep={processingStep === 'complete' ? 'training' : processingStep}
+                                                            completedSteps={
+                                                                processingStep === 'uploading' ? [] :
+                                                                processingStep === 'processing' ? ['uploading'] :
+                                                                processingStep === 'saving' ? ['uploading', 'processing'] :
+                                                                processingStep === 'training' ? ['uploading', 'processing', 'saving'] :
+                                                                ['uploading', 'processing', 'saving', 'training']
+                                                            }
+                                                            size="sm"
+                                                        />
 
-                                                            <div className="relative flex items-center mb-6">
-                                                                <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-blue-100 dark:bg-blue-900/40`}>
-                                                                    <Loader2 className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />
-                                                                </div>
-                                                                <div className="ml-4 flex-grow">
-                                                                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                                                        Uploading File
-                                                                    </h4>
-                                                                    <div className="mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-                                                                        <div
-                                                                            className="bg-blue-600 dark:bg-blue-500 h-2.5 rounded-full transition-all duration-300"
-                                                                            style={{ width: `${uploadProgress}%` }}
-                                                                        ></div>
+                                                        {/* Progress details for current step */}
+                                                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700/50">
+                                                            {processingStep === 'uploading' && (
+                                                                <div className="space-y-2">
+                                                                    <div className="flex items-center justify-between text-sm">
+                                                                        <span className="text-gray-600 dark:text-gray-400">Uploading file...</span>
+                                                                        <span className="font-medium text-emerald-600 dark:text-emerald-400">{uploadProgress}%</span>
+                                                                    </div>
+                                                                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                                                        <motion.div
+                                                                            className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2 rounded-full"
+                                                                            initial={{ width: 0 }}
+                                                                            animate={{ width: `${uploadProgress}%` }}
+                                                                            transition={{ duration: 0.3 }}
+                                                                        />
                                                                     </div>
                                                                 </div>
-                                                            </div>
-
-                                                            <div className="relative flex items-center mb-6">
-                                                                <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${processingStep === 'processing'
-                                                                    ? 'bg-blue-100 dark:bg-blue-900/40'
-                                                                    : 'bg-gray-100 dark:bg-gray-700/60'
-                                                                    }`}>
-                                                                    {processingStep === 'processing' ? (
-                                                                        <Loader2 className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />
-                                                                    ) : (
-                                                                        <div className="w-5 h-5 text-gray-400 dark:text-gray-500"></div>
-                                                                    )}
+                                                            )}
+                                                            {processingStep === 'processing' && (
+                                                                <ContextualLoadingSpinner
+                                                                    context="file-upload"
+                                                                    step="validating"
+                                                                    showProgress={false}
+                                                                    size="sm"
+                                                                />
+                                                            )}
+                                                            {processingStep === 'saving' && (
+                                                                <ContextualLoadingSpinner
+                                                                    context="file-upload"
+                                                                    step="saving"
+                                                                    showProgress={false}
+                                                                    size="sm"
+                                                                />
+                                                            )}
+                                                            {processingStep === 'training' && trainingStatus?.status !== 'idle' && (
+                                                                <div className="space-y-2">
+                                                                    <div className="flex items-center justify-between text-sm">
+                                                                        <span className="text-gray-600 dark:text-gray-400">
+                                                                            {trainingStatus?.message || 'Training ML model...'}
+                                                                        </span>
+                                                                        <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                                                                            {trainingStatus?.progress || 0}%
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                                                        <motion.div
+                                                                            className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2 rounded-full"
+                                                                            initial={{ width: 0 }}
+                                                                            animate={{ width: `${trainingStatus?.progress || 0}%` }}
+                                                                            transition={{ duration: 0.3 }}
+                                                                        />
+                                                                    </div>
                                                                 </div>
-                                                                <div className="ml-4">
-                                                                    <h4 className="text-sm font-medium text-gray-400 dark:text-gray-500">
-                                                                        Validating & Processing Data
-                                                                    </h4>
+                                                            )}
+                                                            {processingStep === 'complete' && (
+                                                                <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                                                                    <Check className="w-5 h-5" />
+                                                                    <span className="font-medium">Processing complete!</span>
                                                                 </div>
-                                                            </div>
-
-                                                            <div className="relative flex items-center mb-6">
-                                                                <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${processingStep === 'saving'
-                                                                    ? 'bg-blue-100 dark:bg-blue-900/40'
-                                                                    : 'bg-gray-100 dark:bg-gray-700/60'
-                                                                    }`}>
-                                                                    {processingStep === 'saving' ? (
-                                                                        <Loader2 className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />
-                                                                    ) : (
-                                                                        <div className="w-5 h-5 text-gray-400 dark:text-gray-500"></div>
-                                                                    )}
-                                                                </div>
-                                                                <div className="ml-4">
-                                                                    <h4 className={`text-sm font-medium text-gray-400 dark:text-gray-500`}>
-                                                                        Saving to Database
-                                                                    </h4>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="relative flex items-center">
-                                                                <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${processingStep === 'training'
-                                                                    ? 'bg-blue-100 dark:bg-blue-900/40'
-                                                                    : processingStep === 'complete'
-                                                                        ? 'bg-green-100 dark:bg-green-900/40'
-                                                                        : 'bg-gray-100 dark:bg-gray-700/60'
-                                                                    }`}>
-                                                                    {processingStep === 'training' ? (
-                                                                        <Loader2 className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />
-                                                                    ) : processingStep === 'complete' ? (
-                                                                        <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
-                                                                    ) : (
-                                                                        <div className="w-5 h-5 text-gray-400 dark:text-gray-500"></div>
-                                                                    )}
-                                                                </div>
-                                                                <div className="ml-4 flex-grow">
-                                                                    <h4 className={`text-sm font-medium ${(processingStep === 'training' || processingStep === 'complete')
-                                                                        ? 'text-gray-900 dark:text-gray-100'
-                                                                        : 'text-gray-400 dark:text-gray-500'
-                                                                        }`}>
-                                                                        Training ML Model
-                                                                    </h4>
-                                                                    {processingStep === 'training' && trainingStatus?.status !== 'idle' && (
-                                                                        <div className="mt-2">
-                                                                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-1">
-                                                                                <div
-                                                                                    className="bg-blue-600 dark:bg-blue-500 h-2.5 rounded-full transition-all duration-300"
-                                                                                    style={{ width: `${trainingStatus?.progress || 0}%` }}
-                                                                                ></div>
-                                                                            </div>
-                                                                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                                                {trainingStatus?.message || 'Starting training...'}
-                                                                            </p>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </motion.div>

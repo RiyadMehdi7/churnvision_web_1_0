@@ -5,7 +5,7 @@ Provides context-aware AI responses for ChurnVision-specific queries.
 Returns structured JSON data that matches frontend renderer expectations.
 """
 
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple, AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc, case
 from sqlalchemy.orm import selectinload
@@ -2204,3 +2204,42 @@ Provide a helpful response using the company and workforce data available."""
         )
         self.db.add(chat_message)
         await self.db.commit()
+
+    async def stream_chat(
+        self,
+        message: str,
+        session_id: str,
+        employee_id: Optional[str] = None,
+        dataset_id: Optional[str] = None,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Stream chat response token by token for WebSocket delivery.
+
+        This method wraps the standard chat method and simulates streaming
+        by yielding words from the full response. For true token-level streaming,
+        the underlying LLM provider would need to support streaming APIs.
+        """
+        import re
+
+        # Get the full response using the standard chat method
+        result = await self.chat(
+            message=message,
+            session_id=session_id,
+            employee_id=employee_id,
+            dataset_id=dataset_id,
+            action_type=None  # Always use LLM mode for streaming
+        )
+
+        response_text = result.get("response", "")
+
+        if not response_text:
+            yield "I'm sorry, I couldn't generate a response."
+            return
+
+        # Split by words and markdown elements to provide natural streaming
+        # This regex splits on spaces while preserving markdown formatting
+        tokens = re.split(r'(\s+|(?<=[.!?])\s+)', response_text)
+
+        for token in tokens:
+            if token:  # Skip empty tokens
+                yield token

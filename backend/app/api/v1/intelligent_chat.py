@@ -1,16 +1,155 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
+import json
+import asyncio
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user, get_db, get_db_session
 from app.core.security_utils import sanitize_error_message, get_or_create_session_id
+from app.core.config import settings
 from app.models.auth import UserAccount
+from jose import jwt, JWTError
 from app.services.intelligent_chatbot import IntelligentChatbotService, PatternType
 from app.models.chatbot import ChatMessage
 from sqlalchemy import select, desc
 
 router = APIRouter()
+
+
+# WebSocket connection manager for chat streaming
+class ConnectionManager:
+    """Manages WebSocket connections for chat streaming."""
+
+    def __init__(self):
+        self.active_connections: Dict[str, WebSocket] = {}
+
+    async def connect(self, websocket: WebSocket, user_id: str):
+        await websocket.accept()
+        self.active_connections[user_id] = websocket
+
+    def disconnect(self, user_id: str):
+        if user_id in self.active_connections:
+            del self.active_connections[user_id]
+
+    async def send_token(self, websocket: WebSocket, token: str):
+        """Send a single token to the client."""
+        await websocket.send_json({"type": "token", "content": token})
+
+    async def send_thinking(self, websocket: WebSocket, message: str = "Thinking..."):
+        """Send thinking indicator to the client."""
+        await websocket.send_json({"type": "thinking", "content": message})
+
+    async def send_done(self, websocket: WebSocket):
+        """Signal that streaming is complete."""
+        await websocket.send_json({"type": "done"})
+
+    async def send_error(self, websocket: WebSocket, error: str):
+        """Send error message to the client."""
+        await websocket.send_json({"type": "error", "error": error})
+
+    async def send_context(self, websocket: WebSocket, context: Dict[str, Any]):
+        """Send context data to the client."""
+        await websocket.send_json({"type": "context", "context": context})
+
+
+ws_manager = ConnectionManager()
+
+
+@router.websocket("/ws")
+async def websocket_chat(
+    websocket: WebSocket,
+    token: str = Query(..., description="JWT access token for authentication"),
+):
+    """
+    WebSocket endpoint for streaming LLM chat responses.
+
+    Connect with token as query parameter: /ws?token=<jwt_token>
+
+    Send messages as JSON:
+    {
+        "message": "your question here",
+        "session_id": "unique-session-id",
+        "employee_id": "optional-hr-code"
+    }
+
+    Receive streaming responses as JSON:
+    - {"type": "thinking", "content": "Thinking..."} - AI is processing
+    - {"type": "token", "content": "word"} - Streamed token
+    - {"type": "done"} - Response complete
+    - {"type": "error", "error": "message"} - Error occurred
+    """
+    # Authenticate user from token
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
+        user_id = payload.get("sub")
+        if not user_id:
+            await websocket.close(code=4001, reason="Invalid token payload")
+            return
+    except JWTError:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+    except Exception:
+        await websocket.close(code=4001, reason="Authentication failed")
+        return
+
+    await ws_manager.connect(websocket, user_id)
+
+    try:
+        async with get_db_session() as db:
+            service = IntelligentChatbotService(db)
+
+            while True:
+                # Receive message from client
+                try:
+                    data = await websocket.receive_json()
+                except Exception:
+                    # Connection closed or invalid JSON
+                    break
+
+                message = data.get("message", "")
+                session_id = data.get("session_id", "default")
+                employee_id = data.get("employee_id")
+                dataset_id = data.get("dataset_id")
+
+                if not message:
+                    await ws_manager.send_error(websocket, "Message is required")
+                    continue
+
+                # Validate session ID
+                validated_session_id = get_or_create_session_id(session_id)
+
+                try:
+                    # Send thinking indicator
+                    await ws_manager.send_thinking(websocket)
+
+                    # Stream the response
+                    async for chunk in service.stream_chat(
+                        message=message,
+                        session_id=validated_session_id,
+                        employee_id=employee_id,
+                        dataset_id=dataset_id,
+                    ):
+                        if chunk:
+                            await ws_manager.send_token(websocket, chunk)
+                            # Small delay to prevent overwhelming the client
+                            await asyncio.sleep(0.01)
+
+                    await ws_manager.send_done(websocket)
+
+                except Exception as e:
+                    error_msg = sanitize_error_message(e, "chat streaming")
+                    await ws_manager.send_error(websocket, error_msg)
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        # Log unexpected errors
+        print(f"WebSocket error: {e}")
+    finally:
+        ws_manager.disconnect(user_id)
 
 
 class IntelligentChatRequest(BaseModel):

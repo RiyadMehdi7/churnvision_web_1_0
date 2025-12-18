@@ -44,6 +44,7 @@ import { AgentExecutionPanel, AgentContextPanel, ActionProposalCard, EmailCompos
 import { useAgentExecution } from '../hooks/useAgentExecution';
 import { useActionProposals } from '../hooks/useActionProposals';
 import { useAgentMemory } from '../hooks/useAgentMemory';
+import { useWebSocketChat } from '../hooks/useWebSocketChat';
 import type { AgentContext, ActionProposal } from '@/types/agent';
 
 // Import analysis data types
@@ -933,6 +934,17 @@ export function AIAssistant(): React.ReactElement {
     sessionId: uuidv4(),
     pendingResponseKind: undefined,
   }));
+
+  // WebSocket streaming for real-time chat responses
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const wsChat = useWebSocketChat({
+    autoConnect: false,
+    reconnectAttempts: 2,
+    onError: (error) => {
+      console.warn('WebSocket chat error, falling back to HTTP:', error);
+    },
+  });
+
   const location = useLocation();
   useEffect(() => {
     const incomingPrompt = (location.state as any)?.prompt;
@@ -952,6 +964,54 @@ export function AIAssistant(): React.ReactElement {
 
   // --- Agentic AI State ---
   const { execution, isExecuting, startExecution, completeExecution, resetExecution } = useAgentExecution();
+
+  // --- WebSocket Streaming Effects (must be after hook declarations) ---
+  // Update streaming content in messages
+  useEffect(() => {
+    if (streamingMessageId && wsChat.streamingContent) {
+      setChatState(prev => ({
+        ...prev,
+        messages: prev.messages.map(msg =>
+          msg.id === streamingMessageId
+            ? { ...msg, message: wsChat.streamingContent }
+            : msg
+        ),
+      }));
+    }
+  }, [streamingMessageId, wsChat.streamingContent]);
+
+  // Handle streaming completion
+  useEffect(() => {
+    if (!wsChat.isStreaming && wsChat.fullResponse && streamingMessageId) {
+      setChatState(prev => ({
+        ...prev,
+        isLoading: false,
+        pendingResponseKind: undefined,
+        messages: prev.messages.map(msg =>
+          msg.id === streamingMessageId
+            ? { ...msg, message: wsChat.fullResponse, isOptimistic: false }
+            : msg
+        ),
+      }));
+      setStreamingMessageId(null);
+      completeExecution();
+    }
+  }, [wsChat.isStreaming, wsChat.fullResponse, streamingMessageId, completeExecution]);
+
+  // Auto-connect WebSocket for streaming chat on mount
+  useEffect(() => {
+    // Connect WebSocket after a short delay to allow page to load
+    const connectTimeout = setTimeout(() => {
+      if (!wsChat.isConnected && wsChat.status !== 'connecting') {
+        wsChat.connect();
+      }
+    }, 1000);
+
+    return () => {
+      clearTimeout(connectTimeout);
+      wsChat.disconnect();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Agent Memory (with localStorage persistence & insights extraction) ---
   const {
@@ -1106,6 +1166,49 @@ export function AIAssistant(): React.ReactElement {
     startExecution(userMessage, patternType, agentContextData);
 
     try {
+      // Check if we should use WebSocket streaming for chat mode
+      // Use WebSocket only for chat mode (no actionType) to get streaming responses
+      // Quick actions (with actionType) still use HTTP because they need structured data
+      const useStreaming = !actionType && wsChat.isConnected;
+
+      if (useStreaming) {
+        // WebSocket streaming mode for chat
+        const botMessageId = `bot-${uuidv4()}`;
+
+        // Add placeholder message for streaming
+        const streamingAssistantMessage: ExtendedChatMessage = {
+          id: botMessageId,
+          role: 'assistant',
+          message: '', // Will be filled by streaming
+          timestamp: new Date(),
+          sessionId,
+          responseKind: pendingKind,
+          isOptimistic: true,
+        };
+
+        setChatState(prev => {
+          const updatedMessages = prev.messages.map(msg =>
+            msg.id === userMessageId ? { ...msg, isOptimistic: false } : msg
+          );
+          return {
+            ...prev,
+            messages: [...updatedMessages, streamingAssistantMessage],
+          };
+        });
+
+        // Track streaming message ID and start WebSocket streaming
+        setStreamingMessageId(botMessageId);
+        wsChat.sendMessage(
+          userMessage,
+          sessionId,
+          hasEmployeeContext ? selectedEmployees[0]?.hr_code : undefined
+        );
+
+        // Note: The useEffect hooks above will handle streaming updates and completion
+        return;
+      }
+
+      // HTTP fallback mode (also used for quick actions with actionType)
       // Two modes:
       // 1. Quick Action (actionType provided): Returns structured data cards
       // 2. Chat (no actionType): Uses LLM with full employee context for natural responses

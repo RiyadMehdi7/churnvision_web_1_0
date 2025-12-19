@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
 from app.services.risk_threshold_service import RiskThresholdService
+from app.services.app_settings_service import AppSettingsService
 
 router = APIRouter()
 
@@ -39,20 +40,17 @@ class RiskThresholdsRequest(BaseModel):
     highRisk: float = Field(..., ge=0.0, le=1.0, description="High risk threshold (0-1)")
     mediumRisk: float = Field(..., ge=0.0, le=1.0, description="Medium risk threshold (0-1)")
 
-# In-memory store for manual overrides (in production, use database)
-SETTINGS_STORE = {
-    'strict_offline_mode': False,
-    'risk_thresholds_override': None,  # None means use dynamic calculation
-}
-
 @router.get("/offline-mode", response_model=OfflineModeResponse)
 async def get_offline_mode(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     Get the current strict offline mode setting.
     """
-    enabled = SETTINGS_STORE.get('strict_offline_mode', False)
+    service = AppSettingsService(db)
+    app_settings = await service.get_settings()
+    enabled = app_settings.strict_offline_mode
 
     return OfflineModeResponse(
         enabled=enabled,
@@ -62,13 +60,15 @@ async def get_offline_mode(
 @router.post("/offline-mode", response_model=OfflineModeResponse)
 async def set_offline_mode(
     request: OfflineModeRequest,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     Set the strict offline mode setting.
     When enabled, the application will not make any external network requests.
     """
-    SETTINGS_STORE['strict_offline_mode'] = request.enabled
+    service = AppSettingsService(db)
+    await service.set_offline_mode(request.enabled)
 
     return OfflineModeResponse(
         enabled=request.enabled,
@@ -77,30 +77,47 @@ async def set_offline_mode(
 
 @router.get("/all")
 async def get_all_settings(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     Get all application settings.
     """
+    service = AppSettingsService(db)
+    app_settings = await service.get_settings()
+    override = None
+    if app_settings.risk_thresholds_override_high is not None and app_settings.risk_thresholds_override_medium is not None:
+        override = {
+            'highRisk': app_settings.risk_thresholds_override_high,
+            'mediumRisk': app_settings.risk_thresholds_override_medium,
+        }
     return {
-        'settings': SETTINGS_STORE,
+        'settings': {
+            'strict_offline_mode': app_settings.strict_offline_mode,
+            'risk_thresholds_override': override,
+        },
         'user_id': current_user.id
     }
 
 @router.post("/reset")
 async def reset_settings(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     Reset all settings to defaults.
     """
-    SETTINGS_STORE['strict_offline_mode'] = False
-    SETTINGS_STORE['risk_thresholds_override'] = None  # Return to dynamic thresholds
+    service = AppSettingsService(db)
+    await service.set_offline_mode(False)
+    await service.clear_risk_threshold_override()
 
     return {
         'success': True,
         'message': 'Settings reset to defaults (risk thresholds will be calculated dynamically)',
-        'settings': SETTINGS_STORE
+        'settings': {
+            'strict_offline_mode': False,
+            'risk_thresholds_override': None
+        }
     }
 
 
@@ -123,11 +140,12 @@ async def get_risk_thresholds(
     If insufficient data (<10 employees), fallback values are used.
     """
     # Check for manual override first
-    override = SETTINGS_STORE.get('risk_thresholds_override')
-    if override:
+    settings_service = AppSettingsService(db)
+    app_settings = await settings_service.get_settings()
+    if app_settings.risk_thresholds_override_high is not None and app_settings.risk_thresholds_override_medium is not None:
         return RiskThresholdsResponse(
-            highRisk=override['highRisk'],
-            mediumRisk=override['mediumRisk'],
+            highRisk=app_settings.risk_thresholds_override_high,
+            mediumRisk=app_settings.risk_thresholds_override_medium,
             source='manual',
             sampleSize=None
         )
@@ -158,6 +176,19 @@ async def get_risk_thresholds_detailed(
     - Statistical summary of churn probabilities (mean, median, std, percentiles)
     - Source of thresholds (dynamic vs fallback)
     """
+    settings_service = AppSettingsService(db)
+    app_settings = await settings_service.get_settings()
+    if app_settings.risk_thresholds_override_high is not None and app_settings.risk_thresholds_override_medium is not None:
+        return RiskThresholdsDetailedResponse(
+            highRisk=app_settings.risk_thresholds_override_high,
+            mediumRisk=app_settings.risk_thresholds_override_medium,
+            source='manual',
+            reason='Manual override',
+            sampleSize=0,
+            distribution=None,
+            statistics=None
+        )
+
     service = RiskThresholdService(db)
     result = await service.calculate_dynamic_thresholds(dataset_id)
 
@@ -175,6 +206,7 @@ async def get_risk_thresholds_detailed(
 @router.put("/risk-thresholds", response_model=RiskThresholdsResponse)
 async def update_risk_thresholds(
     request: RiskThresholdsRequest,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -193,10 +225,8 @@ async def update_risk_thresholds(
             detail="Medium risk threshold must be less than high risk threshold"
         )
 
-    SETTINGS_STORE['risk_thresholds_override'] = {
-        'highRisk': request.highRisk,
-        'mediumRisk': request.mediumRisk
-    }
+    service = AppSettingsService(db)
+    await service.set_risk_threshold_override(request.highRisk, request.mediumRisk)
 
     return RiskThresholdsResponse(
         highRisk=request.highRisk,
@@ -217,7 +247,8 @@ async def reset_risk_thresholds(
     After reset, thresholds will be calculated dynamically based on
     the distribution of active employees' churn probabilities.
     """
-    SETTINGS_STORE['risk_thresholds_override'] = None
+    settings_service = AppSettingsService(db)
+    await settings_service.clear_risk_threshold_override()
 
     # Return the dynamic thresholds
     service = RiskThresholdService(db)

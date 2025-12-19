@@ -157,6 +157,9 @@ class Settings(BaseSettings):
     CHATBOT_SYSTEM_PROMPT: str = "You are a helpful AI assistant for ChurnVision Enterprise, an employee churn prediction platform. You help users understand their workforce data, analyze employee turnover patterns, and make data-driven HR decisions."
     LLM_REQUEST_TIMEOUT: int = 300  # seconds - 5min for dev (Gemma 3 slow in Docker, fast on prod with GPU)
 
+    # Action execution feature flag (email/meeting/task integrations)
+    ACTION_EXECUTION_ENABLED: bool = False
+
     # RAG (Retrieval-Augmented Generation) Settings
     RAG_ENABLED: bool = True
     RAG_STORAGE_PATH: str = Field(

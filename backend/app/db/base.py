@@ -36,6 +36,9 @@ from app.models.monitoring import (  # noqa
     DataDriftMonitoring, ModelAlert
 )
 
+# Application settings
+from app.models.app_settings import AppSettings  # noqa
+
 # RAG models
 from app.models.rag import RAGDocument, RAGChunk  # noqa
 

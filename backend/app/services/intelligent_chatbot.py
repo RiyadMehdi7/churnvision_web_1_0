@@ -13,6 +13,7 @@ import re
 import json
 
 from app.core.config import settings
+from app.services.llm_config import resolve_llm_provider_and_model
 from app.models.chatbot import ChatMessage
 from app.models.hr_data import HRDataInput, InterviewData
 from app.models.churn import ChurnOutput, ChurnReasoning, ELTVOutput, BehavioralStage
@@ -2065,22 +2066,8 @@ Provide a helpful response using the company and workforce data available."""
             {"role": "user", "content": user_message_with_context}
         ]
 
-        # Determine model based on DEFAULT_LLM_PROVIDER
-        provider = settings.DEFAULT_LLM_PROVIDER.lower()
-        if provider == "openai" and settings.OPENAI_API_KEY:
-            model = settings.OPENAI_MODEL
-        elif provider == "azure" and settings.AZURE_OPENAI_API_KEY:
-            model = f"azure-{settings.AZURE_OPENAI_MODEL}"
-        elif provider == "qwen" and settings.QWEN_API_KEY:
-            model = settings.QWEN_MODEL
-        elif provider == "mistral" and settings.MISTRAL_API_KEY:
-            model = settings.MISTRAL_MODEL
-        elif provider == "ibm" and settings.IBM_API_KEY:
-            model = settings.IBM_MODEL
-        else:
-            model = settings.OLLAMA_MODEL
-
-        print(f"[GENERAL_RESPONSE] Provider: {provider}, Model: {model}", flush=True)
+        provider_id, runtime_provider, model = await resolve_llm_provider_and_model(self.db)
+        print(f"[GENERAL_RESPONSE] Provider: {provider_id} (runtime: {runtime_provider}), Model: {model}", flush=True)
         print(f"[GENERAL_RESPONSE] Context size: {len(user_message_with_context)} chars", flush=True)
         print(f"[GENERAL_RESPONSE] Has RAG: {bool(rag_formatted)}, Has ELTV: {bool(eltv_data)}, Has Treatments: {bool(treatments_context)}", flush=True)
 

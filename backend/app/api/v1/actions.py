@@ -14,6 +14,7 @@ from datetime import datetime
 from app.api.deps import get_current_user, get_db
 from app.models.auth import UserAccount
 from app.services.action_generation_service import ActionGenerationService
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -168,6 +169,12 @@ async def execute_action(
     - Calendar API (Google Calendar, Outlook, etc.)
     - Task management system (Jira, Asana, etc.)
     """
+    if not settings.ACTION_EXECUTION_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Action execution is disabled. Configure integrations and set ACTION_EXECUTION_ENABLED=true."
+        )
+
     # Mock implementation - in production, dispatch to appropriate service
     action_type = request.action_type
 

@@ -442,7 +442,8 @@ async def refine_content(
     - "translate to German"
     - "make it friendlier"
     """
-    from app.services.chatbot_service import ChatbotService
+from app.services.chatbot_service import ChatbotService
+from app.services.llm_config import resolve_llm_provider_and_model
     from app.core.config import settings
     import json
     import re
@@ -484,23 +485,8 @@ Respond in this exact JSON format:
         {"role": "user", "content": user_prompt}
     ]
 
-    # Determine model based on DEFAULT_LLM_PROVIDER
-    provider = settings.DEFAULT_LLM_PROVIDER.lower()
-    if provider == "openai" and settings.OPENAI_API_KEY:
-        model = settings.OPENAI_MODEL
-    elif provider == "azure" and settings.AZURE_OPENAI_API_KEY:
-        model = f"azure-{settings.AZURE_OPENAI_MODEL}"
-    elif provider == "qwen" and settings.QWEN_API_KEY:
-        model = settings.QWEN_MODEL
-    elif provider == "mistral" and settings.MISTRAL_API_KEY:
-        model = settings.MISTRAL_MODEL
-    elif provider == "ibm" and settings.IBM_API_KEY:
-        model = settings.IBM_MODEL
-    else:
-        # Default to local Ollama
-        model = settings.OLLAMA_MODEL
-
-    logger.info(f"Refine content using provider={provider}, model={model}")
+    provider_id, runtime_provider, model = await resolve_llm_provider_and_model(db)
+    logger.info(f"Refine content using provider={provider_id}, runtime={runtime_provider}, model={model}")
 
     try:
         response, metadata = await chatbot_service._get_llm_response(

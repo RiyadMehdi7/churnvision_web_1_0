@@ -9,7 +9,7 @@ from sqlalchemy import select, or_
 
 from app.db.session import AsyncSessionLocal
 from app.core.config import settings
-from app.core.token_blacklist import is_token_blacklisted
+from app.core.token_blacklist import is_token_blacklisted_async
 from app.core.cache import get_cache, CacheTTL
 from app.models.user import User
 from app.models.auth import UserAccount, UserRole, RolePermission, Permission
@@ -82,7 +82,7 @@ async def get_current_user(
         raise credentials_exception
 
     # Check if token has been blacklisted (e.g., after logout)
-    if is_token_blacklisted(token):
+    if await is_token_blacklisted_async(token):
         raise credentials_exception
 
     try:

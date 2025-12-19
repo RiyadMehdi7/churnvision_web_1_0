@@ -55,6 +55,30 @@ services:
         max-size: "50m"
         max-file: "5"
 
+  # One-shot migration job (run with: docker compose --profile migrate run --rm migrate)
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/migrate.Dockerfile
+    container_name: churnvision-migrate
+    restart: "no"
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - LICENSE_KEY=${LICENSE_KEY}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - LICENSE_SECRET_KEY=${LICENSE_SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://localhost}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - churnvision-network
+    profiles:
+      - migrate
+
   # Frontend (Production Build)
   frontend:
     image: churnvision/frontend:stable

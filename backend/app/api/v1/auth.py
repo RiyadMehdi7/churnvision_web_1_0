@@ -15,7 +15,7 @@ from app.core.security import (
     hash_refresh_token,
     get_refresh_token_expire_time,
 )
-from app.core.token_blacklist import blacklist_token
+from app.core.token_blacklist import blacklist_token_async
 from app.core.login_tracker import get_login_tracker
 from app.models.user import User
 from app.models.auth import Role, UserRole, UserAccount
@@ -384,7 +384,7 @@ async def logout(
     if actual_token:
         # Token expires at ACCESS_TOKEN_EXPIRE_MINUTES from now (worst case)
         expires_at = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-        blacklist_token(actual_token, expires_at)
+        await blacklist_token_async(actual_token, expires_at)
 
     # Revoke all refresh tokens for this user
     await _revoke_all_user_tokens(db, current_user.id)

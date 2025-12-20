@@ -1,20 +1,13 @@
 from datetime import datetime, timedelta
-import hashlib
-import platform
-import uuid
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
 from app.core.license import LicenseValidator
+from app.core.installation import get_installation_id as load_installation_id
 
 router = APIRouter()
-
-STATE_DIR = Path(__file__).resolve().parents[3] / ".churnvision"
-INSTALLATION_ID_PATH = STATE_DIR / "installation.id"
-
 
 class LicenseActivationRequest(BaseModel):
     license_key: str
@@ -37,24 +30,6 @@ class LicenseStatusResponse(BaseModel):
 
 class InstallationIdResponse(BaseModel):
     installation_id: str
-
-
-def _load_or_create_installation_id() -> str:
-    """Persist a deterministic installation id for this deployment."""
-    try:
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        if INSTALLATION_ID_PATH.exists():
-            existing = INSTALLATION_ID_PATH.read_text().strip()
-            if existing:
-                return existing
-
-        seed = f"{uuid.getnode()}-{platform.node()}"
-        install_id = hashlib.sha256(seed.encode()).hexdigest()[:32]
-        INSTALLATION_ID_PATH.write_text(install_id)
-        return install_id
-    except Exception:
-        # Fall back to a random id if persistence fails
-        return str(uuid.uuid4())
 
 
 def _status_from_license_info(license_info) -> LicenseStatusResponse:
@@ -87,7 +62,7 @@ async def get_installation_id():
     """
     Retrieve or persist a stable installation identifier used for licensing.
     """
-    return InstallationIdResponse(installation_id=_load_or_create_installation_id())
+    return InstallationIdResponse(installation_id=load_installation_id())
 
 
 @router.post("/activate", response_model=LicenseActivationResponse)
@@ -117,7 +92,7 @@ async def activate_license(request: LicenseActivationRequest):
         "tier": license_info.license_type,
         "status": "ACTIVE",
         "expires_at": license_info.expires_at.isoformat(),
-        "installation_id": request.installation_id or _load_or_create_installation_id(),
+        "installation_id": request.installation_id or load_installation_id(),
         "company_name": license_info.company_name,
         "features": license_info.features,
     }

@@ -6,21 +6,24 @@ set -euo pipefail
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKUP_DIR="${BACKUP_DIR:-/var/backups/churnvision}"
-RETENTION_DAYS="${RETENTION_DAYS:-30}"
-ENCRYPTION_KEY_FILE="${ENCRYPTION_KEY_FILE:-/etc/churnvision/backup.key}"
+BACKUP_DIR="${BACKUP_DIR:-${BACKUP_PATH:-/backups}}"
+RETENTION_DAYS="${RETENTION_DAYS:-${BACKUP_RETENTION_DAYS:-30}}"
+ENCRYPTION_KEY_FILE="${ENCRYPTION_KEY_FILE:-${BACKUP_ENCRYPTION_KEY_FILE:-/etc/churnvision/backup.key}}"
+BACKUP_ENCRYPTION_KEY="${BACKUP_ENCRYPTION_KEY:-}"
 
 # Database connection parameters
-DB_HOST="${DB_HOST:-localhost}"
-DB_PORT="${DB_PORT:-5432}"
-DB_NAME="${DB_NAME:-churnvision}"
-DB_USER="${DB_USER:-postgres}"
+DB_HOST="${DB_HOST:-${PGHOST:-db}}"
+DB_PORT="${DB_PORT:-${PGPORT:-5432}}"
+DB_NAME="${DB_NAME:-${PGDATABASE:-churnvision}}"
+DB_USER="${DB_USER:-${PGUSER:-postgres}}"
 
 # Timestamp for backup file
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKUP_FILE="${BACKUP_DIR}/churnvision_backup_${TIMESTAMP}.sql"
 BACKUP_FILE_COMPRESSED="${BACKUP_FILE}.gz"
 BACKUP_FILE_ENCRYPTED="${BACKUP_FILE_COMPRESSED}.enc"
+FINAL_BACKUP_FILE="$BACKUP_FILE_COMPRESSED"
+ENCRYPTION_USED=false
 
 # Colors for output
 RED='\033[0;31m'
@@ -109,34 +112,59 @@ compress_backup() {
 
 # Encrypt the backup
 encrypt_backup() {
-    if [ ! -f "$ENCRYPTION_KEY_FILE" ]; then
-        warn "Encryption key not found at $ENCRYPTION_KEY_FILE"
-        warn "Skipping encryption (NOT RECOMMENDED FOR PRODUCTION)"
+    if [ -f "$ENCRYPTION_KEY_FILE" ]; then
+        log "Encrypting backup with key file..."
+
+        if ! openssl enc -aes-256-cbc \
+            -salt \
+            -pbkdf2 \
+            -in "$BACKUP_FILE_COMPRESSED" \
+            -out "$BACKUP_FILE_ENCRYPTED" \
+            -pass file:"$ENCRYPTION_KEY_FILE"; then
+            error "Encryption failed"
+            return 1
+        fi
+
+        # Remove unencrypted compressed file
+        rm -f "$BACKUP_FILE_COMPRESSED"
+
+        ENCRYPTED_SIZE=$(du -h "$BACKUP_FILE_ENCRYPTED" | cut -f1)
+        log "Encrypted backup: $BACKUP_FILE_ENCRYPTED (${ENCRYPTED_SIZE})"
+        FINAL_BACKUP_FILE="$BACKUP_FILE_ENCRYPTED"
+        ENCRYPTION_USED=true
         return 0
     fi
 
-    log "Encrypting backup..."
+    if [ -n "$BACKUP_ENCRYPTION_KEY" ]; then
+        log "Encrypting backup with BACKUP_ENCRYPTION_KEY env..."
 
-    if ! openssl enc -aes-256-cbc \
-        -salt \
-        -pbkdf2 \
-        -in "$BACKUP_FILE_COMPRESSED" \
-        -out "$BACKUP_FILE_ENCRYPTED" \
-        -pass file:"$ENCRYPTION_KEY_FILE"; then
-        error "Encryption failed"
-        return 1
+        if ! openssl enc -aes-256-cbc \
+            -salt \
+            -pbkdf2 \
+            -in "$BACKUP_FILE_COMPRESSED" \
+            -out "$BACKUP_FILE_ENCRYPTED" \
+            -pass env:BACKUP_ENCRYPTION_KEY; then
+            error "Encryption failed"
+            return 1
+        fi
+
+        # Remove unencrypted compressed file
+        rm -f "$BACKUP_FILE_COMPRESSED"
+
+        ENCRYPTED_SIZE=$(du -h "$BACKUP_FILE_ENCRYPTED" | cut -f1)
+        log "Encrypted backup: $BACKUP_FILE_ENCRYPTED (${ENCRYPTED_SIZE})"
+        FINAL_BACKUP_FILE="$BACKUP_FILE_ENCRYPTED"
+        ENCRYPTION_USED=true
+        return 0
     fi
 
-    # Remove unencrypted compressed file
-    rm -f "$BACKUP_FILE_COMPRESSED"
-
-    ENCRYPTED_SIZE=$(du -h "$BACKUP_FILE_ENCRYPTED" | cut -f1)
-    log "Encrypted backup: $BACKUP_FILE_ENCRYPTED (${ENCRYPTED_SIZE})"
+    warn "Encryption key not found at $ENCRYPTION_KEY_FILE and BACKUP_ENCRYPTION_KEY is empty"
+    warn "Skipping encryption (NOT RECOMMENDED FOR PRODUCTION)"
 }
 
 # Create backup metadata
 create_metadata() {
-    local metadata_file="${BACKUP_FILE_ENCRYPTED}.meta"
+    local metadata_file="${FINAL_BACKUP_FILE}.meta"
 
     cat > "$metadata_file" << EOF
 {
@@ -144,10 +172,10 @@ create_metadata() {
   "database": "$DB_NAME",
   "host": "$DB_HOST",
   "port": $DB_PORT,
-  "backup_file": "$(basename "$BACKUP_FILE_ENCRYPTED")",
-  "size_bytes": $(stat -f%z "$BACKUP_FILE_ENCRYPTED" 2>/dev/null || stat -c%s "$BACKUP_FILE_ENCRYPTED"),
-  "checksum": "$(sha256sum "$BACKUP_FILE_ENCRYPTED" | cut -d' ' -f1)",
-  "encrypted": $([ -f "$ENCRYPTION_KEY_FILE" ] && echo "true" || echo "false"),
+  "backup_file": "$(basename "$FINAL_BACKUP_FILE")",
+  "size_bytes": $(stat -f%z "$FINAL_BACKUP_FILE" 2>/dev/null || stat -c%s "$FINAL_BACKUP_FILE"),
+  "checksum": "$(sha256sum "$FINAL_BACKUP_FILE" | cut -d' ' -f1)",
+  "encrypted": $($ENCRYPTION_USED && echo "true" || echo "false"),
   "pg_version": "$(PGPASSWORD="$PGPASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -tAc 'SELECT version();' | head -n1)"
 }
 EOF
@@ -164,7 +192,7 @@ cleanup_old_backups() {
         log "Deleting old backup: $(basename "$old_backup")"
         rm -f "$old_backup" "${old_backup}.meta"
         ((deleted_count++))
-    done < <(find "$BACKUP_DIR" -name "churnvision_backup_*.enc" -type f -mtime +"$RETENTION_DAYS" -print0)
+    done < <(find "$BACKUP_DIR" \( -name "churnvision_backup_*.enc" -o -name "churnvision_backup_*.gz" \) -type f -mtime +"$RETENTION_DAYS" -print0)
 
     if [ $deleted_count -eq 0 ]; then
         log "No old backups to clean up"
@@ -177,8 +205,8 @@ cleanup_old_backups() {
 verify_backup() {
     log "Verifying backup integrity..."
 
-    if [ -f "$BACKUP_FILE_ENCRYPTED" ]; then
-        local checksum=$(sha256sum "$BACKUP_FILE_ENCRYPTED" | cut -d' ' -f1)
+    if [ -f "$FINAL_BACKUP_FILE" ]; then
+        local checksum=$(sha256sum "$FINAL_BACKUP_FILE" | cut -d' ' -f1)
         log "Backup checksum: $checksum"
         return 0
     else
@@ -230,7 +258,7 @@ main() {
 
     log "==================================================================="
     log "Backup completed successfully!"
-    log "Backup file: $BACKUP_FILE_ENCRYPTED"
+    log "Backup file: $FINAL_BACKUP_FILE"
     log "==================================================================="
 }
 

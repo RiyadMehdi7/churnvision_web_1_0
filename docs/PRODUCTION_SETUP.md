@@ -28,11 +28,20 @@ DEBUG=false
 
 # === SECRETS (GENERATE UNIQUE VALUES!) ===
 SECRET_KEY=REPLACE_WITH_GENERATED_VALUE
-LICENSE_SECRET_KEY=REPLACE_WITH_YOUR_LICENSE_SECRET
 ENCRYPTION_KEY=REPLACE_WITH_GENERATED_VALUE
 
 # === LICENSE ===
 LICENSE_KEY=REPLACE_WITH_YOUR_LICENSE_JWT
+LICENSE_SIGNING_ALG=RS256
+LICENSE_PUBLIC_KEY=REPLACE_WITH_CHURNVISION_PUBLIC_KEY
+INTEGRITY_PUBLIC_KEY=REPLACE_WITH_CHURNVISION_INTEGRITY_PUBLIC_KEY
+INTEGRITY_MANIFEST_PATH=/etc/churnvision/integrity.json
+INTEGRITY_SIGNATURE_PATH=/etc/churnvision/integrity.sig
+INTEGRITY_REQUIRE_SIGNED=true
+
+# === LICENSE STATE (ANTI-ROLLBACK) ===
+LICENSE_STATE_PATH=/app/churnvision_data/license_state.json
+INSTALLATION_ID_PATH=/app/churnvision_data/installation.id
 
 # === DATABASE ===
 POSTGRES_USER=churnvision
@@ -61,13 +70,19 @@ docker compose -f docker-compose.prod.yml up -d
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `SECRET_KEY` | Yes | JWT signing key (64+ chars) |
-| `LICENSE_SECRET_KEY` | Yes | License validation key (provided by ChurnVision) |
 | `LICENSE_KEY` | Yes | Your license JWT (provided by ChurnVision) |
+| `LICENSE_SIGNING_ALG` | Yes | License signature algorithm (RS256 in production) |
+| `LICENSE_PUBLIC_KEY` | Yes | License public key for RS256 verification |
+| `INTEGRITY_PUBLIC_KEY` | Yes | Public key for integrity manifest signature verification |
+| `INTEGRITY_MANIFEST_PATH` | Yes | Path to integrity manifest (default: `/etc/churnvision/integrity.json`) |
+| `INTEGRITY_SIGNATURE_PATH` | Yes | Path to integrity signature (default: `/etc/churnvision/integrity.sig`) |
+| `INTEGRITY_REQUIRE_SIGNED` | No | Require signed integrity manifest (default: true) |
 | `ENCRYPTION_KEY` | Yes | Fernet key for field-level encryption |
 | `POSTGRES_PASSWORD` | Yes | Database password |
 | `ALLOWED_ORIGINS` | Yes | Comma-separated frontend URLs |
 | `REDIS_URL` | No | Redis connection URL (default: in-container) |
 | `REDIS_TLS_CA_CERT` | No | Path to Redis CA certificate |
+| `ARTIFACT_ENCRYPTION_REQUIRED` | No | Require encrypted ML artifacts (default: true in production) |
 
 ### File Mounts
 
@@ -153,6 +168,22 @@ Rate limits are enforced per-user (authenticated) or per-IP (anonymous):
 | API writes | 30/minute |
 | AI predictions | 20/minute |
 | File uploads | 10/minute |
+
+### 6. Integrity Manifest (Anti-Tamper)
+
+Production requires a signed integrity manifest. Generate it during build:
+
+```bash
+# Build with integrity manifest and signature
+INTEGRITY_PRIVATE_KEY=/path/to/integrity-private-key.pem \
+make build-secure
+```
+
+The secure image embeds:
+- `/etc/churnvision/integrity.json`
+- `/etc/churnvision/integrity.sig`
+
+Set `INTEGRITY_PUBLIC_KEY` in your `.env.production` to validate at startup.
 
 ## HTTPS Setup (Nginx)
 

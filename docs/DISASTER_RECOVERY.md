@@ -119,7 +119,7 @@ docker compose -f docker-compose.prod.yml logs -f --tail=100 backend
    - **Database not ready**: Wait for db container to be healthy
    - **Migration failed**: Check Alembic migration logs
    - **Missing environment variable**: Verify `.env.production`
-   - **License invalid**: Check `LICENSE_KEY` and `LICENSE_SECRET_KEY`
+   - **License invalid**: Check `LICENSE_KEY`, `LICENSE_SIGNING_ALG`, and `LICENSE_PUBLIC_KEY`
 
 3. **Force rebuild if image corrupted**:
    ```bash
@@ -337,4 +337,4 @@ Ensure these alerts are configured:
 
 | Date | Version | Changes |
 |------|---------|---------|
-| 2024-12-17 | 1.0 | Initial disaster recovery guide |
+| 2025-12-17 | 1.0 | Initial disaster recovery guide |

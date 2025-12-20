@@ -57,6 +57,12 @@ class HardwareFingerprint:
         return None
 
     @staticmethod
+    def _include_container_id() -> bool:
+        """Use container IDs only when explicitly enabled."""
+        raw = os.getenv("HARDWARE_FINGERPRINT_INCLUDE_CONTAINER_ID", "")
+        return raw.lower() in {"1", "true", "yes"}
+
+    @staticmethod
     def _get_cpu_info() -> Optional[str]:
         """Get CPU identifier"""
         try:
@@ -121,7 +127,7 @@ class HardwareFingerprint:
         return None
 
     @classmethod
-    def generate(cls) -> str:
+    def generate(cls, include_container_id: Optional[bool] = None) -> str:
         """
         Generate a composite hardware fingerprint.
 
@@ -139,9 +145,11 @@ class HardwareFingerprint:
         if machine_id:
             components.append(f"machine:{machine_id}")
 
-        container_id = cls._get_docker_container_id()
-        if container_id:
-            components.append(f"container:{container_id}")
+        use_container_id = cls._include_container_id() if include_container_id is None else include_container_id
+        if use_container_id:
+            container_id = cls._get_docker_container_id()
+            if container_id:
+                components.append(f"container:{container_id}")
 
         cpu_info = cls._get_cpu_info()
         if cpu_info:

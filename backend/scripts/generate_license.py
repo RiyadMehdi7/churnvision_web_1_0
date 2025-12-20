@@ -13,6 +13,7 @@ Usage:
         --employees 5000 \
         --days 365 \
         --hardware-id "abc123..." \
+        --installation-id "inst-1234..." \
         --features all
 
     # To get a customer's hardware ID, have them run:
@@ -36,22 +37,39 @@ def generate_license(
     max_employees: int,
     validity_days: int,
     hardware_id: str = None,
+    installation_id: str = None,
     features: list = None,
     secret_key: str = None,
-    enforce_hardware: bool = True
+    private_key: str = None,
+    enforce_hardware: bool = True,
+    enforce_installation: bool = True,
+    signing_alg: str = "RS256"
 ) -> str:
     """Generate a signed license key"""
-
-    if not secret_key:
-        secret_key = os.getenv(
-            "LICENSE_SECRET_KEY",
-            "churnvision-enterprise-secret-2024"
-        )
+    signing_alg = signing_alg.upper()
+    if signing_alg == "RS256":
+        if not private_key:
+            private_key = os.getenv("LICENSE_PRIVATE_KEY")
+            if not private_key:
+                key_path = os.getenv("LICENSE_PRIVATE_KEY_PATH")
+                if key_path and os.path.exists(key_path):
+                    private_key = open(key_path, "r").read()
+        if not private_key:
+            raise RuntimeError("Missing LICENSE_PRIVATE_KEY for RS256 signing.")
+        signing_key = private_key.replace("\\n", "\n")
+    else:
+        if not secret_key:
+            secret_key = os.getenv(
+                "LICENSE_SECRET_KEY",
+                "churnvision-enterprise-secret-2024"
+            )
+        signing_key = secret_key
 
     now = datetime.utcnow()
     expires_at = now + timedelta(days=validity_days)
 
     payload = {
+        "license_id": f"{company_name}-{now.strftime('%Y%m%d')}",
         "company_name": company_name,
         "license_type": license_type,
         "max_employees": max_employees,
@@ -60,12 +78,14 @@ def generate_license(
         "features": features or ["all"],
         "hardware_id": hardware_id,
         "enforce_hardware": enforce_hardware,
+        "installation_id": installation_id,
+        "enforce_installation": enforce_installation,
         # Additional metadata
         "version": "1.0",
         "issuer": "ChurnVision Enterprise",
     }
 
-    license_key = jwt.encode(payload, secret_key, algorithm="HS256")
+    license_key = jwt.encode(payload, signing_key, algorithm=signing_alg)
     return license_key
 
 
@@ -101,9 +121,18 @@ def main():
         help="Hardware fingerprint to bind license to"
     )
     parser.add_argument(
+        "--installation-id", "-i",
+        help="Installation ID to bind license to"
+    )
+    parser.add_argument(
         "--no-hardware-lock",
         action="store_true",
         help="Don't enforce hardware binding (not recommended)"
+    )
+    parser.add_argument(
+        "--no-installation-lock",
+        action="store_true",
+        help="Don't enforce installation binding (not recommended)"
     )
     parser.add_argument(
         "--features", "-f",
@@ -112,8 +141,18 @@ def main():
         help="Enabled features (default: all)"
     )
     parser.add_argument(
+        "--signing-alg", "-a",
+        default="RS256",
+        choices=["HS256", "RS256"],
+        help="Signing algorithm (default: RS256)"
+    )
+    parser.add_argument(
         "--secret-key", "-s",
         help="Secret key for signing (uses env var if not provided)"
+    )
+    parser.add_argument(
+        "--private-key", "-p",
+        help="Private key for RS256 signing (uses env var if not provided)"
     )
     parser.add_argument(
         "--output", "-o",
@@ -139,9 +178,13 @@ def main():
         max_employees=args.employees,
         validity_days=args.days,
         hardware_id=args.hardware_id,
+        installation_id=args.installation_id,
         features=args.features,
         secret_key=args.secret_key,
-        enforce_hardware=not args.no_hardware_lock
+        private_key=args.private_key,
+        enforce_hardware=not args.no_hardware_lock,
+        enforce_installation=not args.no_installation_lock,
+        signing_alg=args.signing_alg
     )
 
     # Output

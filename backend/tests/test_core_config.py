@@ -25,6 +25,10 @@ class TestSettingsValidation:
         """Production mode must reject default SECRET_KEY."""
         monkeypatch.setenv("ENVIRONMENT", "production")
         monkeypatch.setenv("DEBUG", "false")
+        monkeypatch.setenv("INTEGRITY_REQUIRE_SIGNED", "false")
+        monkeypatch.setenv("ARTIFACT_ENCRYPTION_REQUIRED", "true")
+        monkeypatch.setenv("LICENSE_SIGNING_ALG", "RS256")
+        monkeypatch.setenv("LICENSE_PUBLIC_KEY", "test-public-key")
         # Leave SECRET_KEY as default
 
         from app.core import config
@@ -34,26 +38,33 @@ class TestSettingsValidation:
 
         assert "SECRET_KEY is insecure" in str(exc_info.value)
 
-    def test_production_mode_rejects_default_license_secret(self, monkeypatch):
-        """Production mode must reject default LICENSE_SECRET_KEY."""
+    def test_production_mode_requires_public_key(self, monkeypatch):
+        """Production mode must require a license public key for RS256."""
         monkeypatch.setenv("ENVIRONMENT", "production")
         monkeypatch.setenv("DEBUG", "false")
+        monkeypatch.setenv("INTEGRITY_REQUIRE_SIGNED", "false")
+        monkeypatch.setenv("ARTIFACT_ENCRYPTION_REQUIRED", "true")
+        monkeypatch.setenv("LICENSE_SIGNING_ALG", "RS256")
         monkeypatch.setenv("SECRET_KEY", "a-very-secure-secret-key-that-is-long-enough-32chars")
         monkeypatch.setenv("POSTGRES_PASSWORD", "secure-db-password")
         monkeypatch.setenv("LICENSE_KEY", "valid-license-key")
-        # Leave LICENSE_SECRET_KEY as default
+        # Leave LICENSE_PUBLIC_KEY unset
 
         from app.core import config
 
         with pytest.raises(ValueError) as exc_info:
             importlib.reload(config)
 
-        assert "LICENSE_SECRET_KEY" in str(exc_info.value)
+        assert "LICENSE_PUBLIC_KEY" in str(exc_info.value)
 
     def test_production_mode_rejects_insecure_db_password(self, monkeypatch):
         """Production mode must reject insecure database passwords."""
         monkeypatch.setenv("ENVIRONMENT", "production")
         monkeypatch.setenv("DEBUG", "false")
+        monkeypatch.setenv("INTEGRITY_REQUIRE_SIGNED", "false")
+        monkeypatch.setenv("ARTIFACT_ENCRYPTION_REQUIRED", "true")
+        monkeypatch.setenv("LICENSE_SIGNING_ALG", "RS256")
+        monkeypatch.setenv("LICENSE_PUBLIC_KEY", "test-public-key")
         monkeypatch.setenv("SECRET_KEY", "a-very-secure-secret-key-that-is-long-enough-32chars")
         monkeypatch.setenv("LICENSE_SECRET_KEY", "secure-license-secret")
         monkeypatch.setenv("LICENSE_KEY", "valid-license-key")
@@ -70,6 +81,10 @@ class TestSettingsValidation:
         """Production mode must have DEBUG=False."""
         monkeypatch.setenv("ENVIRONMENT", "production")
         monkeypatch.setenv("DEBUG", "true")  # Invalid in production
+        monkeypatch.setenv("INTEGRITY_REQUIRE_SIGNED", "false")
+        monkeypatch.setenv("ARTIFACT_ENCRYPTION_REQUIRED", "true")
+        monkeypatch.setenv("LICENSE_SIGNING_ALG", "RS256")
+        monkeypatch.setenv("LICENSE_PUBLIC_KEY", "test-public-key")
         monkeypatch.setenv("SECRET_KEY", "a-very-secure-secret-key-that-is-long-enough-32chars")
         monkeypatch.setenv("LICENSE_SECRET_KEY", "secure-license-secret")
         monkeypatch.setenv("LICENSE_KEY", "valid-license-key")
@@ -86,6 +101,10 @@ class TestSettingsValidation:
         """Production mode should work with all valid settings."""
         monkeypatch.setenv("ENVIRONMENT", "production")
         monkeypatch.setenv("DEBUG", "false")
+        monkeypatch.setenv("INTEGRITY_REQUIRE_SIGNED", "false")
+        monkeypatch.setenv("ARTIFACT_ENCRYPTION_REQUIRED", "true")
+        monkeypatch.setenv("LICENSE_SIGNING_ALG", "RS256")
+        monkeypatch.setenv("LICENSE_PUBLIC_KEY", "test-public-key")
         monkeypatch.setenv("SECRET_KEY", "a-very-secure-secret-key-that-is-long-enough-32chars")
         monkeypatch.setenv("LICENSE_SECRET_KEY", "secure-license-secret-key")
         monkeypatch.setenv("LICENSE_KEY", "valid-production-license-key")
@@ -101,6 +120,10 @@ class TestSettingsValidation:
         """SECRET_KEY must be at least 32 characters in production."""
         monkeypatch.setenv("ENVIRONMENT", "production")
         monkeypatch.setenv("DEBUG", "false")
+        monkeypatch.setenv("INTEGRITY_REQUIRE_SIGNED", "false")
+        monkeypatch.setenv("ARTIFACT_ENCRYPTION_REQUIRED", "true")
+        monkeypatch.setenv("LICENSE_SIGNING_ALG", "RS256")
+        monkeypatch.setenv("LICENSE_PUBLIC_KEY", "test-public-key")
         monkeypatch.setenv("SECRET_KEY", "short-key")  # Too short
 
         from app.core import config
@@ -133,6 +156,10 @@ class TestSettingsComputed:
         """COOKIE_SECURE should be True in production."""
         monkeypatch.setenv("ENVIRONMENT", "production")
         monkeypatch.setenv("DEBUG", "false")
+        monkeypatch.setenv("INTEGRITY_REQUIRE_SIGNED", "false")
+        monkeypatch.setenv("ARTIFACT_ENCRYPTION_REQUIRED", "true")
+        monkeypatch.setenv("LICENSE_SIGNING_ALG", "RS256")
+        monkeypatch.setenv("LICENSE_PUBLIC_KEY", "test-public-key")
         monkeypatch.setenv("SECRET_KEY", "a-very-secure-secret-key-that-is-long-enough-32chars")
         monkeypatch.setenv("LICENSE_SECRET_KEY", "secure-license-secret-key")
         monkeypatch.setenv("LICENSE_KEY", "valid-production-license-key")

@@ -29,6 +29,7 @@ from app.schemas.churn import (
     BatchChurnPredictionResponse,
 )
 from app.core.config import settings
+from app.core.artifact_crypto import encrypt_blob, decrypt_blob, ArtifactCryptoError
 
 logger = logging.getLogger(__name__)
 
@@ -104,13 +105,16 @@ class ChurnPredictionService:
         try:
             if model_path.exists():
                 with open(model_path, 'rb') as f:
-                    self.model = pickle.load(f)
+                    model_bytes = decrypt_blob(f.read())
+                    self.model = pickle.loads(model_bytes)
 
                 with open(scaler_path, 'rb') as f:
-                    self.scaler = pickle.load(f)
+                    scaler_bytes = decrypt_blob(f.read())
+                    self.scaler = pickle.loads(scaler_bytes)
 
                 with open(encoders_path, 'rb') as f:
-                    self.label_encoders = pickle.load(f)
+                    encoders_bytes = decrypt_blob(f.read())
+                    self.label_encoders = pickle.loads(encoders_bytes)
 
                 self.active_version = model_path.stem
                 self.active_dataset_id = dataset_id
@@ -131,7 +135,10 @@ class ChurnPredictionService:
                 self.active_dataset_id = dataset_id
                 return False
         except Exception as e:
-            print(f"Error loading model for dataset {dataset_id}: {e}")
+            if isinstance(e, ArtifactCryptoError):
+                logger.error(f"Artifact decryption failed for dataset {dataset_id}: {e}")
+            else:
+                logger.warning(f"Error loading model for dataset {dataset_id}: {e}")
             if settings.ENVIRONMENT == "production":
                 raise
             self._initialize_default_model()
@@ -192,15 +199,17 @@ class ChurnPredictionService:
         model_path, scaler_path, encoders_path = self._artifact_paths(dataset_id)
         try:
             with open(model_path, 'wb') as f:
-                pickle.dump(self.model, f)
+                f.write(encrypt_blob(pickle.dumps(self.model)))
 
             with open(scaler_path, 'wb') as f:
-                pickle.dump(self.scaler, f)
+                f.write(encrypt_blob(pickle.dumps(self.scaler)))
 
             with open(encoders_path, 'wb') as f:
-                pickle.dump(self.label_encoders, f)
+                f.write(encrypt_blob(pickle.dumps(self.label_encoders)))
         except Exception as e:
-            print(f"Error saving model for dataset {dataset_id}: {e}")
+            logger.error(f"Error saving model for dataset {dataset_id}: {e}")
+            if settings.ENVIRONMENT == "production":
+                raise
 
     def _prepare_features(self, features: EmployeeChurnFeatures) -> np.ndarray:
         """Convert employee features to model input format"""

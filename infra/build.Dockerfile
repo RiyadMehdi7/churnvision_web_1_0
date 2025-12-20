@@ -27,6 +27,11 @@ RUN cd /app && uv pip install --system -e .
 # Install Nuitka
 RUN pip install nuitka ordered-set
 
+# Generate integrity manifest (and optional signature)
+RUN INTEGRITY_MANIFEST_OUT=/build/integrity.json \
+    INTEGRITY_SIGNATURE_OUT=/build/integrity.sig \
+    python /app/backend/scripts/generate_integrity_manifest.py
+
 # Compile Python to C binaries using Nuitka
 RUN python -m nuitka \
     --standalone \
@@ -60,6 +65,8 @@ WORKDIR /app
 
 # Copy compiled binaries from builder
 COPY --from=builder /build/churnvision-backend.dist /app/
+COPY --from=builder /build/integrity.json /etc/churnvision/integrity.json
+COPY --from=builder /build/integrity.sig /etc/churnvision/integrity.sig
 
 # Copy models directory (will be mounted in production)
 RUN mkdir -p /app/models && chown -R churnvision:churnvision /app

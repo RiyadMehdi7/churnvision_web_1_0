@@ -87,8 +87,13 @@ POSTGRES_DB=churnvision
 
 # Security (MUST CHANGE IN PRODUCTION)
 JWT_SECRET_KEY=<generate-with: openssl rand -hex 32>
-LICENSE_SECRET_KEY=<provided-by-churnvision>
 LICENSE_KEY=<your-license-key>
+LICENSE_SIGNING_ALG=RS256
+LICENSE_PUBLIC_KEY=<provided-by-churnvision>
+INTEGRITY_PUBLIC_KEY=<provided-by-churnvision>
+INTEGRITY_MANIFEST_PATH=/etc/churnvision/integrity.json
+INTEGRITY_SIGNATURE_PATH=/etc/churnvision/integrity.sig
+ARTIFACT_ENCRYPTION_REQUIRED=true
 
 # Environment
 ENVIRONMENT=production

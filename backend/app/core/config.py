@@ -1,3 +1,4 @@
+import os
 import secrets
 from typing import Optional, List
 from urllib.parse import urlsplit
@@ -101,6 +102,24 @@ class Settings(BaseSettings):
 
     LICENSE_KEY: str = "dev-license-key"
 
+    # License verification (production hardening)
+    LICENSE_SIGNING_ALG: str = "HS256"  # Use RS256 in production with a public key
+    LICENSE_PUBLIC_KEY: Optional[str] = None
+    LICENSE_PUBLIC_KEY_PATH: Optional[str] = None
+    LICENSE_REQUIRE_HARDWARE: bool = True
+    LICENSE_REQUIRE_INSTALLATION_ID: bool = True
+    LICENSE_STATE_PATH: str = "/app/churnvision_data/license_state.json"
+    LICENSE_MAX_CLOCK_SKEW_SECONDS: int = 300
+    LICENSE_CACHE_TTL_SECONDS: int = 60
+    INSTALLATION_ID_PATH: str = "/app/churnvision_data/installation.id"
+
+    # Integrity verification
+    INTEGRITY_MANIFEST_PATH: str = "/etc/churnvision/integrity.json"
+    INTEGRITY_SIGNATURE_PATH: str = "/etc/churnvision/integrity.sig"
+    INTEGRITY_PUBLIC_KEY: Optional[str] = None
+    INTEGRITY_PUBLIC_KEY_PATH: Optional[str] = None
+    INTEGRITY_REQUIRE_SIGNED: bool = True
+
     # Rate limiting / lockout
     LOGIN_MAX_ATTEMPTS: int = 5
     LOGIN_LOCKOUT_MINUTES: int = 15
@@ -121,6 +140,7 @@ class Settings(BaseSettings):
 
     # Model/artifact storage
     MODELS_DIR: str = Field(default="models", validation_alias=AliasChoices("MODELS_DIR", "CHURNVISION_MODELS_DIR"))
+    ARTIFACT_ENCRYPTION_REQUIRED: bool = False
 
     # Chatbot / LLM settings
     # Default (local): Gemma 3 4B via Ollama - best instruction following
@@ -209,12 +229,23 @@ class Settings(BaseSettings):
                 )
 
         # Validate LICENSE_SECRET_KEY
-        if self.LICENSE_SECRET_KEY in _INSECURE_LICENSE_KEYS:
-            if is_prod:
+        signing_alg = (self.LICENSE_SIGNING_ALG or "HS256").upper()
+        if signing_alg == "HS256":
+            if self.LICENSE_SECRET_KEY in _INSECURE_LICENSE_KEYS:
+                if is_prod:
+                    errors.append(
+                        "LICENSE_SECRET_KEY is using a default value. "
+                        "Set a unique LICENSE_SECRET_KEY in your environment."
+                    )
+        elif signing_alg == "RS256":
+            if is_prod and not (self.LICENSE_PUBLIC_KEY or self.LICENSE_PUBLIC_KEY_PATH):
                 errors.append(
-                    "LICENSE_SECRET_KEY is using a default value. "
-                    "Set a unique LICENSE_SECRET_KEY in your environment."
+                    "LICENSE_PUBLIC_KEY or LICENSE_PUBLIC_KEY_PATH is required for RS256 license validation."
                 )
+            if self.LICENSE_PUBLIC_KEY_PATH and not os.path.exists(self.LICENSE_PUBLIC_KEY_PATH):
+                errors.append("LICENSE_PUBLIC_KEY_PATH does not exist.")
+        else:
+            errors.append("LICENSE_SIGNING_ALG must be HS256 or RS256.")
 
         # Validate database credentials
         if is_prod:
@@ -236,6 +267,10 @@ class Settings(BaseSettings):
                     "LICENSE_KEY must be provided via environment or license file in production."
                 )
 
+        # Require asymmetric license validation in production to prevent key reuse
+        if is_prod and signing_alg != "RS256":
+            errors.append("LICENSE_SIGNING_ALG must be RS256 in production.")
+
         # Require encryption key for PII in production
         if is_prod and not self.ENCRYPTION_KEY:
             errors.append(
@@ -248,6 +283,21 @@ class Settings(BaseSettings):
             errors.append(
                 "ALLOWED_ORIGINS must be set to your domain(s) in production (not localhost defaults)."
             )
+
+        # Integrity enforcement (signed manifest required in production)
+        if is_prod and self.INTEGRITY_REQUIRE_SIGNED:
+            if not (self.INTEGRITY_PUBLIC_KEY or self.INTEGRITY_PUBLIC_KEY_PATH):
+                errors.append("INTEGRITY_PUBLIC_KEY or INTEGRITY_PUBLIC_KEY_PATH is required in production.")
+            if self.INTEGRITY_PUBLIC_KEY_PATH and not os.path.exists(self.INTEGRITY_PUBLIC_KEY_PATH):
+                errors.append("INTEGRITY_PUBLIC_KEY_PATH does not exist.")
+            if self.INTEGRITY_MANIFEST_PATH and not os.path.exists(self.INTEGRITY_MANIFEST_PATH):
+                errors.append("INTEGRITY_MANIFEST_PATH does not exist.")
+            if self.INTEGRITY_SIGNATURE_PATH and not os.path.exists(self.INTEGRITY_SIGNATURE_PATH):
+                errors.append("INTEGRITY_SIGNATURE_PATH does not exist.")
+
+        # Require encrypted artifacts in production
+        if is_prod and not self.ARTIFACT_ENCRYPTION_REQUIRED:
+            errors.append("ARTIFACT_ENCRYPTION_REQUIRED must be true in production.")
 
         # In production, DEBUG must be disabled
         if is_prod and self.DEBUG:

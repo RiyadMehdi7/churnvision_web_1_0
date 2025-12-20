@@ -503,7 +503,8 @@ DEBUG=false
 
 # Strong secrets (generate with: openssl rand -hex 32)
 SECRET_KEY=<64-char-hex-string>
-LICENSE_SECRET_KEY=<64-char-hex-string>
+LICENSE_SIGNING_ALG=RS256
+LICENSE_PUBLIC_KEY=<churnvision-public-key>
 
 # Strict session settings
 ACCESS_TOKEN_EXPIRE_MINUTES=30

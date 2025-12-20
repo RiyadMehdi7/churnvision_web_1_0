@@ -10,10 +10,20 @@ services:
       - ENVIRONMENT=production
       - DEBUG=false
       - LICENSE_KEY=${LICENSE_KEY}
+      - LICENSE_SIGNING_ALG=${LICENSE_SIGNING_ALG:-RS256}
+      - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
+      - LICENSE_PUBLIC_KEY_PATH=${LICENSE_PUBLIC_KEY_PATH}
+      - LICENSE_STATE_PATH=${LICENSE_STATE_PATH:-/app/churnvision_data/license_state.json}
+      - INSTALLATION_ID_PATH=${INSTALLATION_ID_PATH:-/app/churnvision_data/installation.id}
+      - INTEGRITY_PUBLIC_KEY=${INTEGRITY_PUBLIC_KEY}
+      - INTEGRITY_PUBLIC_KEY_PATH=${INTEGRITY_PUBLIC_KEY_PATH}
+      - INTEGRITY_MANIFEST_PATH=${INTEGRITY_MANIFEST_PATH:-/etc/churnvision/integrity.json}
+      - INTEGRITY_SIGNATURE_PATH=${INTEGRITY_SIGNATURE_PATH:-/etc/churnvision/integrity.sig}
+      - INTEGRITY_REQUIRE_SIGNED=${INTEGRITY_REQUIRE_SIGNED:-true}
+      - ARTIFACT_ENCRYPTION_REQUIRED=${ARTIFACT_ENCRYPTION_REQUIRED:-true}
       # NOTE: The bundled postgres container doesn't terminate TLS by default.
       # If you need TLS, terminate at your DB layer or configure postgres/nginx accordingly.
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      - LICENSE_SECRET_KEY=${LICENSE_SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - OLLAMA_BASE_URL=http://ollama:11434
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
@@ -36,7 +46,7 @@ services:
     networks:
       - churnvision-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health').read()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -67,7 +77,16 @@ services:
       - DEBUG=false
       - LICENSE_KEY=${LICENSE_KEY}
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      - LICENSE_SECRET_KEY=${LICENSE_SECRET_KEY}
+      - LICENSE_SIGNING_ALG=${LICENSE_SIGNING_ALG:-RS256}
+      - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY}
+      - LICENSE_PUBLIC_KEY_PATH=${LICENSE_PUBLIC_KEY_PATH}
+      - LICENSE_STATE_PATH=${LICENSE_STATE_PATH:-/app/churnvision_data/license_state.json}
+      - INSTALLATION_ID_PATH=${INSTALLATION_ID_PATH:-/app/churnvision_data/installation.id}
+      - INTEGRITY_PUBLIC_KEY=${INTEGRITY_PUBLIC_KEY}
+      - INTEGRITY_PUBLIC_KEY_PATH=${INTEGRITY_PUBLIC_KEY_PATH}
+      - INTEGRITY_MANIFEST_PATH=${INTEGRITY_MANIFEST_PATH:-/etc/churnvision/integrity.json}
+      - INTEGRITY_SIGNATURE_PATH=${INTEGRITY_SIGNATURE_PATH:-/etc/churnvision/integrity.sig}
+      - INTEGRITY_REQUIRE_SIGNED=${INTEGRITY_REQUIRE_SIGNED:-true}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://localhost}
@@ -119,8 +138,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backups:/backups  # Mount for backup scripts
-    ports:
-      - "5432:5432"
     networks:
       - churnvision-network
     healthcheck:
@@ -178,8 +195,6 @@ services:
     restart: unless-stopped
     volumes:
       - ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
     networks:
       - churnvision-network
     deploy:
@@ -242,6 +257,7 @@ services:
       - PGDATABASE=${POSTGRES_DB:-churnvision}
       - BACKUP_ENCRYPTION_KEY=${BACKUP_ENCRYPTION_KEY}
       - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-30}
+      - BACKUP_DIR=${BACKUP_PATH:-/backups}
     volumes:
       - ./db/backup.sh:/usr/local/bin/backup.sh:ro
       - ./backups:/backups

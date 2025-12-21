@@ -8,6 +8,7 @@ import { Label } from '../components/ui/label';
 import { Alert } from '../components/ui/alert';
 import { Eye, EyeOff, Loader2, LogIn, KeyRound } from 'lucide-react';
 import api from '../services/apiService';
+import churnvisionLogo from '../assets/providers/churnvision.svg';
 
 interface SSOStatus {
   sso_enabled: boolean;
@@ -163,18 +164,11 @@ export const Login: React.FC = () => {
             animate={{ rotate: [0, 360] }}
             transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
           >
-            <svg viewBox="0 0 40 40" className="w-10 h-10">
-              <defs>
-                <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#10b981" />
-                  <stop offset="50%" stopColor="#34d399" />
-                  <stop offset="100%" stopColor="#6ee7b7" />
-                </linearGradient>
-              </defs>
-              <circle cx="20" cy="20" r="18" fill="none" stroke="url(#logoGrad)" strokeWidth="2" opacity="0.3" />
-              <circle cx="20" cy="20" r="12" fill="none" stroke="url(#logoGrad)" strokeWidth="2" opacity="0.5" />
-              <circle cx="20" cy="20" r="6" fill="url(#logoGrad)" />
-            </svg>
+            <img 
+              src={churnvisionLogo} 
+              alt="ChurnVision Logo" 
+              className="w-10 h-10"
+            />
           </motion.div>
           <div className="app-launch-logo">
             <span className="app-launch-logo-text">Churn</span>

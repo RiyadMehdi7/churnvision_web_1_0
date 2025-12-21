@@ -144,6 +144,45 @@ export interface AlertsResult {
   generated_at: string;
 }
 
+// Model Routing / Selection types
+export interface DatasetProfile {
+  dataset_id: string;
+  n_samples: number;
+  n_features: number;
+  n_numeric_features: number;
+  n_categorical_features: number;
+  n_classes: number;
+  class_balance_ratio: number;
+  is_severely_imbalanced: boolean;
+  missing_ratio: number;
+  has_outliers: boolean;
+  outlier_ratio: number;
+  overall_quality_score: number;
+  tabpfn_suitability: number;
+  tree_model_suitability: number;
+  linear_model_suitability: number;
+  created_at: string;
+}
+
+export interface ModelRoutingDecision {
+  dataset_id: string;
+  selected_model: string;
+  confidence: number;
+  reasoning: string[];
+  is_ensemble: boolean;
+  ensemble_models?: string[];
+  ensemble_weights?: Record<string, number>;
+  ensemble_method?: string;
+  alternatives?: Array<{ model: string; score: number; reason: string }>;
+  model_scores?: Record<string, number>;
+  decided_at: string;
+}
+
+export interface RoutingInfo {
+  profile: DatasetProfile;
+  routing: ModelRoutingDecision;
+}
+
 /**
  * Model Intelligence Service
  */
@@ -225,6 +264,22 @@ export const modelIntelligenceService = {
    */
   async markAllAlertsRead(): Promise<{ success: boolean; count: number }> {
     const response = await api.post('/churn/alerts/read-all');
+    return response.data;
+  },
+
+  /**
+   * Get model routing info (dataset profile + routing decision)
+   */
+  async getRoutingInfo(): Promise<RoutingInfo> {
+    const response = await api.get('/churn/model/routing-info');
+    return response.data;
+  },
+
+  /**
+   * Get dataset profile for a specific dataset
+   */
+  async getDatasetProfile(datasetId: string): Promise<DatasetProfile> {
+    const response = await api.get(`/churn/model/dataset-profile/${datasetId}`);
     return response.data;
   }
 };

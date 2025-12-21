@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { memo } from 'react';
 import { cn } from '@/lib/utils';
+import churnvisionLogo from '@/assets/providers/churnvision.svg';
 
 interface LoadingSpinnerProps {
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -197,19 +198,11 @@ export const LoadingStates = {
           }}
           transition={{ duration: 2, repeat: Infinity }}
         >
-          <svg
-            className="w-7 h-7 text-white"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
-          </svg>
+          <img 
+            src={churnvisionLogo} 
+            alt="ChurnVision Logo" 
+            className="w-7 h-7"
+          />
         </motion.div>
 
         {/* Pulse rings */}
@@ -419,19 +412,11 @@ export const LoadingStates = {
           }}
           transition={{ duration: 2, repeat: Infinity }}
         >
-          <svg
-            className="w-10 h-10 text-white"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
-          </svg>
+          <img 
+            src={churnvisionLogo} 
+            alt="ChurnVision Logo" 
+            className="w-10 h-10"
+          />
         </motion.div>
 
         {/* Pulse rings */}

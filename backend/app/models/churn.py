@@ -83,6 +83,14 @@ class ChurnModel(Base):
     is_active = Column(Integer, default=0)
     pipeline_generated = Column(Integer, default=1)
 
+    # Model routing fields (added for intelligent model selection)
+    routing_decision_id = Column(Integer, ForeignKey("model_routing_decisions.id", ondelete="SET NULL"), nullable=True)
+    is_ensemble = Column(Integer, default=0)
+    ensemble_artifact_paths = Column(JSON, nullable=True)
+
+    # Relationships
+    routing_decision = relationship("ModelRoutingDecision", back_populates="churn_models")
+
 
 class BusinessRule(Base):
     __tablename__ = "business_rules"
@@ -178,3 +186,109 @@ class ModelFeatureImportance(Base):
 
 
 Index('idx_feature_importance_model', ModelFeatureImportance.model_version)
+
+
+class DatasetProfileDB(Base):
+    """
+    Stores comprehensive dataset analysis results for model routing.
+
+    This profile is computed when training is triggered and used by
+    the ModelRouterService to select the optimal model.
+    """
+    __tablename__ = "dataset_profiles"
+
+    id = Column(Integer, primary_key=True)
+    dataset_id = Column(String, ForeignKey("datasets.dataset_id", ondelete="CASCADE"), nullable=False, unique=True)
+
+    # Size metrics
+    n_samples = Column(Integer, nullable=False)
+    n_features = Column(Integer, nullable=False)
+    n_numeric_features = Column(Integer, nullable=True)
+    n_categorical_features = Column(Integer, nullable=True)
+
+    # Class distribution
+    n_classes = Column(Integer, nullable=True)
+    class_balance_ratio = Column(Numeric(5, 4), nullable=True)
+    is_severely_imbalanced = Column(Integer, default=0)
+
+    # Missing data
+    missing_ratio = Column(Numeric(5, 4), nullable=True)
+    features_with_missing = Column(Integer, nullable=True)
+    max_missing_per_feature = Column(Numeric(5, 4), nullable=True)
+
+    # Outliers
+    has_outliers = Column(Integer, default=0)
+    outlier_ratio = Column(Numeric(5, 4), nullable=True)
+
+    # Categorical analysis
+    max_cardinality = Column(Integer, nullable=True)
+    avg_cardinality = Column(Numeric(8, 2), nullable=True)
+    high_cardinality_features = Column(Integer, nullable=True)
+
+    # Correlation analysis
+    max_feature_correlation = Column(Numeric(5, 4), nullable=True)
+    highly_correlated_pairs = Column(Integer, nullable=True)
+    target_correlation_max = Column(Numeric(5, 4), nullable=True)
+
+    # Detailed stats (JSON)
+    numeric_stats = Column(JSON, nullable=True)
+    categorical_stats = Column(JSON, nullable=True)
+    correlation_stats = Column(JSON, nullable=True)
+
+    # Suitability scores (0-1)
+    overall_quality_score = Column(Numeric(4, 3), nullable=True)
+    tabpfn_suitability = Column(Numeric(4, 3), nullable=True)
+    tree_model_suitability = Column(Numeric(4, 3), nullable=True)
+    linear_model_suitability = Column(Numeric(4, 3), nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    dataset = relationship("Dataset", back_populates="profile")
+
+
+Index('idx_dataset_profiles_dataset_id', DatasetProfileDB.dataset_id)
+Index('idx_dataset_profiles_n_samples', DatasetProfileDB.n_samples)
+Index('idx_dataset_profiles_tabpfn_suitability', DatasetProfileDB.tabpfn_suitability)
+
+
+class ModelRoutingDecision(Base):
+    """
+    Records automatic model selection decisions made by the router.
+
+    Stores the reasoning and alternatives for transparency and debugging.
+    """
+    __tablename__ = "model_routing_decisions"
+
+    id = Column(Integer, primary_key=True)
+    dataset_id = Column(String, ForeignKey("datasets.dataset_id", ondelete="CASCADE"), nullable=False)
+    model_version = Column(String, nullable=True)
+
+    # Primary decision
+    selected_model = Column(String(50), nullable=False)  # 'tabpfn', 'xgboost', etc.
+    confidence = Column(Numeric(4, 3), nullable=False)
+
+    # Ensemble configuration
+    is_ensemble = Column(Integer, default=0)
+    ensemble_models = Column(JSON, nullable=True)  # ['xgboost', 'random_forest']
+    ensemble_weights = Column(JSON, nullable=True)  # {'xgboost': 0.6, 'random_forest': 0.4}
+    ensemble_method = Column(String(50), nullable=True)  # 'weighted_voting', 'stacking'
+
+    # Reasoning
+    reasoning = Column(JSON, nullable=True)  # ['Small dataset...', 'Low missing values...']
+    alternative_models = Column(JSON, nullable=True)  # [{'model': 'xgboost', 'score': 0.8}]
+    model_scores = Column(JSON, nullable=True)  # {'tabpfn': 0.9, 'xgboost': 0.75}
+
+    # Timestamp
+    decided_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    dataset = relationship("Dataset", back_populates="routing_decisions")
+    churn_models = relationship("ChurnModel", back_populates="routing_decision")
+
+
+Index('idx_routing_decisions_dataset', ModelRoutingDecision.dataset_id)
+Index('idx_routing_decisions_selected_model', ModelRoutingDecision.selected_model)
+Index('idx_routing_decisions_is_ensemble', ModelRoutingDecision.is_ensemble)

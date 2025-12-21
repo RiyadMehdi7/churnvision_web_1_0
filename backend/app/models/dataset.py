@@ -30,6 +30,10 @@ class Dataset(Base):
     churn_outputs = relationship("ChurnOutput", back_populates="dataset", cascade="all, delete-orphan")
     project = relationship("Project", back_populates="datasets")
 
+    # Model routing relationships
+    profile = relationship("DatasetProfileDB", back_populates="dataset", uselist=False, cascade="all, delete-orphan")
+    routing_decisions = relationship("ModelRoutingDecision", back_populates="dataset", cascade="all, delete-orphan")
+
 
 # Indexes
 Index('idx_datasets_upload_date', Dataset.upload_date)

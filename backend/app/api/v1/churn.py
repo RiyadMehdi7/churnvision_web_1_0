@@ -31,6 +31,9 @@ from app.schemas.churn import (
     ModelTrainingRequest,
     ModelTrainingResponse,
     ModelMetricsResponse,
+    DatasetProfileResponse,
+    ModelRoutingResponse,
+    RoutingInfoResponse,
 )
 from app.services.churn_prediction_service import ChurnPredictionService
 from app.services.dataset_service import get_active_dataset, get_active_dataset_id
@@ -434,7 +437,6 @@ async def _run_training_background(
     mapping: Optional[Dict[str, Any]],
     dataset_id: str,
     job_id: int,
-    model_type: str,
     user_id: int,
     username: str,
     tenant_id: Optional[str]
@@ -456,13 +458,15 @@ async def _run_training_background(
             churn_service.update_training_progress(dataset_id, "in_progress", 15, "Features prepared", job_id)
             await asyncio.sleep(0.1)
 
-            # Train model
+            # Train model (model selection is now automatic via intelligent router)
             training_request = ModelTrainingRequest(
-                model_type=model_type,
                 use_existing_data=False
             )
 
             result = await churn_service.train_model(training_request, df_features, dataset_id)
+
+            # Get the model type that was selected by the router
+            model_type = result.selected_model or result.model_type
             churn_service.update_training_progress(dataset_id, "in_progress", 60, "Model trained, generating predictions", job_id)
             await asyncio.sleep(0.1)
 
@@ -729,27 +733,29 @@ async def _run_training_background(
 @router.post("/train")
 async def train_churn_model(
     file: UploadFile | None = File(None),
-    model_type: str = "xgboost",
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Train a new churn prediction model with uploaded data.
 
+    The model type is now automatically selected by the intelligent router based on
+    dataset characteristics. The router analyzes:
+    - Dataset size and feature count
+    - Class imbalance
+    - Missing data patterns
+    - Categorical cardinality
+    - Feature correlations
+
+    Based on this analysis, it selects the optimal model:
+    - TabPFN: For small datasets (<1000 samples, <100 features)
+    - XGBoost: For larger datasets or imbalanced classes
+    - Random Forest: For high-cardinality categoricals
+    - Logistic Regression: For linear relationships
+    - Auto-Ensemble: When multiple models score similarly
+
     Training runs asynchronously in the background. This endpoint returns immediately
     with status "queued". Poll /train/status to track progress.
-
-    Upload a CSV file with the following columns:
-    - satisfaction_level (0-1)
-    - last_evaluation (0-1)
-    - number_project (integer)
-    - average_monthly_hours (float)
-    - time_spend_company (integer, years)
-    - work_accident (0 or 1)
-    - promotion_last_5years (0 or 1)
-    - department (string)
-    - salary_level (low, medium, high)
-    - left (0 or 1, target variable)
 
     Returns immediately with job status. Use /train/status to track progress.
     """
@@ -797,14 +803,13 @@ async def train_churn_model(
             training_job.job_id
         )
 
-        # Start background training task
+        # Start background training task (model selection is automatic via router)
         asyncio.create_task(
             _run_training_background(
                 df=df,
                 mapping=mapping,
                 dataset_id=dataset_id_for_training,
                 job_id=training_job.job_id,
-                model_type=model_type,
                 user_id=current_user.id,
                 username=current_user.username,
                 tenant_id=getattr(current_user, 'tenant_id', None)
@@ -1759,3 +1764,302 @@ async def get_accuracy_by_cohort(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=sanitize_error_message(e, "accuracy by cohort")
         )
+
+
+# ============================================================================
+# MODEL ROUTING INTROSPECTION ENDPOINTS
+# ============================================================================
+
+from app.models.churn import DatasetProfileDB, ModelRoutingDecision
+
+
+@router.get("/model/routing-info", response_model=RoutingInfoResponse)
+async def get_routing_info(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get dataset profile and model routing decision for the active dataset.
+
+    Returns comprehensive analysis of the dataset and the intelligent router's
+    decision about which model(s) to use, including:
+    - Dataset characteristics (size, features, class balance, quality)
+    - Model suitability scores
+    - Selected model and reasoning
+    - Ensemble configuration (if applicable)
+    - Alternative model options
+    """
+    try:
+        dataset = await get_active_dataset(db)
+
+        # Get profile
+        profile_result = await db.execute(
+            select(DatasetProfileDB).where(DatasetProfileDB.dataset_id == dataset.dataset_id)
+        )
+        profile_db = profile_result.scalar_one_or_none()
+
+        if not profile_db:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No dataset profile found. Train a model first to generate profile."
+            )
+
+        # Get latest routing decision
+        routing_result = await db.execute(
+            select(ModelRoutingDecision)
+            .where(ModelRoutingDecision.dataset_id == dataset.dataset_id)
+            .order_by(ModelRoutingDecision.decided_at.desc())
+            .limit(1)
+        )
+        routing_db = routing_result.scalar_one_or_none()
+
+        if not routing_db:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No routing decision found. Train a model first."
+            )
+
+        # Build response
+        profile_response = DatasetProfileResponse(
+            dataset_id=profile_db.dataset_id,
+            n_samples=profile_db.n_samples,
+            n_features=profile_db.n_features,
+            n_numeric_features=profile_db.n_numeric_features or 0,
+            n_categorical_features=profile_db.n_categorical_features or 0,
+            n_classes=profile_db.n_classes or 2,
+            class_balance_ratio=float(profile_db.class_balance_ratio or 1.0),
+            is_severely_imbalanced=bool(profile_db.is_severely_imbalanced),
+            missing_ratio=float(profile_db.missing_ratio or 0.0),
+            has_outliers=bool(profile_db.has_outliers),
+            outlier_ratio=float(profile_db.outlier_ratio or 0.0),
+            overall_quality_score=float(profile_db.overall_quality_score or 0.0),
+            tabpfn_suitability=float(profile_db.tabpfn_suitability or 0.0),
+            tree_model_suitability=float(profile_db.tree_model_suitability or 0.0),
+            linear_model_suitability=float(profile_db.linear_model_suitability or 0.0),
+            created_at=profile_db.created_at
+        )
+
+        routing_response = ModelRoutingResponse(
+            dataset_id=routing_db.dataset_id,
+            selected_model=routing_db.selected_model,
+            confidence=float(routing_db.confidence),
+            reasoning=routing_db.reasoning or [],
+            is_ensemble=bool(routing_db.is_ensemble),
+            ensemble_models=routing_db.ensemble_models,
+            ensemble_weights=routing_db.ensemble_weights,
+            ensemble_method=routing_db.ensemble_method,
+            alternatives=routing_db.alternative_models,
+            model_scores=routing_db.model_scores,
+            decided_at=routing_db.decided_at
+        )
+
+        return RoutingInfoResponse(
+            profile=profile_response,
+            routing=routing_response
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=sanitize_error_message(e, "routing info retrieval")
+        )
+
+
+@router.get("/model/dataset-profile/{dataset_id}", response_model=DatasetProfileResponse)
+async def get_dataset_profile(
+    dataset_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get comprehensive dataset analysis for a specific dataset.
+
+    Returns detailed statistics about the dataset including:
+    - Size metrics (samples, features)
+    - Class distribution and balance
+    - Missing data analysis
+    - Outlier detection results
+    - Model suitability scores for different algorithm types
+    """
+    try:
+        profile_result = await db.execute(
+            select(DatasetProfileDB).where(DatasetProfileDB.dataset_id == dataset_id)
+        )
+        profile_db = profile_result.scalar_one_or_none()
+
+        if not profile_db:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No profile found for dataset {dataset_id}. Train a model first."
+            )
+
+        return DatasetProfileResponse(
+            dataset_id=profile_db.dataset_id,
+            n_samples=profile_db.n_samples,
+            n_features=profile_db.n_features,
+            n_numeric_features=profile_db.n_numeric_features or 0,
+            n_categorical_features=profile_db.n_categorical_features or 0,
+            n_classes=profile_db.n_classes or 2,
+            class_balance_ratio=float(profile_db.class_balance_ratio or 1.0),
+            is_severely_imbalanced=bool(profile_db.is_severely_imbalanced),
+            missing_ratio=float(profile_db.missing_ratio or 0.0),
+            has_outliers=bool(profile_db.has_outliers),
+            outlier_ratio=float(profile_db.outlier_ratio or 0.0),
+            overall_quality_score=float(profile_db.overall_quality_score or 0.0),
+            tabpfn_suitability=float(profile_db.tabpfn_suitability or 0.0),
+            tree_model_suitability=float(profile_db.tree_model_suitability or 0.0),
+            linear_model_suitability=float(profile_db.linear_model_suitability or 0.0),
+            created_at=profile_db.created_at
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=sanitize_error_message(e, "dataset profile retrieval")
+        )
+
+
+@router.get("/model/routing-history/{dataset_id}")
+async def get_routing_history(
+    dataset_id: str,
+    limit: int = 10,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get history of model routing decisions for a dataset.
+
+    Returns list of routing decisions showing how model selection has evolved
+    across training runs. Useful for understanding model selection patterns.
+    """
+    try:
+        result = await db.execute(
+            select(ModelRoutingDecision)
+            .where(ModelRoutingDecision.dataset_id == dataset_id)
+            .order_by(ModelRoutingDecision.decided_at.desc())
+            .limit(limit)
+        )
+        decisions = result.scalars().all()
+
+        return {
+            "dataset_id": dataset_id,
+            "decisions": [
+                {
+                    "id": d.id,
+                    "selected_model": d.selected_model,
+                    "confidence": float(d.confidence),
+                    "is_ensemble": bool(d.is_ensemble),
+                    "ensemble_models": d.ensemble_models,
+                    "reasoning": d.reasoning,
+                    "model_scores": d.model_scores,
+                    "decided_at": d.decided_at
+                }
+                for d in decisions
+            ],
+            "total": len(decisions)
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=sanitize_error_message(e, "routing history retrieval")
+        )
+
+
+@router.get("/model/supported-models")
+async def get_supported_models(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get list of all supported model types and their characteristics.
+
+    Returns information about each model type including:
+    - Model name and description
+    - Ideal use cases
+    - Constraints (if any)
+    - Current availability status
+    """
+    from app.services.model_router_service import model_router
+    from app.services.tabpfn_service import is_tabpfn_available
+
+    tabpfn_available = is_tabpfn_available()
+
+    return {
+        "models": [
+            {
+                "name": "tabpfn",
+                "display_name": "TabPFN (Pre-trained Transformer)",
+                "description": "Pre-trained transformer for tabular data. Excels on small datasets without requiring training.",
+                "ideal_for": [
+                    "Small datasets (< 1000 samples)",
+                    "Few features (< 100)",
+                    "Clean data with minimal missing values",
+                    "Binary or few-class classification"
+                ],
+                "constraints": {
+                    "max_samples": 1000,
+                    "max_features": 100,
+                    "max_classes": 10
+                },
+                "available": tabpfn_available,
+                "requires_gpu": False
+            },
+            {
+                "name": "xgboost",
+                "display_name": "XGBoost (Gradient Boosting)",
+                "description": "Gradient boosting algorithm. Robust, handles imbalanced data and missing values well.",
+                "ideal_for": [
+                    "Medium to large datasets",
+                    "Imbalanced classes",
+                    "Data with missing values",
+                    "Complex feature interactions"
+                ],
+                "constraints": None,
+                "available": True,
+                "requires_gpu": False
+            },
+            {
+                "name": "random_forest",
+                "display_name": "Random Forest",
+                "description": "Ensemble of decision trees. Robust to outliers and provides good feature importance.",
+                "ideal_for": [
+                    "High-cardinality categorical features",
+                    "Noisy data with outliers",
+                    "When interpretability via feature importance matters",
+                    "Medium-sized datasets"
+                ],
+                "constraints": None,
+                "available": True,
+                "requires_gpu": False
+            },
+            {
+                "name": "logistic",
+                "display_name": "Logistic Regression",
+                "description": "Linear model. Fast, interpretable, works well when relationships are approximately linear.",
+                "ideal_for": [
+                    "Strong linear relationships in data",
+                    "Need for highly interpretable model",
+                    "Low feature count",
+                    "Fast inference requirements"
+                ],
+                "constraints": None,
+                "available": True,
+                "requires_gpu": False
+            }
+        ],
+        "ensemble_methods": [
+            {
+                "name": "weighted_voting",
+                "description": "Combines predictions using weighted average based on cross-validation scores"
+            },
+            {
+                "name": "stacking",
+                "description": "Uses a meta-learner trained on base model predictions"
+            }
+        ],
+        "active_models": model_router.get_supported_models()
+    }

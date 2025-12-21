@@ -17,6 +17,7 @@ from sklearn.metrics import (
     precision_recall_curve
 )
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.inspection import permutation_importance
 
 from app.schemas.churn import (
     ChurnPredictionRequest,
@@ -30,6 +31,12 @@ from app.schemas.churn import (
 )
 from app.core.config import settings
 from app.core.artifact_crypto import encrypt_blob, decrypt_blob, ArtifactCryptoError
+
+# Import model routing services
+from app.services.dataset_profiler_service import DatasetProfilerService, DatasetProfile
+from app.services.model_router_service import ModelRouterService, ModelRecommendation
+from app.services.tabpfn_service import TabPFNWrapper, is_tabpfn_available, compute_permutation_importance
+from app.services.ensemble_service import EnsembleService, EnsembleConfig
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +81,16 @@ class ChurnPredictionService:
             'medium': 0.30
         }
         self.thresholds_by_dataset: Dict[str, Dict[str, float]] = {}
+
+        # Model routing services (intelligent model selection)
+        self.dataset_profiler = DatasetProfilerService()
+        self.model_router = ModelRouterService()
+        self.ensemble_service = EnsembleService()
+
+        # Store routing decisions for introspection
+        self.last_routing_decision: Optional[ModelRecommendation] = None
+        self.last_dataset_profile: Optional[DatasetProfile] = None
+        self.ensemble_config: Optional[EnsembleConfig] = None
 
         model_dir = Path(settings.MODELS_DIR)
         self.model_path = model_dir / "churn_model.pkl"
@@ -907,13 +924,40 @@ class ChurnPredictionService:
         return results
 
     async def train_model(self, request: ModelTrainingRequest, training_data: pd.DataFrame, dataset_id: Optional[str] = None) -> ModelTrainingResponse:
-        """Train a new churn prediction model with proper validation and calibration."""
+        """Train a new churn prediction model with intelligent routing and automatic model selection."""
 
         # Remember which dataset this model belongs to
         self.active_dataset_id = dataset_id
 
         # Prepare training data
         X, y = self._prepare_training_data(training_data)
+
+        # === NEW: Profile dataset for intelligent model routing ===
+        logger.info("Profiling dataset for model routing...")
+        self.last_dataset_profile = self.dataset_profiler.analyze_dataset(
+            training_data, target_column='left'
+        )
+
+        # === NEW: Get routing recommendation ===
+        logger.info("Getting model routing recommendation...")
+        self.last_routing_decision = self.model_router.route(self.last_dataset_profile)
+
+        # Log deprecation warning if model_type was explicitly provided
+        if request.model_type:
+            logger.warning(
+                f"model_type='{request.model_type}' was provided but is deprecated. "
+                f"Using intelligent routing which selected: {self.last_routing_decision.primary_model}"
+            )
+
+        # Determine which model to use (from router)
+        selected_model_type = self.last_routing_decision.primary_model
+        use_ensemble = self.last_routing_decision.use_ensemble
+
+        logger.info(
+            f"Router selected: {selected_model_type} "
+            f"(confidence: {self.last_routing_decision.confidence:.2f}, "
+            f"ensemble: {use_ensemble})"
+        )
 
         # === IMPROVEMENT 1: Proper Train/Test Split ===
         # Use stratified split to maintain class balance
@@ -932,32 +976,17 @@ class ChurnPredictionService:
         class_imbalance_ratio = n_negative / max(n_positive, 1)
         logger.info(f"Class distribution: {n_positive} left, {n_negative} stayed (ratio: {class_imbalance_ratio:.2f})")
 
-        # Initialize model based on type with class imbalance handling
-        if request.model_type == "xgboost":
-            params = request.hyperparameters or {
-                'n_estimators': 100,
-                'max_depth': 5,
-                'learning_rate': 0.1,
-                'random_state': 42,
-                'scale_pos_weight': class_imbalance_ratio,  # Handle imbalance
-                'eval_metric': 'auc'
-            }
-            self.model = xgb.XGBClassifier(**params)
-        elif request.model_type == "random_forest":
-            params = request.hyperparameters or {
-                'n_estimators': 100,
-                'max_depth': 10,
-                'random_state': 42,
-                'class_weight': 'balanced'  # Handle imbalance
-            }
-            self.model = RandomForestClassifier(**params)
-        elif request.model_type == "logistic":
-            params = request.hyperparameters or {
-                'random_state': 42,
-                'max_iter': 1000,
-                'class_weight': 'balanced'  # Handle imbalance
-            }
-            self.model = LogisticRegression(**params)
+        # === NEW: Handle ensemble training ===
+        if use_ensemble:
+            return await self._train_ensemble_model(
+                X_train, X_test, y_train, y_test, X, y,
+                class_imbalance_ratio, dataset_id
+            )
+
+        # === Initialize model based on routed type with class imbalance handling ===
+        self.model = self._create_model_instance(
+            selected_model_type, class_imbalance_ratio, request.hyperparameters
+        )
 
         # Fit scaler on training data only
         self.scaler.fit(X_train)
@@ -1012,7 +1041,12 @@ class ChurnPredictionService:
         metrics['train_size'] = len(y_train)
 
         # === IMPROVEMENT 5: Initialize SHAP Explainer ===
-        if SHAP_AVAILABLE:
+        # Handle TabPFN separately - it doesn't support SHAP natively
+        if isinstance(self.model, TabPFNWrapper):
+            # TabPFN uses permutation importance instead of SHAP
+            self.shap_explainer = None
+            logger.info("TabPFN model - will use permutation importance for explanations")
+        elif SHAP_AVAILABLE:
             try:
                 if isinstance(self.model, (xgb.XGBClassifier, RandomForestClassifier)):
                     self.shap_explainer = shap.TreeExplainer(self.model)
@@ -1052,20 +1086,40 @@ class ChurnPredictionService:
         metrics['optimal_medium_threshold'] = optimal_thresholds['medium']
 
         # Get feature importance
-        if hasattr(self.model, 'feature_importances_'):
-            feature_names = [
-                'satisfaction_level', 'last_evaluation', 'number_project',
-                'average_monthly_hours', 'time_spend_company', 'work_accident',
-                'promotion_last_5years', 'department', 'salary_level'
-            ]
+        feature_names = [
+            'satisfaction_level', 'last_evaluation', 'number_project',
+            'average_monthly_hours', 'time_spend_company', 'work_accident',
+            'promotion_last_5years', 'department', 'salary_level'
+        ]
+
+        if isinstance(self.model, TabPFNWrapper):
+            # TabPFN: Use permutation importance
+            try:
+                self.feature_importance = compute_permutation_importance(
+                    self.model, X_test_scaled, y_test, feature_names, n_repeats=5
+                )
+                logger.info("Computed permutation importance for TabPFN")
+            except Exception as e:
+                logger.warning(f"Permutation importance failed: {e}")
+                self.feature_importance = {name: 1.0 / len(feature_names) for name in feature_names}
+        elif hasattr(self.model, 'feature_importances_'):
             self.feature_importance = dict(zip(feature_names, self.model.feature_importances_.tolist()))
         else:
-            self.feature_importance = {}
+            # Logistic regression - use coefficients
+            if hasattr(self.model, 'coef_'):
+                coefs = np.abs(self.model.coef_[0])
+                normalized = coefs / coefs.sum() if coefs.sum() > 0 else coefs
+                self.feature_importance = dict(zip(feature_names, normalized.tolist()))
+            else:
+                self.feature_importance = {}
 
         trained_at = datetime.utcnow()
 
+        # Use the routed model type for the model_id
+        selected_model_type = self.last_routing_decision.primary_model
+
         # Persist metrics for status checks (per dataset)
-        model_id = f"{request.model_type}_{cache_key}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        model_id = f"{selected_model_type}_{cache_key}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
         metrics_payload = {
             **metrics,
             'trained_at': trained_at,
@@ -1089,7 +1143,7 @@ class ChurnPredictionService:
 
         return ModelTrainingResponse(
             model_id=model_id,
-            model_type=request.model_type,
+            model_type=selected_model_type,  # Use routed model type
             accuracy=metrics['accuracy'],
             precision=metrics['precision'],
             recall=metrics['recall'],
@@ -1106,7 +1160,14 @@ class ChurnPredictionService:
             calibrated=metrics.get('calibrated', False),
             optimal_high_threshold=metrics.get('optimal_high_threshold'),
             optimal_medium_threshold=metrics.get('optimal_medium_threshold'),
-            class_imbalance_ratio=metrics.get('class_imbalance_ratio')
+            class_imbalance_ratio=metrics.get('class_imbalance_ratio'),
+            # NEW: Model routing info
+            selected_model=selected_model_type,
+            is_ensemble=False,
+            ensemble_models=None,
+            ensemble_weights=None,
+            routing_confidence=self.last_routing_decision.confidence,
+            routing_reasoning=self.last_routing_decision.reasoning,
         )
 
     def _optimize_thresholds(self, y_true: np.ndarray, y_proba: np.ndarray) -> Dict[str, float]:
@@ -1147,6 +1208,229 @@ class ChurnPredictionService:
         except Exception as e:
             logger.warning(f"Threshold optimization failed: {e}, using defaults")
             return {'high': 0.60, 'medium': 0.30}
+
+    def _create_model_instance(
+        self,
+        model_type: str,
+        class_imbalance_ratio: float,
+        hyperparameters: Optional[Dict[str, Any]] = None
+    ) -> Any:
+        """
+        Create a model instance based on type.
+
+        Args:
+            model_type: One of 'tabpfn', 'xgboost', 'random_forest', 'logistic'
+            class_imbalance_ratio: Ratio of negative to positive samples
+            hyperparameters: Optional custom hyperparameters
+
+        Returns:
+            Model instance ready for fitting
+        """
+        if model_type == "tabpfn":
+            return TabPFNWrapper()
+
+        elif model_type == "xgboost":
+            params = hyperparameters or {
+                'n_estimators': 100,
+                'max_depth': 5,
+                'learning_rate': 0.1,
+                'random_state': 42,
+                'scale_pos_weight': class_imbalance_ratio,
+                'eval_metric': 'auc'
+            }
+            return xgb.XGBClassifier(**params)
+
+        elif model_type == "random_forest":
+            params = hyperparameters or {
+                'n_estimators': 100,
+                'max_depth': 10,
+                'random_state': 42,
+                'class_weight': 'balanced'
+            }
+            return RandomForestClassifier(**params)
+
+        elif model_type == "logistic":
+            params = hyperparameters or {
+                'random_state': 42,
+                'max_iter': 1000,
+                'class_weight': 'balanced'
+            }
+            return LogisticRegression(**params)
+
+        else:
+            logger.warning(f"Unknown model type '{model_type}', defaulting to XGBoost")
+            return xgb.XGBClassifier(
+                n_estimators=100,
+                max_depth=5,
+                learning_rate=0.1,
+                random_state=42,
+                scale_pos_weight=class_imbalance_ratio,
+                eval_metric='auc'
+            )
+
+    async def _train_ensemble_model(
+        self,
+        X_train: np.ndarray,
+        X_test: np.ndarray,
+        y_train: np.ndarray,
+        y_test: np.ndarray,
+        X_all: np.ndarray,
+        y_all: np.ndarray,
+        class_imbalance_ratio: float,
+        dataset_id: Optional[str]
+    ) -> ModelTrainingResponse:
+        """
+        Train an ensemble of models when routing recommends it.
+
+        Uses the ensemble_service to create a weighted voting or stacking ensemble.
+        """
+        recommendation = self.last_routing_decision
+        cache_key = dataset_id or "default"
+
+        logger.info(
+            f"Training ensemble with models: {recommendation.ensemble_models}, "
+            f"method: {recommendation.ensemble_method}"
+        )
+
+        # Fit scaler
+        self.scaler.fit(X_train)
+        X_train_scaled = self.scaler.transform(X_train)
+        X_test_scaled = self.scaler.transform(X_test)
+
+        # Create ensemble
+        self.ensemble_config = self.ensemble_service.create_ensemble(
+            X_train=X_train_scaled,
+            y_train=y_train,
+            models=recommendation.ensemble_models,
+            weights=recommendation.ensemble_weights,
+            method=recommendation.ensemble_method,
+            cv_folds=5,
+            class_imbalance_ratio=class_imbalance_ratio,
+        )
+
+        # Use the primary model for single predictions (first in ensemble)
+        primary_model_name = recommendation.ensemble_models[0]
+        self.model = self.ensemble_config.base_models.get(primary_model_name)
+
+        # Compute metrics using ensemble predictions
+        y_proba_test = self.ensemble_service.predict_proba_ensemble(
+            X_test_scaled, self.ensemble_config
+        )[:, 1]
+        y_pred_test = (y_proba_test >= 0.5).astype(int)
+
+        metrics = {
+            'accuracy': float(accuracy_score(y_test, y_pred_test)),
+            'precision': float(precision_score(y_test, y_pred_test, zero_division=0)),
+            'recall': float(recall_score(y_test, y_pred_test, zero_division=0)),
+            'f1_score': float(f1_score(y_test, y_pred_test, zero_division=0)),
+        }
+
+        try:
+            metrics['roc_auc'] = float(roc_auc_score(y_test, y_proba_test))
+        except ValueError:
+            metrics['roc_auc'] = 0.5
+
+        try:
+            metrics['pr_auc'] = float(average_precision_score(y_test, y_proba_test))
+        except ValueError:
+            metrics['pr_auc'] = 0.0
+
+        metrics['brier_score'] = float(brier_score_loss(y_test, y_proba_test))
+        metrics['class_imbalance_ratio'] = float(class_imbalance_ratio)
+        metrics['test_size'] = len(y_test)
+        metrics['train_size'] = len(y_train)
+        metrics['calibrated'] = False  # Ensemble not calibrated separately
+
+        # Add CV scores from ensemble training
+        if self.ensemble_config.cv_scores:
+            avg_cv = np.mean(list(self.ensemble_config.cv_scores.values()))
+            metrics['cv_roc_auc_mean'] = float(avg_cv)
+            metrics['cv_roc_auc_std'] = float(np.std(list(self.ensemble_config.cv_scores.values())))
+
+        # Optimize thresholds
+        optimal_thresholds = self._optimize_thresholds(y_test, y_proba_test)
+        self.thresholds_by_dataset[cache_key] = optimal_thresholds
+        metrics['optimal_high_threshold'] = optimal_thresholds['high']
+        metrics['optimal_medium_threshold'] = optimal_thresholds['medium']
+
+        # Feature importance: average from base models that have it
+        feature_names = self.FEATURE_NAMES
+        importances_list = []
+
+        for model_name, model in self.ensemble_config.base_models.items():
+            if hasattr(model, 'feature_importances_'):
+                importances_list.append(model.feature_importances_)
+
+        if importances_list:
+            avg_importance = np.mean(importances_list, axis=0)
+            self.feature_importance = dict(zip(feature_names, avg_importance.tolist()))
+        else:
+            self.feature_importance = {name: 1.0 / len(feature_names) for name in feature_names}
+
+        self.feature_importance_by_dataset[cache_key] = self.feature_importance
+
+        trained_at = datetime.utcnow()
+        model_id = f"ensemble_{cache_key}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+
+        # Save ensemble artifacts
+        ensemble_dir = self.models_dir / dataset_id if dataset_id else self.models_dir
+        ensemble_paths = self.ensemble_service.save_ensemble(
+            self.ensemble_config,
+            ensemble_dir,
+            encrypt_fn=encrypt_blob
+        )
+
+        # Also save scaler and encoders
+        self._save_model(dataset_id)
+
+        # Store metrics
+        metrics_payload = {
+            **metrics,
+            'trained_at': trained_at,
+            'predictions_made': 0,
+            'model_version': model_id,
+            'dataset_id': dataset_id,
+            'is_ensemble': True,
+            'ensemble_models': recommendation.ensemble_models,
+        }
+        self.model_metrics_by_dataset[cache_key] = metrics_payload
+        self.model_metrics = metrics_payload
+        self.active_version = model_id
+
+        logger.info(
+            f"Ensemble trained: accuracy={metrics['accuracy']:.3f}, "
+            f"roc_auc={metrics.get('roc_auc', 0):.3f}, "
+            f"models={recommendation.ensemble_models}"
+        )
+
+        return ModelTrainingResponse(
+            model_id=model_id,
+            model_type=f"ensemble({'+'.join(recommendation.ensemble_models)})",
+            accuracy=metrics['accuracy'],
+            precision=metrics['precision'],
+            recall=metrics['recall'],
+            f1_score=metrics['f1_score'],
+            roc_auc=metrics.get('roc_auc'),
+            pr_auc=metrics.get('pr_auc'),
+            brier_score=metrics.get('brier_score'),
+            cv_roc_auc_mean=metrics.get('cv_roc_auc_mean'),
+            cv_roc_auc_std=metrics.get('cv_roc_auc_std'),
+            trained_at=trained_at,
+            training_samples=len(y_train),
+            test_samples=len(y_test),
+            feature_importance=self.feature_importance,
+            calibrated=False,
+            optimal_high_threshold=metrics.get('optimal_high_threshold'),
+            optimal_medium_threshold=metrics.get('optimal_medium_threshold'),
+            class_imbalance_ratio=metrics.get('class_imbalance_ratio'),
+            # Ensemble routing info
+            selected_model=recommendation.primary_model,
+            is_ensemble=True,
+            ensemble_models=recommendation.ensemble_models,
+            ensemble_weights=recommendation.ensemble_weights,
+            routing_confidence=recommendation.confidence,
+            routing_reasoning=recommendation.reasoning,
+        )
 
     def _prepare_training_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
         """Prepare training data from DataFrame"""

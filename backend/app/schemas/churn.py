@@ -81,8 +81,15 @@ class BatchChurnPredictionResponse(BaseModel):
 
 
 class ModelTrainingRequest(BaseModel):
-    """Request to train a new churn prediction model"""
-    model_type: str = Field(default="xgboost", description="Model type: xgboost, random_forest, logistic")
+    """Request to train a new churn prediction model.
+
+    Note: model_type is deprecated. The system now uses intelligent routing
+    to automatically select the optimal model based on dataset characteristics.
+    """
+    model_type: Optional[str] = Field(
+        default=None,
+        description="DEPRECATED: Model selection is now automatic. If provided, will be ignored."
+    )
     hyperparameters: Optional[Dict[str, Any]] = Field(default=None, description="Model hyperparameters")
     use_existing_data: bool = Field(default=True, description="Use existing employee data for training")
     training_data_url: Optional[str] = Field(None, description="URL to external training data CSV")
@@ -91,7 +98,7 @@ class ModelTrainingRequest(BaseModel):
 class ModelTrainingResponse(BaseModel):
     """Response after model training with comprehensive metrics"""
     model_id: str
-    model_type: str
+    model_type: str  # The model type that was selected/used
     # Basic metrics (on TEST set, not training set)
     accuracy: float
     precision: float
@@ -114,6 +121,14 @@ class ModelTrainingResponse(BaseModel):
     optimal_high_threshold: Optional[float] = Field(None, description="Data-driven high risk threshold")
     optimal_medium_threshold: Optional[float] = Field(None, description="Data-driven medium risk threshold")
     class_imbalance_ratio: Optional[float] = Field(None, description="Negative/Positive class ratio")
+
+    # Model routing info (NEW - automatic model selection)
+    selected_model: Optional[str] = Field(None, description="Model selected by the intelligent router")
+    is_ensemble: bool = Field(default=False, description="Whether an ensemble was used")
+    ensemble_models: Optional[List[str]] = Field(None, description="Models in the ensemble")
+    ensemble_weights: Optional[Dict[str, float]] = Field(None, description="Weights for ensemble models")
+    routing_confidence: Optional[float] = Field(None, description="Router confidence in model selection (0-1)")
+    routing_reasoning: Optional[List[str]] = Field(None, description="Reasons for model selection")
 
 
 class ModelMetricsResponse(BaseModel):
@@ -231,3 +246,76 @@ class ChurnAnalyticsResponse(BaseModel):
     department_breakdown: Dict[str, Dict[str, Any]]
     risk_trends: List[Dict[str, Any]]
     top_contributing_factors: List[Dict[str, Any]]
+
+
+# ============================================================================
+# Model Routing Schemas (NEW - Intelligent Model Selection)
+# ============================================================================
+
+class DatasetProfileResponse(BaseModel):
+    """Dataset profile for API response - shows dataset characteristics."""
+    dataset_id: str
+
+    # Size metrics
+    n_samples: int
+    n_features: int
+    n_numeric_features: int
+    n_categorical_features: int
+
+    # Class distribution
+    n_classes: int
+    class_balance_ratio: float = Field(..., description="Minority/majority class ratio (0-1)")
+    is_severely_imbalanced: bool
+
+    # Data quality
+    missing_ratio: float = Field(..., description="Overall missing data ratio")
+    has_outliers: bool
+    outlier_ratio: float
+    overall_quality_score: float = Field(..., description="Overall data quality (0-1)")
+
+    # Suitability scores
+    tabpfn_suitability: float = Field(..., description="Suitability for TabPFN (0-1)")
+    tree_model_suitability: float = Field(..., description="Suitability for tree models (0-1)")
+    linear_model_suitability: float = Field(..., description="Suitability for linear models (0-1)")
+
+    # Timestamps
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ModelRoutingResponse(BaseModel):
+    """Model routing decision for API response."""
+    dataset_id: str
+
+    # Decision
+    selected_model: str = Field(..., description="Model selected by router")
+    confidence: float = Field(..., description="Confidence in selection (0-1)")
+    reasoning: List[str] = Field(..., description="Reasons for selection")
+
+    # Ensemble configuration
+    is_ensemble: bool
+    ensemble_models: Optional[List[str]] = None
+    ensemble_weights: Optional[Dict[str, float]] = None
+    ensemble_method: Optional[str] = None
+
+    # Alternatives
+    alternatives: Optional[List[Dict[str, Any]]] = Field(
+        None, description="Alternative model options with scores"
+    )
+    model_scores: Optional[Dict[str, float]] = Field(
+        None, description="Scores for all evaluated models"
+    )
+
+    # Timestamp
+    decided_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class RoutingInfoResponse(BaseModel):
+    """Combined profile and routing info for introspection."""
+    profile: DatasetProfileResponse
+    routing: ModelRoutingResponse

@@ -14,7 +14,8 @@ import {
   Activity,
   Award,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Brain
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import {
@@ -30,13 +31,14 @@ import {
   Legend
 } from 'recharts';
 import { modelIntelligenceService, BacktestingResults, PredictionOutcomesResult } from '../services/modelIntelligenceService';
+import { ModelSelectionCard } from './ModelSelectionCard';
 
 interface ModelIntelligenceTabProps {
   className?: string;
 }
 
 export function ModelIntelligenceTab({ className }: ModelIntelligenceTabProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'backtesting' | 'outcomes'>('backtesting');
+  const [activeSubTab, setActiveSubTab] = useState<'optimization' | 'backtesting' | 'outcomes'>('optimization');
   const [backtestingData, setBacktestingData] = useState<BacktestingResults | null>(null);
   const [outcomesData, setOutcomesData] = useState<PredictionOutcomesResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,6 +93,20 @@ export function ModelIntelligenceTab({ className }: ModelIntelligenceTabProps) {
       {/* Sub-tab Navigation */}
       <div className="flex space-x-4 border-b border-gray-200 dark:border-gray-700">
         <button
+          onClick={() => setActiveSubTab('optimization')}
+          className={cn(
+            "pb-2 px-1 text-sm font-medium border-b-2 transition-colors",
+            activeSubTab === 'optimization'
+              ? "border-blue-500 text-blue-600 dark:text-blue-400"
+              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <Brain className="w-4 h-4" />
+            AI Optimization
+          </div>
+        </button>
+        <button
           onClick={() => setActiveSubTab('backtesting')}
           className={cn(
             "pb-2 px-1 text-sm font-medium border-b-2 transition-colors",
@@ -119,6 +135,25 @@ export function ModelIntelligenceTab({ className }: ModelIntelligenceTabProps) {
           </div>
         </button>
       </div>
+
+      {/* AI Optimization Content */}
+      {activeSubTab === 'optimization' && (
+        <div className="space-y-6">
+          <ModelSelectionCard />
+
+          {/* Additional context */}
+          <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              How AI Optimization Works
+            </h4>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Our system analyzes your dataset characteristics including size, feature types, class balance,
+              and data quality. Based on this analysis, it automatically selects the most suitable
+              prediction algorithm to maximize accuracy for your specific data profile.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Backtesting Content */}
       {activeSubTab === 'backtesting' && backtestingData && (

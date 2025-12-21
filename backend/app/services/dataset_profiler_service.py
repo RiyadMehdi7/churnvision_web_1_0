@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 class DatasetProfile:
     """Comprehensive dataset profile for model routing decisions."""
 
+    # === REQUIRED FIELDS (no defaults) ===
     # Size metrics
     n_samples: int
     n_features: int
@@ -29,12 +30,17 @@ class DatasetProfile:
     n_classes: int
     class_balance_ratio: float  # minority/majority ratio (0-1)
     is_severely_imbalanced: bool  # ratio < 0.1
-    class_distribution: Dict[Any, int] = field(default_factory=dict)
 
     # Missing data
     missing_ratio: float  # overall missing percentage
     features_with_missing: int
     max_missing_per_feature: float
+
+    # === OPTIONAL FIELDS (with defaults) ===
+    # Class distribution details
+    class_distribution: Dict[Any, int] = field(default_factory=dict)
+
+    # Missing data details
     missing_per_feature: Dict[str, float] = field(default_factory=dict)
 
     # Numeric feature statistics

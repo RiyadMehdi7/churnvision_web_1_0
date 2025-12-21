@@ -442,8 +442,8 @@ async def refine_content(
     - "translate to German"
     - "make it friendlier"
     """
-from app.services.chatbot_service import ChatbotService
-from app.services.llm_config import resolve_llm_provider_and_model
+    from app.services.chatbot_service import ChatbotService
+    from app.services.llm_config import resolve_llm_provider_and_model
     from app.core.config import settings
     import json
     import re

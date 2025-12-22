@@ -19,7 +19,7 @@ services:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
       - ./backend/alembic.ini:/app/alembic.ini
-      - ./ml/models:/app/models:ro  # Read-only for models
+      - ./ml/models:/app/models  # Writable for model training
     depends_on:
       - db
       - ollama

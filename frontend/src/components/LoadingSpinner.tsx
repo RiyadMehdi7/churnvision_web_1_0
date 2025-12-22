@@ -2,7 +2,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { memo } from 'react';
 import { cn } from '@/lib/utils';
-import churnvisionLogo from '@/assets/providers/churnvision.svg';
 
 interface LoadingSpinnerProps {
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -185,43 +184,9 @@ export const LoadingStates = {
       animate={{ opacity: 1 }}
       className="flex flex-col items-center justify-center min-h-[300px] space-y-6"
     >
-      {/* Animated logo container */}
+      {/* Simple spinner */}
       <div className="relative">
-        <motion.div
-          className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 flex items-center justify-center shadow-lg"
-          animate={{
-            boxShadow: [
-              '0 10px 40px -10px rgba(16, 185, 129, 0.3)',
-              '0 10px 40px -10px rgba(16, 185, 129, 0.5)',
-              '0 10px 40px -10px rgba(16, 185, 129, 0.3)',
-            ],
-          }}
-          transition={{ duration: 2, repeat: Infinity }}
-        >
-          <img 
-            src={churnvisionLogo} 
-            alt="ChurnVision Logo" 
-            className="w-7 h-7"
-          />
-        </motion.div>
-
-        {/* Pulse rings */}
-        <motion.div
-          className="absolute inset-0 rounded-2xl border-2 border-emerald-500/40"
-          animate={{
-            scale: [1, 1.5],
-            opacity: [0.6, 0],
-          }}
-          transition={{ duration: 1.5, repeat: Infinity }}
-        />
-        <motion.div
-          className="absolute inset-0 rounded-2xl border-2 border-emerald-500/40"
-          animate={{
-            scale: [1, 1.5],
-            opacity: [0.6, 0],
-          }}
-          transition={{ duration: 1.5, repeat: Infinity, delay: 0.5 }}
-        />
+        <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
       </div>
 
       {/* Bouncing dots */}
@@ -394,43 +359,14 @@ export const LoadingStates = {
         />
       </div>
 
-      {/* Logo */}
+      {/* Simple spinner */}
       <motion.div
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.1 }}
         className="relative mb-8"
       >
-        <motion.div
-          className="w-20 h-20 rounded-3xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 flex items-center justify-center shadow-2xl"
-          animate={{
-            boxShadow: [
-              '0 20px 60px -15px rgba(16, 185, 129, 0.3)',
-              '0 20px 60px -15px rgba(16, 185, 129, 0.5)',
-              '0 20px 60px -15px rgba(16, 185, 129, 0.3)',
-            ],
-          }}
-          transition={{ duration: 2, repeat: Infinity }}
-        >
-          <img 
-            src={churnvisionLogo} 
-            alt="ChurnVision Logo" 
-            className="w-10 h-10"
-          />
-        </motion.div>
-
-        {/* Pulse rings */}
-        {[0, 0.5, 1].map((delay, i) => (
-          <motion.div
-            key={i}
-            className="absolute inset-0 rounded-3xl border-2 border-emerald-500/30"
-            animate={{
-              scale: [1, 1.8],
-              opacity: [0.5, 0],
-            }}
-            transition={{ duration: 2, repeat: Infinity, delay }}
-          />
-        ))}
+        <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
       </motion.div>
 
       {/* Loading indicator and text */}

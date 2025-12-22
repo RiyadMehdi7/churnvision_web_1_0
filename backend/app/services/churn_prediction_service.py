@@ -513,11 +513,18 @@ class ChurnPredictionService:
         direction = "increases" if shap_val > 0 else "decreases"
         magnitude = abs(shap_val)
 
+        # Safely format numeric values
+        def fmt_float(v, decimals=2):
+            try:
+                return f"{float(v):.{decimals}f}"
+            except (ValueError, TypeError):
+                return str(v)
+
         messages = {
-            "satisfaction_level": f"Satisfaction level ({value:.2f}) {direction} churn risk",
-            "last_evaluation": f"Performance score ({value:.2f}) {direction} churn risk",
+            "satisfaction_level": f"Satisfaction level ({fmt_float(value, 2)}) {direction} churn risk",
+            "last_evaluation": f"Performance score ({fmt_float(value, 2)}) {direction} churn risk",
             "number_project": f"Project count ({value}) {direction} churn risk",
-            "average_monthly_hours": f"Monthly hours ({value:.0f}) {direction} churn risk",
+            "average_monthly_hours": f"Monthly hours ({fmt_float(value, 0)}) {direction} churn risk",
             "time_spend_company": f"Tenure ({value} years) {direction} churn risk",
             "work_accident": f"Work accident history {direction} churn risk",
             "promotion_last_5years": f"Promotion status {direction} churn risk",

@@ -1,7 +1,6 @@
 import { AnimatePresence, motion, Transition } from 'framer-motion';
 import { memo, useEffect, useState } from 'react';
 import { Database, Brain, Sparkles, Shield, CheckCircle2 } from 'lucide-react';
-import churnvisionLogo from '../assets/providers/churnvision.svg';
 
 interface AppLaunchAnimationProps {
   isVisible: boolean;
@@ -130,24 +129,13 @@ export const AppLaunchAnimation = memo(({ isVisible, versionLabel }: AppLaunchAn
             <div className="app-launch-corner app-launch-corner-tl" />
             <div className="app-launch-corner app-launch-corner-br" />
 
-            {/* Logo with gradient */}
+            {/* Logo text only */}
             <motion.div
               className="app-launch-logo-container"
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1, duration: 0.4 }}
             >
-              <motion.div
-                className="app-launch-logo-icon"
-                animate={{ rotate: [0, 360] }}
-                transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-              >
-                <img 
-                  src={churnvisionLogo} 
-                  alt="ChurnVision Logo" 
-                  className="w-10 h-10"
-                />
-              </motion.div>
               <div className="app-launch-logo">
                 <span className="app-launch-logo-text">Churn</span>
                 <span className="app-launch-logo-text-accent">Vision</span>

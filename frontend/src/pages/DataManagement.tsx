@@ -8,7 +8,7 @@ import {
     ArrowRight, Check, X, FolderPlus, Folder, FolderOpen, Info, Eye,
     Share2, Search, Table2, Users, Briefcase, Hash, Calendar, DollarSign,
     Download, Upload, Clock, MessageSquare, BarChart, GitCompare,
-    HardDrive
+    HardDrive, Plug, ExternalLink, Link2, Settings2
 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { useNavigate } from 'react-router-dom';
@@ -525,7 +525,7 @@ export function DataManagement(): React.ReactElement {
     // --- END NEW States ---
 
     // Main tab state for the interface
-    const [activeMainTab, setActiveMainTab] = useState<'files' | 'database' | 'api' | 'mlmodels'>('files');
+    const [activeMainTab, setActiveMainTab] = useState<'files' | 'database' | 'integrations' | 'mlmodels'>('files');
 
     // ML Models state
     const [modelMetrics, setModelMetrics] = useState<any[]>([]);
@@ -2455,7 +2455,7 @@ export function DataManagement(): React.ReactElement {
                             </h2>
                             <button
                                 onClick={onClose}
-                                className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-300 transition-colors" /* Improved hover for dark */
+                                className="text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -2476,7 +2476,7 @@ export function DataManagement(): React.ReactElement {
                                     <div key={column} className="border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-white dark:bg-gray-700 shadow-sm"> {/* Card style for each column */}
                                         <button
                                             onClick={() => toggleColumn(column)}
-                                            className="w-full p-4 flex items-center justify-between bg-gray-100 dark:bg-gray-700/70 hover:bg-gray-200 dark:hover:bg-gray-600/70 text-left transition-colors" /* Enhanced header */
+                                            className="w-full p-4 flex items-center justify-between bg-gray-100 dark:bg-gray-700/70 hover:bg-gray-200 dark:hover:bg-gray-600/70 text-left transition-colors"
                                         >
                                             <div className="flex items-center gap-2">
                                                 <span className="font-medium text-gray-800 dark:text-gray-100">{column}</span>
@@ -2553,7 +2553,7 @@ export function DataManagement(): React.ReactElement {
                     <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl"> {/* Adjusted gap and bg */}
                         <button
                             onClick={onClose}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-500 transition-colors shadow-sm" /* Consistent button styling */
+                            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-500 transition-colors shadow-sm"
                         >
                             Cancel
                         </button>
@@ -2561,7 +2561,7 @@ export function DataManagement(): React.ReactElement {
                         {!results.valid && canAutoFix && (
                             <button
                                 onClick={onProceed}
-                                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 border border-blue-700 dark:border-blue-500 transition-colors shadow-sm" /* Consistent button styling */
+                                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 border border-blue-700 dark:border-blue-500 transition-colors shadow-sm"
                             >
                                 Try Automatic Fix
                             </button>
@@ -2570,7 +2570,7 @@ export function DataManagement(): React.ReactElement {
                         {!results.valid && !canAutoFix && (
                             <button
                                 onClick={onProceed}
-                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 border border-red-700 dark:border-red-500 transition-colors shadow-sm" /* Consistent button styling */
+                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 border border-red-700 dark:border-red-500 transition-colors shadow-sm"
                             >
                                 Upload Anyway
                             </button>
@@ -2579,7 +2579,7 @@ export function DataManagement(): React.ReactElement {
                         {results.valid && (
                             <button
                                 onClick={onProceed}
-                                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 border border-green-700 dark:border-green-500 transition-colors shadow-sm" /* Consistent button styling */
+                                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 border border-green-700 dark:border-green-500 transition-colors shadow-sm"
                             >
                                 Continue Upload
                             </button>
@@ -2734,7 +2734,7 @@ export function DataManagement(): React.ReactElement {
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5, delay: 0.2 }}
-                    className="mb-6 bg-white dark:bg-gray-800/70 p-6 rounded-xl shadow-lg border border-gray-200/80 dark:border-gray-700/50 flex-shrink-0" /* Adjusted dark bg and border */
+                    className="mb-6 bg-white dark:bg-gray-800/70 p-6 rounded-xl shadow-lg border border-gray-200/80 dark:border-gray-700/50 flex-shrink-0"
                 >
                     <div className="flex items-center justify-between mb-5">
                         <div className="flex items-center gap-3">
@@ -2763,7 +2763,7 @@ export function DataManagement(): React.ReactElement {
                         {!isLoadingProject && activeProject && ( // Show deactivate only when loaded and active
                             <button
                                 onClick={() => handleSetActiveProject(null)} // API call
-                                className="ml-3 text-xs text-blue-700 dark:text-blue-300 hover:underline focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-400 rounded" /* Added dark focus ring */
+                                className="ml-3 text-xs text-blue-700 dark:text-blue-300 hover:underline focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-400 rounded"
                                 title="Deactivate project"
                             >
                                 (Deactivate)
@@ -2779,12 +2779,12 @@ export function DataManagement(): React.ReactElement {
                             onChange={(e) => setNewProjectName(e.target.value)}
                             placeholder="New project name..."
                             disabled={isCreatingProject}
-                            className="flex-grow px-3 py-2 border border-gray-300 dark:border-gray-500 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-1 focus:ring-purple-500 dark:focus:ring-purple-400 text-sm" /* Adjusted dark focus ring */
+                            className="flex-grow px-3 py-2 border border-gray-300 dark:border-gray-500 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-1 focus:ring-purple-500 dark:focus:ring-purple-400 text-sm"
                         />
                         <button
                             onClick={handleCreateProject}
                             disabled={!newProjectName.trim() || isCreatingProject}
-                            className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 dark:disabled:opacity-70 disabled:cursor-not-allowed transition-colors flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:ring-offset-2 dark:focus:ring-offset-gray-800" /* Adjusted dark disabled and focus */
+                            className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 dark:disabled:opacity-70 disabled:cursor-not-allowed transition-colors flex items-center gap-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
                         >
                             {isCreatingProject ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderPlus className="w-4 h-4" />}
                             Create
@@ -2792,14 +2792,14 @@ export function DataManagement(): React.ReactElement {
                     </div>
 
                     {projectError && (
-                        <p className="text-sm text-red-700 dark:text-red-300 mb-3">Error: {projectError}</p> /* Adjusted dark error text */
+                        <p className="text-sm text-red-700 dark:text-red-300 mb-3">Error: {projectError}</p>
                     )}
 
                     {/* Project List - uses activeProject from context for highlighting */}
                     <div className="max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2 space-y-2 bg-gray-100 dark:bg-gray-700/60"> {/* Adjusted dark bg */}
                         {isProjectListLoading ? ( // Use specific loading state
                             <div className="flex items-center justify-center p-4">
-                                <Loader2 className="w-5 h-5 animate-spin text-gray-400 dark:text-gray-500" /> /* Adjusted dark spinner color */
+                                <Loader2 className="w-5 h-5 animate-spin text-gray-400 dark:text-gray-500" />
                             </div>
                         ) : projects.length === 0 ? (
                             <p className="text-sm text-center text-gray-500 dark:text-gray-400 p-4">No projects found. Create one above.</p>
@@ -2807,7 +2807,7 @@ export function DataManagement(): React.ReactElement {
                             <div
                                 key={proj.path}
                                 // Highlight based on activeProject from context
-                                className={`flex items-center justify-between p-4 rounded-md transition-all duration-150 ${activeProject?.path === proj.path ? 'bg-blue-100 dark:bg-blue-800/70 ring-1 ring-blue-500 dark:ring-blue-400' : 'bg-white dark:bg-gray-700/80 hover:bg-gray-200 dark:hover:bg-gray-600/80'}`} /* Increased padding from p-3 to p-4 */
+                                className={`flex items-center justify-between p-4 rounded-md transition-all duration-150 ${activeProject?.path === proj.path ? 'bg-blue-100 dark:bg-blue-800/70 ring-1 ring-blue-500 dark:ring-blue-400' : 'bg-white dark:bg-gray-700/80 hover:bg-gray-200 dark:hover:bg-gray-600/80'}`}
                             >
                                 <div className="flex items-center gap-2 min-w-0">
                                     {/* Icon based on activeProject from context */}
@@ -2824,7 +2824,7 @@ export function DataManagement(): React.ReactElement {
                                     {!isLoadingProject && activeProject?.path !== proj.path && ( // Don't show activate if context is loading or already active
                                         <button
                                             onClick={() => handleSetActiveProject(proj.dbPath)} // API Call
-                                            className="p-1.5 text-gray-500 hover:text-green-600 dark:text-gray-400 dark:hover:text-green-300 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-green-500 dark:focus:ring-green-400" /* Adjusted dark focus ring */
+                                            className="p-1.5 text-gray-500 hover:text-green-600 dark:text-gray-400 dark:hover:text-green-300 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-green-500 dark:focus:ring-green-400"
                                             title="Set as active project"
                                             disabled={isLoadingProject} // Disable if context is busy
                                         >
@@ -2837,7 +2837,7 @@ export function DataManagement(): React.ReactElement {
                                             e.stopPropagation();
                                             handleDeleteProject(proj);
                                         }}
-                                        className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-300 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-red-500 dark:focus:ring-red-400" /* Adjusted dark focus ring */
+                                        className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-300 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-red-500 dark:focus:ring-red-400"
                                         title="Delete project"
                                         disabled={isLoadingProject || isProjectListLoading} // Disable if context/list is busy
                                     >
@@ -2944,14 +2944,16 @@ export function DataManagement(): React.ReactElement {
                                 </div>
                             </button>
                             <button
-                                title="API & System Connections - External Integrations"
-                                aria-disabled="true"
-                                disabled
-                                className={`hidden px-4 py-2 text-sm font-medium border-b-2 rounded-t-lg transition-all border-transparent text-gray-400 dark:text-gray-500 bg-gray-50/30 dark:bg-gray-700/10 cursor-not-allowed`}
+                                onClick={() => setActiveMainTab('integrations')}
+                                title="HRIS Integrations - Connect to HR Systems"
+                                className={`px-4 py-2 text-sm font-medium border-b-2 rounded-t-lg cursor-pointer transition-all ${activeMainTab === 'integrations'
+                                    ? 'border-purple-500 text-purple-600 dark:text-purple-400 bg-purple-50/50 dark:bg-purple-900/20'
+                                    : 'border-transparent text-gray-500 dark:text-gray-400 bg-gray-50/30 dark:bg-gray-700/10 hover:bg-gray-100 dark:hover:bg-gray-600/30'
+                                    }`}
                             >
                                 <div className="flex items-center gap-2">
-                                    <Share2 className="w-4 h-4" />
-                                    External/API
+                                    <Plug className="w-4 h-4" />
+                                    Integrations
                                 </div>
                             </button>
                         </div>
@@ -3958,110 +3960,221 @@ export function DataManagement(): React.ReactElement {
                                 </motion.div>
                             )}
 
-                            {/* API Tab */}
-                            {activeMainTab === 'api' && (
-                                <div className="hidden">
-                                    <ComingSoonOverlay title="API & System Connections">
-                                        <motion.div
-                                            initial={{ opacity: 0, y: 10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            transition={{ duration: 0.3 }}
-                                            className="space-y-6"
-                                        >
-                                            <div className="flex items-center gap-3 mb-4">
-                                                <div className="p-2 bg-teal-100 dark:bg-teal-900/40 rounded-lg">
-                                                    <Share2 className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-                                                </div>
-                                                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">API & System Connections</h3>
+                            {/* Integrations Tab */}
+                            {activeMainTab === 'integrations' && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.3 }}
+                                    className="space-y-6"
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-purple-100 dark:bg-purple-900/40 rounded-lg">
+                                                <Plug className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                                             </div>
+                                            <div>
+                                                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">HRIS & Collaboration Integrations</h3>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400">Connect to external HR systems for automated data sync</p>
+                                            </div>
+                                        </div>
+                                    </div>
 
-                                            <div className="space-y-4">
-                                                <p className="text-sm text-gray-600 dark:text-gray-400">
-                                                    Connect directly to external HR systems (e.g., SAP SuccessFactors, BambooHR) for automated data synchronization.
+                                    {/* HRIS Connectors Section */}
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <h4 className="text-md font-medium text-gray-800 dark:text-gray-200">HR Information Systems</h4>
+                                            <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">Enterprise Feature</span>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {/* Workday */}
+                                            <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800/60 hover:shadow-md transition-shadow">
+                                                <div className="flex items-center gap-3 mb-3">
+                                                    <div className="p-2 bg-orange-100 dark:bg-orange-900/40 rounded-lg">
+                                                        <Database className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-medium text-gray-800 dark:text-gray-100">Workday</h4>
+                                                        <span className="text-xs text-gray-500">OAuth 2.0</span>
+                                                    </div>
+                                                </div>
+                                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                                                    Enterprise HCM platform integration for employee data sync.
                                                 </p>
-
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="p-4 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/40">
-                                                        <div className="flex items-center gap-3 mb-3">
-                                                            <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
-                                                                <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                                                            </div>
-                                                            <h4 className="font-medium text-gray-800 dark:text-gray-100">SAP SuccessFactors</h4>
-                                                        </div>
-                                                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                                                            Direct integration with SAP HR system for real-time data sync.
-                                                        </p>
-                                                        <Button variant="outline" disabled className="w-full">
-                                                            <Clock className="w-4 h-4 mr-2" />
-                                                            Coming Soon
-                                                        </Button>
-                                                    </div>
-
-                                                    <div className="p-4 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/40">
-                                                        <div className="flex items-center gap-3 mb-3">
-                                                            <div className="p-2 bg-green-100 dark:bg-green-900/40 rounded-lg">
-                                                                <Share2 className="w-4 h-4 text-green-600 dark:text-green-400" />
-                                                            </div>
-                                                            <h4 className="font-medium text-gray-800 dark:text-gray-100">BambooHR</h4>
-                                                        </div>
-                                                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                                                            Connect to BambooHR for automated employee data import.
-                                                        </p>
-                                                        <Button variant="outline" disabled className="w-full">
-                                                            <Clock className="w-4 h-4 mr-2" />
-                                                            Coming Soon
-                                                        </Button>
-                                                    </div>
-
-                                                    <div className="p-4 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/40">
-                                                        <div className="flex items-center gap-3 mb-3">
-                                                            <div className="p-2 bg-purple-100 dark:bg-purple-900/40 rounded-lg">
-                                                                <Wifi className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                                                            </div>
-                                                            <h4 className="font-medium text-gray-800 dark:text-gray-100">Workday</h4>
-                                                        </div>
-                                                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                                                            Integration with Workday HCM for comprehensive HR data.
-                                                        </p>
-                                                        <Button variant="outline" disabled className="w-full">
-                                                            <Clock className="w-4 h-4 mr-2" />
-                                                            Coming Soon
-                                                        </Button>
-                                                    </div>
-
-                                                    <div className="p-4 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/40">
-                                                        <div className="flex items-center gap-3 mb-3">
-                                                            <div className="p-2 bg-orange-100 dark:bg-orange-900/40 rounded-lg">
-                                                                <Share2 className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-                                                            </div>
-                                                            <h4 className="font-medium text-gray-800 dark:text-gray-100">Custom API</h4>
-                                                        </div>
-                                                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                                                            Connect to your custom HR API endpoints.
-                                                        </p>
-                                                        <Button variant="outline" disabled className="w-full">
-                                                            <Clock className="w-4 h-4 mr-2" />
-                                                            Coming Soon
-                                                        </Button>
-                                                    </div>
-                                                </div>
-
-                                                <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700/60">
-                                                    <div className="flex items-center gap-3 mb-2">
-                                                        <Info className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                                                        <h4 className="font-medium text-blue-800 dark:text-blue-200">API Integration Benefits</h4>
-                                                    </div>
-                                                    <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
-                                                        <li>• Real-time data synchronization</li>
-                                                        <li>• Automated data updates</li>
-                                                        <li>• Reduced manual data entry</li>
-                                                        <li>• Enhanced data accuracy</li>
-                                                    </ul>
-                                                </div>
+                                                <Button variant="outline" className="w-full" disabled>
+                                                    <Link2 className="w-4 h-4 mr-2" />
+                                                    Connect (Coming Soon)
+                                                </Button>
                                             </div>
-                                        </motion.div>
-                                    </ComingSoonOverlay>
-                                </div>
+
+                                            {/* SAP SuccessFactors */}
+                                            <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800/60 hover:shadow-md transition-shadow">
+                                                <div className="flex items-center gap-3 mb-3">
+                                                    <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
+                                                        <Database className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-medium text-gray-800 dark:text-gray-100">SAP SuccessFactors</h4>
+                                                        <span className="text-xs text-gray-500">OAuth 2.0</span>
+                                                    </div>
+                                                </div>
+                                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                                                    Connect to SAP SF for comprehensive HR data integration.
+                                                </p>
+                                                <Button variant="outline" className="w-full" disabled>
+                                                    <Link2 className="w-4 h-4 mr-2" />
+                                                    Connect (Coming Soon)
+                                                </Button>
+                                            </div>
+
+                                            {/* BambooHR - Available */}
+                                            <div className="p-4 border-2 border-green-300 dark:border-green-700 rounded-lg bg-green-50/50 dark:bg-green-900/20 hover:shadow-md transition-shadow">
+                                                <div className="flex items-center gap-3 mb-3">
+                                                    <div className="p-2 bg-green-100 dark:bg-green-900/40 rounded-lg">
+                                                        <Database className="w-5 h-5 text-green-600 dark:text-green-400" />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-medium text-gray-800 dark:text-gray-100">BambooHR</h4>
+                                                        <span className="text-xs text-green-600 dark:text-green-400 font-medium">API Key • Available</span>
+                                                    </div>
+                                                </div>
+                                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                                                    Connect via API key for automated employee data import.
+                                                </p>
+                                                <Button variant="default" className="w-full bg-green-600 hover:bg-green-700">
+                                                    <Link2 className="w-4 h-4 mr-2" />
+                                                    Connect
+                                                </Button>
+                                            </div>
+
+                                            {/* ADP */}
+                                            <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800/60 hover:shadow-md transition-shadow">
+                                                <div className="flex items-center gap-3 mb-3">
+                                                    <div className="p-2 bg-red-100 dark:bg-red-900/40 rounded-lg">
+                                                        <Database className="w-5 h-5 text-red-600 dark:text-red-400" />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-medium text-gray-800 dark:text-gray-100">ADP Workforce</h4>
+                                                        <span className="text-xs text-gray-500">OAuth 2.0</span>
+                                                    </div>
+                                                </div>
+                                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                                                    Payroll and HR data from ADP Workforce Now.
+                                                </p>
+                                                <Button variant="outline" className="w-full" disabled>
+                                                    <Link2 className="w-4 h-4 mr-2" />
+                                                    Connect (Coming Soon)
+                                                </Button>
+                                            </div>
+
+                                            {/* Oracle HCM */}
+                                            <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800/60 hover:shadow-md transition-shadow">
+                                                <div className="flex items-center gap-3 mb-3">
+                                                    <div className="p-2 bg-red-100 dark:bg-red-900/40 rounded-lg">
+                                                        <Database className="w-5 h-5 text-red-600 dark:text-red-400" />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-medium text-gray-800 dark:text-gray-100">Oracle HCM Cloud</h4>
+                                                        <span className="text-xs text-gray-500">OAuth 2.0</span>
+                                                    </div>
+                                                </div>
+                                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                                                    Enterprise Oracle HCM integration.
+                                                </p>
+                                                <Button variant="outline" className="w-full" disabled>
+                                                    <Link2 className="w-4 h-4 mr-2" />
+                                                    Connect (Coming Soon)
+                                                </Button>
+                                            </div>
+
+                                            {/* More Connectors */}
+                                            <div className="p-4 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/40 flex flex-col items-center justify-center text-center">
+                                                <div className="p-3 bg-gray-200 dark:bg-gray-600 rounded-full mb-3">
+                                                    <Settings2 className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                                                </div>
+                                                <h4 className="font-medium text-gray-700 dark:text-gray-300 mb-1">More Coming Soon</h4>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                    Rippling, Gusto, Paylocity, UKG Pro, Personio, HiBob, and more
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Collaboration Platforms Section */}
+                                    <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                        <div className="flex items-center justify-between">
+                                            <h4 className="text-md font-medium text-gray-800 dark:text-gray-200">Collaboration Platforms</h4>
+                                            <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded">Metadata Only • Privacy Safe</span>
+                                        </div>
+
+                                        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700/50 rounded-lg p-3 flex items-start gap-2">
+                                            <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                                            <p className="text-sm text-blue-700 dark:text-blue-300">
+                                                These integrations collect <strong>metadata only</strong> (response times, activity levels, meeting load) -
+                                                we never read message content, ensuring full privacy compliance.
+                                            </p>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {/* Slack */}
+                                            <div className="p-4 border-2 border-purple-300 dark:border-purple-700 rounded-lg bg-purple-50/50 dark:bg-purple-900/20 hover:shadow-md transition-shadow">
+                                                <div className="flex items-center gap-3 mb-3">
+                                                    <div className="p-2 bg-purple-100 dark:bg-purple-900/40 rounded-lg">
+                                                        <MessageSquare className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-medium text-gray-800 dark:text-gray-100">Slack</h4>
+                                                        <span className="text-xs text-purple-600 dark:text-purple-400 font-medium">OAuth 2.0 • Available</span>
+                                                    </div>
+                                                </div>
+                                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                                                    Behavioral signals: response times, channel activity, availability patterns.
+                                                </p>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 italic">
+                                                    No message content accessed
+                                                </p>
+                                                <Button variant="default" className="w-full bg-purple-600 hover:bg-purple-700">
+                                                    <Link2 className="w-4 h-4 mr-2" />
+                                                    Connect
+                                                </Button>
+                                            </div>
+
+                                            {/* Microsoft Teams */}
+                                            <div className="p-4 border-2 border-blue-300 dark:border-blue-700 rounded-lg bg-blue-50/50 dark:bg-blue-900/20 hover:shadow-md transition-shadow">
+                                                <div className="flex items-center gap-3 mb-3">
+                                                    <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
+                                                        <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-medium text-gray-800 dark:text-gray-100">Microsoft Teams</h4>
+                                                        <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">OAuth 2.0 • Available</span>
+                                                    </div>
+                                                </div>
+                                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                                                    Meeting load, presence status, team membership, collaboration patterns.
+                                                </p>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 italic">
+                                                    No message content accessed
+                                                </p>
+                                                <Button variant="default" className="w-full bg-blue-600 hover:bg-blue-700">
+                                                    <Link2 className="w-4 h-4 mr-2" />
+                                                    Connect
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Connected Systems */}
+                                    <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                        <h4 className="text-md font-medium text-gray-800 dark:text-gray-200">Connected Systems</h4>
+                                        <div className="p-6 text-center bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-600">
+                                            <Plug className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                                            <p className="text-gray-600 dark:text-gray-400">No integrations connected yet</p>
+                                            <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">Connect a system above to start syncing data automatically</p>
+                                        </div>
+                                    </div>
+                                </motion.div>
                             )}
                         </div>
                     </motion.section>

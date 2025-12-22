@@ -8,10 +8,12 @@ These endpoints power the ELTV Treatment Playground, providing:
 - What-if scenario analysis
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
-from typing import List, Dict, Any
+from sqlalchemy import select, desc, func
+from typing import List, Dict, Any, Optional
+from datetime import date, datetime
+from dateutil.relativedelta import relativedelta
 
 from app.api.deps import get_current_user, get_db
 from app.api.helpers import get_latest_employee_by_hr_code, get_latest_churn_output, extract_employee_values
@@ -26,6 +28,14 @@ from app.schemas.playground import (
     ApplyTreatmentResult,
     ManualSimulationRequest,
     ManualSimulationResponse
+)
+from app.schemas.roi_dashboard import (
+    ROIDashboardData,
+    ROIDashboardRequest,
+    PortfolioSummary,
+    DepartmentROI,
+    MonthlyProjection,
+    TreatmentROISummary
 )
 from app.services.eltv_service import eltv_service
 from app.services.treatment_service import treatment_validation_service
@@ -494,3 +504,309 @@ async def apply_treatment_with_tracking(
             status_code=500,
             detail=f"Error applying treatment: {str(e)}"
         )
+
+
+@router.get("/roi-dashboard", response_model=ROIDashboardData)
+async def get_roi_dashboard(
+    department_filter: Optional[List[str]] = Query(default=None),
+    risk_level_filter: Optional[str] = Query(default=None),
+    include_terminated: bool = Query(default=False),
+    projection_months: int = Query(default=12, ge=1, le=24),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get aggregated ROI metrics for CFO/Executive dashboard.
+
+    Returns portfolio-level ELTV at risk, department breakdowns,
+    timeline projections, and treatment ROI summary.
+
+    This endpoint aggregates data across all employees to provide
+    executive-level financial visibility into retention risk.
+    """
+
+    # Build base query for employees
+    base_query = select(HRDataInput)
+
+    if not include_terminated:
+        base_query = base_query.where(HRDataInput.status != 'Resigned')
+
+    if department_filter:
+        base_query = base_query.where(HRDataInput.structure_name.in_(department_filter))
+
+    # Get distinct employees (latest record per hr_code)
+    subquery = (
+        select(
+            HRDataInput.hr_code,
+            func.max(HRDataInput.report_date).label('max_date')
+        )
+        .group_by(HRDataInput.hr_code)
+        .subquery()
+    )
+
+    query = (
+        select(HRDataInput)
+        .join(
+            subquery,
+            (HRDataInput.hr_code == subquery.c.hr_code) &
+            (HRDataInput.report_date == subquery.c.max_date)
+        )
+    )
+
+    if not include_terminated:
+        query = query.where(HRDataInput.status != 'Resigned')
+
+    if department_filter:
+        query = query.where(HRDataInput.structure_name.in_(department_filter))
+
+    result = await db.execute(query)
+    employees = result.scalars().all()
+
+    if not employees:
+        raise HTTPException(status_code=404, detail="No employees found")
+
+    # Get all churn outputs for these employees
+    hr_codes = [e.hr_code for e in employees]
+
+    churn_subquery = (
+        select(
+            ChurnOutput.hr_code,
+            func.max(ChurnOutput.generated_at).label('max_date')
+        )
+        .where(ChurnOutput.hr_code.in_(hr_codes))
+        .group_by(ChurnOutput.hr_code)
+        .subquery()
+    )
+
+    churn_query = (
+        select(ChurnOutput)
+        .join(
+            churn_subquery,
+            (ChurnOutput.hr_code == churn_subquery.c.hr_code) &
+            (ChurnOutput.generated_at == churn_subquery.c.max_date)
+        )
+    )
+
+    churn_result = await db.execute(churn_query)
+    churn_outputs = {c.hr_code: c for c in churn_result.scalars().all()}
+
+    # Risk thresholds
+    HIGH_RISK_THRESHOLD = 0.7
+    MEDIUM_RISK_THRESHOLD = 0.4
+
+    # Calculate metrics per employee
+    employee_metrics = []
+    department_data = {}
+
+    for emp in employees:
+        churn_data = churn_outputs.get(emp.hr_code)
+        churn_prob = float(churn_data.resign_proba) if churn_data else 0.3
+        salary = float(emp.employee_cost) if emp.employee_cost else 50000
+        tenure = float(emp.tenure) if emp.tenure else 0
+
+        # Apply risk level filter
+        if risk_level_filter:
+            if risk_level_filter == 'high' and churn_prob < HIGH_RISK_THRESHOLD:
+                continue
+            elif risk_level_filter == 'medium' and (churn_prob >= HIGH_RISK_THRESHOLD or churn_prob < MEDIUM_RISK_THRESHOLD):
+                continue
+            elif risk_level_filter == 'low' and churn_prob >= MEDIUM_RISK_THRESHOLD:
+                continue
+
+        # Determine risk level
+        if churn_prob >= HIGH_RISK_THRESHOLD:
+            risk_level = 'high'
+        elif churn_prob >= MEDIUM_RISK_THRESHOLD:
+            risk_level = 'medium'
+        else:
+            risk_level = 'low'
+
+        # Calculate ELTV
+        position_level = eltv_service.estimate_position_level(
+            position=emp.position,
+            salary=salary,
+            tenure=tenure
+        )
+
+        eltv_result = eltv_service.calculate_eltv(
+            annual_salary=salary,
+            churn_probability=churn_prob,
+            tenure_years=tenure,
+            position_level=position_level
+        )
+
+        # Calculate potential recovery (assuming 30% churn reduction with treatment)
+        treated_churn = max(0.05, churn_prob * 0.7)
+        eltv_treated = eltv_service.calculate_eltv(
+            annual_salary=salary,
+            churn_probability=treated_churn,
+            tenure_years=tenure,
+            position_level=position_level
+        )
+
+        recovery_potential = eltv_treated.eltv - eltv_result.eltv
+
+        employee_metrics.append({
+            'hr_code': emp.hr_code,
+            'department': emp.structure_name or 'Unknown',
+            'churn_prob': churn_prob,
+            'risk_level': risk_level,
+            'eltv': eltv_result.eltv,
+            'eltv_at_risk': eltv_result.eltv if risk_level == 'high' else 0,
+            'recovery_potential': recovery_potential if risk_level in ('high', 'medium') else 0,
+            'salary': salary,
+            'survival_probs': eltv_result.survival_probabilities
+        })
+
+        # Aggregate by department
+        dept = emp.structure_name or 'Unknown'
+        if dept not in department_data:
+            department_data[dept] = {
+                'employees': [],
+                'total_eltv_at_risk': 0,
+                'total_recovery': 0,
+                'churn_probs': []
+            }
+
+        department_data[dept]['employees'].append(emp.hr_code)
+        department_data[dept]['churn_probs'].append(churn_prob)
+        if risk_level == 'high':
+            department_data[dept]['total_eltv_at_risk'] += eltv_result.eltv
+        if risk_level in ('high', 'medium'):
+            department_data[dept]['total_recovery'] += recovery_potential
+
+    # Build portfolio summary
+    total_employees = len(employee_metrics)
+    high_risk = sum(1 for e in employee_metrics if e['risk_level'] == 'high')
+    medium_risk = sum(1 for e in employee_metrics if e['risk_level'] == 'medium')
+    low_risk = sum(1 for e in employee_metrics if e['risk_level'] == 'low')
+
+    total_eltv_at_risk = sum(e['eltv_at_risk'] for e in employee_metrics)
+    total_recovery = sum(e['recovery_potential'] for e in employee_metrics)
+    avg_churn = sum(e['churn_prob'] for e in employee_metrics) / total_employees if total_employees > 0 else 0
+    avg_eltv = sum(e['eltv'] for e in employee_metrics) / total_employees if total_employees > 0 else 0
+
+    # Estimate treatment cost (average $5000 per high-risk employee)
+    estimated_treatment_cost = high_risk * 5000
+    aggregate_roi = ((total_recovery - estimated_treatment_cost) / estimated_treatment_cost * 100) if estimated_treatment_cost > 0 else 0
+
+    portfolio_summary = PortfolioSummary(
+        total_employees=total_employees,
+        high_risk_count=high_risk,
+        medium_risk_count=medium_risk,
+        low_risk_count=low_risk,
+        total_eltv_at_risk=round(total_eltv_at_risk, 2),
+        recovery_potential=round(total_recovery, 2),
+        aggregate_roi=round(aggregate_roi, 2),
+        treatments_applied=0,  # Would come from treatment tracking table
+        treatments_pending=high_risk,
+        avg_churn_probability=round(avg_churn, 4),
+        avg_eltv=round(avg_eltv, 2)
+    )
+
+    # Build department breakdown
+    department_breakdown = []
+    for dept, data in department_data.items():
+        emp_count = len(data['employees'])
+        avg_dept_churn = sum(data['churn_probs']) / emp_count if emp_count > 0 else 0
+        high_risk_in_dept = sum(1 for p in data['churn_probs'] if p >= HIGH_RISK_THRESHOLD)
+
+        # Risk concentration = dept's ELTV at risk / total ELTV at risk
+        risk_concentration = (data['total_eltv_at_risk'] / total_eltv_at_risk * 100) if total_eltv_at_risk > 0 else 0
+
+        # Priority score based on risk concentration and employee count
+        priority_score = (risk_concentration * 0.6) + (high_risk_in_dept / max(emp_count, 1) * 40)
+
+        # Recommended budget: $5000 per high-risk employee
+        recommended_budget = high_risk_in_dept * 5000
+
+        department_breakdown.append(DepartmentROI(
+            department=dept,
+            employee_count=emp_count,
+            high_risk_count=high_risk_in_dept,
+            eltv_at_risk=round(data['total_eltv_at_risk'], 2),
+            avg_churn_probability=round(avg_dept_churn, 4),
+            recovery_potential=round(data['total_recovery'], 2),
+            recommended_budget=round(recommended_budget, 2),
+            risk_concentration=round(risk_concentration, 2),
+            priority_score=round(priority_score, 2)
+        ))
+
+    # Sort by priority score descending
+    department_breakdown.sort(key=lambda x: x.priority_score, reverse=True)
+
+    # Build timeline projections
+    timeline_projections = []
+    current_date = date.today()
+
+    # Get average survival probabilities across high-risk employees
+    high_risk_employees = [e for e in employee_metrics if e['risk_level'] == 'high']
+
+    for month_idx in range(projection_months):
+        month_key = f"month_{month_idx + 1}"
+        month_date = current_date + relativedelta(months=month_idx)
+        month_str = month_date.strftime("%Y-%m")
+
+        # Calculate baseline ELTV (without treatment)
+        baseline_eltv = 0
+        treated_eltv = 0
+        expected_departures_baseline = 0
+        expected_departures_treated = 0
+
+        for emp in employee_metrics:
+            survival_prob = emp['survival_probs'].get(month_key, 0.5)
+            emp_eltv = emp['eltv']
+
+            baseline_eltv += emp_eltv * survival_prob
+
+            # With treatment: assume 30% churn reduction for high/medium risk
+            if emp['risk_level'] in ('high', 'medium'):
+                improved_survival = min(1.0, survival_prob + (1 - survival_prob) * 0.3)
+                treated_eltv += emp_eltv * improved_survival
+            else:
+                treated_eltv += emp_eltv * survival_prob
+
+            # Expected departures
+            if survival_prob < 0.5:
+                expected_departures_baseline += 1
+            if emp['risk_level'] in ('high', 'medium'):
+                improved_survival = min(1.0, survival_prob + (1 - survival_prob) * 0.3)
+                if improved_survival < 0.5:
+                    expected_departures_treated += 1
+            else:
+                if survival_prob < 0.5:
+                    expected_departures_treated += 1
+
+        # Cumulative metrics
+        cumulative_loss = sum(e['eltv'] for e in employee_metrics) - baseline_eltv
+        cumulative_recovery = treated_eltv - baseline_eltv
+
+        timeline_projections.append(MonthlyProjection(
+            month=month_str,
+            month_index=month_idx,
+            eltv_baseline=round(baseline_eltv, 2),
+            eltv_with_treatment=round(treated_eltv, 2),
+            cumulative_loss_baseline=round(cumulative_loss, 2),
+            cumulative_recovery=round(cumulative_recovery, 2),
+            expected_departures_baseline=expected_departures_baseline,
+            expected_departures_treated=expected_departures_treated
+        ))
+
+    # Treatment ROI summary (placeholder - would come from treatment tracking)
+    treatment_roi_summary = TreatmentROISummary(
+        total_treatment_cost=0,
+        total_eltv_preserved=0,
+        net_benefit=0,
+        overall_roi_percentage=0,
+        treatments_by_type={},
+        avg_treatment_effectiveness=0.15  # Default assumption
+    )
+
+    return ROIDashboardData(
+        portfolio_summary=portfolio_summary,
+        department_breakdown=department_breakdown,
+        timeline_projections=timeline_projections,
+        treatment_roi_summary=treatment_roi_summary,
+        data_as_of=current_date,
+        projection_horizon_months=projection_months
+    )

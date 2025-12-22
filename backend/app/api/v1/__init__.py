@@ -5,9 +5,11 @@ from app.api.v1 import (
     admin,
     agent_memory,
     ai,
+    atlas,
     auth,
     chatbot,
     churn,
+    connectors,
     data_management,
     employees,
     gdpr,
@@ -35,6 +37,12 @@ protected_router.include_router(
     tags=["playground"],
     dependencies=[Depends(require_license_tier("enterprise"))],
 )
+protected_router.include_router(
+    atlas.router,
+    prefix="/atlas",
+    tags=["atlas"],
+    dependencies=[Depends(require_license_tier("enterprise"))],
+)
 protected_router.include_router(data_management.router, prefix="/data-management", tags=["data-management"])
 protected_router.include_router(
     ai.router,
@@ -51,6 +59,12 @@ protected_router.include_router(rag.router, prefix="/rag", tags=["rag"])
 protected_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 protected_router.include_router(sso_admin.router, prefix="/admin/sso", tags=["admin-sso"])
 protected_router.include_router(gdpr.router, prefix="/gdpr", tags=["gdpr"])
+protected_router.include_router(
+    connectors.router,
+    prefix="/connectors",
+    tags=["connectors"],
+    dependencies=[Depends(require_license_tier("enterprise"))],
+)
 
 # Expose license routes without the dependency so activation/status endpoints stay reachable
 api_router = APIRouter()

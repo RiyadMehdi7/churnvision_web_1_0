@@ -45,7 +45,7 @@ class Connection(Base):
 
     connection_id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
-    type = Column(String, nullable=False)
+    type = Column(String, nullable=False)  # 'database', 'hris', 'collaboration'
     host = Column(String, nullable=False)
     port = Column(Integer, nullable=True)
     username = Column(String, nullable=True)
@@ -53,6 +53,27 @@ class Connection(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_used = Column(DateTime(timezone=True), nullable=True)
     is_active = Column(Integer, default=1)
+
+    # HRIS Connector fields
+    connector_type = Column(String, nullable=True)  # 'workday', 'bamboohr', 'sap_successfactors', etc.
+    oauth_client_id = Column(String, nullable=True)
+    oauth_client_secret_encrypted = Column(String(500), nullable=True)  # Encrypted
+    oauth_access_token_encrypted = Column(String(1000), nullable=True)  # Encrypted
+    oauth_refresh_token_encrypted = Column(String(500), nullable=True)  # Encrypted
+    oauth_token_expires_at = Column(DateTime(timezone=True), nullable=True)
+    api_key_encrypted = Column(String(500), nullable=True)  # Encrypted
+    api_endpoint = Column(String, nullable=True)
+    tenant_id = Column(String, nullable=True)
+
+    # Sync configuration
+    sync_frequency_minutes = Column(Integer, default=1440)  # Daily by default
+    last_sync_status = Column(String, nullable=True)  # 'success', 'failed', 'in_progress'
+    last_sync_at = Column(DateTime(timezone=True), nullable=True)
+    last_sync_records = Column(Integer, nullable=True)
+    last_sync_error = Column(Text, nullable=True)
+
+    # Connector-specific configuration (JSON)
+    connector_config = Column(JSON, nullable=True)
 
     # Relationships
     import_profiles = relationship("ImportProfile", back_populates="connection", cascade="all, delete-orphan")

@@ -111,8 +111,36 @@ export function CohortAnalysisTab({ className, selectedEmployeeHrCode }: CohortA
     );
   }
 
+  // Check if there's no cohort data at all
+  const hasNoCohortData = cohortOverview &&
+    cohortOverview.department_cohorts.length === 0 &&
+    cohortOverview.tenure_cohorts.length === 0;
+
   return (
     <div className={cn("space-y-6", className)}>
+      {/* Empty state when no cohort data exists */}
+      {hasNoCohortData ? (
+        <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-8 text-center">
+          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Users className="w-8 h-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+            No Cohort Data Available
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-4 max-w-lg mx-auto">
+            Cohort analysis will be available once you upload employee data and run predictions.
+          </p>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 max-w-md mx-auto text-left">
+            <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">To see cohort analysis:</h4>
+            <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+              <li>1. Go to Data Management and upload your employee data</li>
+              <li>2. Train the prediction model</li>
+              <li>3. Return here to view cohort breakdowns</li>
+            </ul>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Overview Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Department Cohorts */}
@@ -432,17 +460,24 @@ export function CohortAnalysisTab({ className, selectedEmployeeHrCode }: CohortA
         </motion.div>
       )}
 
-      {/* Prompt to select employee */}
-      {!selectedCohort && (
-        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 p-6 text-center">
-          <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-            Select an Employee for Detailed Analysis
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Click on an employee in the Dashboard tab to see their cohort comparison and similar employee journeys.
-          </p>
+      {/* Info about individual analysis - only show if there are cohorts but no employee selected */}
+      {!selectedCohort && cohortOverview && cohortOverview.department_cohorts.length > 0 && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 p-4">
+          <div className="flex items-start gap-3">
+            <Lightbulb className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-1">
+                Tip: Individual Employee Analysis
+              </h4>
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                Click on any employee in the Dashboard to see their detailed cohort comparison,
+                including similar employees who left or stayed and personalized retention insights.
+              </p>
+            </div>
+          </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

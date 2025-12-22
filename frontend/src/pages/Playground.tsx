@@ -28,6 +28,8 @@ import { Employee } from '@/types/employee';
 import type { TreatmentOptions, TreatmentSuggestion, ApplyTreatmentResult } from '@/types/treatment';
 import { RiskIndicator } from '@/components/RiskIndicator';
 import TreatmentTracker from '@/components/TreatmentTracker';
+import { ROIDashboardTab } from '@/components/ROIDashboardTab';
+import { AtlasSimulatorSubTab } from '@/components/AtlasSimulatorSubTab';
 import { useDynamicRiskRanges } from '../hooks/useDynamicRiskThresholds';
 import { FixedSizeList as List } from 'react-window';
 import { AutoSizer } from 'react-virtualized';
@@ -689,7 +691,7 @@ const generateScenarioId = (counter: number): string => {
 // -------------------------------------
 // Tab Types and Interfaces
 // -------------------------------------
-type PlaygroundTab = 'scenario' | 'mass-treatment' | 'treatment-tracking';
+type PlaygroundTab = 'scenario' | 'mass-treatment' | 'treatment-tracking' | 'roi-dashboard';
 
 interface ScenarioData {
   id: string;
@@ -749,6 +751,7 @@ export function Playground() {
 
   // Tab management
   const [activeTab, setActiveTab] = useState<PlaygroundTab>('scenario');
+  const [scenarioSubTab, setScenarioSubTab] = useState<'comparison' | 'atlas'>('comparison');
   const [hasDBConnection, setHasDBConnection] = useState(false);
 
   // Check project data presence in local SQLite (Excel uploads populate this DB)
@@ -1996,28 +1999,76 @@ export function Playground() {
                       }`}
                   >
                     <GitCompare className="w-4 h-4" />
-                    Scenario Comparison
+                    Scenario
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('roi-dashboard')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'roi-dashboard'
+                      ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                      }`}
+                  >
+                    <TrendingUp className="w-4 h-4" />
+                    ROI Dashboard
                   </button>
                 </div>
 
                 {/* Tab Content */}
                 {activeTab === 'scenario' ? (
-                  <ScenarioComparisonTab
-                    scenarios={scenarios}
-                    setScenarios={setScenarios}
-                    nextScenarioId={nextScenarioId}
-                    setNextScenarioId={setNextScenarioId}
-                    selectedEmployee={selectedEmployee}
-                    selectedEmployeeData={selectedEmployeeData}
-                    treatmentSuggestions={treatmentSuggestions}
-                    applyTreatment={applyTreatment}
-                    isApplyingTreatment={isApplyingTreatment}
-                    selectedTreatment={selectedTreatment}
-                    isPerformanceMode={isPerformanceMode}
-                    // Mode determined by Settings
-                    budget={budget}
-                    transformedChartData={transformedChartData}
-                  />
+                  <div className="space-y-4">
+                    {/* Scenario Sub-Tab Navigation */}
+                    <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 pb-2">
+                      <button
+                        onClick={() => setScenarioSubTab('comparison')}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                          scenarioSubTab === 'comparison'
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <GitCompare className="w-4 h-4" />
+                          Treatment Comparison
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setScenarioSubTab('atlas')}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                          scenarioSubTab === 'atlas'
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <Beaker className="w-4 h-4" />
+                          Atlas Simulator
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Scenario Sub-Tab Content */}
+                    {scenarioSubTab === 'comparison' ? (
+                      <ScenarioComparisonTab
+                        scenarios={scenarios}
+                        setScenarios={setScenarios}
+                        nextScenarioId={nextScenarioId}
+                        setNextScenarioId={setNextScenarioId}
+                        selectedEmployee={selectedEmployee}
+                        selectedEmployeeData={selectedEmployeeData}
+                        treatmentSuggestions={treatmentSuggestions}
+                        applyTreatment={applyTreatment}
+                        isApplyingTreatment={isApplyingTreatment}
+                        selectedTreatment={selectedTreatment}
+                        isPerformanceMode={isPerformanceMode}
+                        budget={budget}
+                        transformedChartData={transformedChartData}
+                      />
+                    ) : (
+                      <AtlasSimulatorSubTab
+                        selectedEmployeeId={selectedEmployee?.hr_code}
+                      />
+                    )}
+                  </div>
                 ) : activeTab === 'mass-treatment' ? (
                   <MassTreatmentTab
                     candidates={massTreatmentCandidates}
@@ -2041,7 +2092,7 @@ export function Playground() {
                     bulkOperationCancelled={bulkOperationCancelled}
                     cancelBulkTreatment={cancelBulkTreatment}
                   />
-                ) : (
+                ) : activeTab === 'treatment-tracking' ? (
                   <div className="space-y-6">
                     <TreatmentTracker
                       selectedEmployee={selectedEmployee ? {
@@ -2054,7 +2105,9 @@ export function Playground() {
                       isPerformanceMode={isPerformanceMode}
                     />
                   </div>
-                )}
+                ) : activeTab === 'roi-dashboard' ? (
+                  <ROIDashboardTab />
+                ) : null}
               </div>
             )}
           </div>

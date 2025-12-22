@@ -36,7 +36,7 @@ from app.schemas.churn import (
     RoutingInfoResponse,
 )
 from app.services.churn_prediction_service import ChurnPredictionService
-from app.services.dataset_service import get_active_dataset, get_active_dataset_id
+from app.services.dataset_service import get_active_dataset, get_active_dataset_id, get_active_dataset_entry
 
 router = APIRouter()
 
@@ -519,6 +519,58 @@ async def _run_training_background(
             churn_service.feature_importance_by_dataset[cache_key] = result.feature_importance
 
             logger.info(f"[TRAINING] Model training complete. Accuracy: {result.accuracy:.2%}")
+
+            # === PERSIST DATASET PROFILE AND ROUTING DECISION ===
+            if churn_service.last_dataset_profile and churn_service.last_routing_decision:
+                from app.models.churn import DatasetProfileDB, ModelRoutingDecision as ModelRoutingDecisionDB
+                from sqlalchemy import delete
+
+                profile = churn_service.last_dataset_profile
+                routing = churn_service.last_routing_decision
+
+                # Delete existing profile for this dataset (upsert)
+                await db.execute(
+                    delete(DatasetProfileDB).where(DatasetProfileDB.dataset_id == dataset_id)
+                )
+
+                # Insert new profile
+                profile_db = DatasetProfileDB(
+                    dataset_id=dataset_id,
+                    n_samples=profile.n_samples,
+                    n_features=profile.n_features,
+                    n_numeric_features=profile.n_numeric_features,
+                    n_categorical_features=profile.n_categorical_features,
+                    n_classes=profile.n_classes,
+                    class_balance_ratio=profile.class_balance_ratio,
+                    is_severely_imbalanced=1 if profile.is_severely_imbalanced else 0,
+                    missing_ratio=profile.missing_ratio,
+                    has_outliers=1 if profile.has_outliers else 0,
+                    outlier_ratio=profile.outlier_ratio,
+                    overall_quality_score=profile.overall_quality_score,
+                    tabpfn_suitability=profile.tabpfn_suitability_score,
+                    tree_model_suitability=profile.tree_model_suitability_score,
+                    linear_model_suitability=profile.linear_model_suitability_score,
+                )
+                db.add(profile_db)
+
+                # Insert routing decision
+                routing_db = ModelRoutingDecisionDB(
+                    dataset_id=dataset_id,
+                    model_version=model_version,
+                    selected_model=routing.primary_model,
+                    confidence=routing.confidence,
+                    is_ensemble=1 if routing.use_ensemble else 0,
+                    ensemble_models=routing.ensemble_models,
+                    ensemble_weights=routing.ensemble_weights,
+                    ensemble_method=routing.ensemble_method,
+                    reasoning=routing.reasoning,
+                    alternative_models=routing.alternatives,
+                    model_scores=routing.model_scores,
+                )
+                db.add(routing_db)
+                await db.commit()
+
+                logger.info(f"[TRAINING] Persisted dataset profile and routing decision for {dataset_id}")
 
             # === AUTO-GENERATE PREDICTIONS AND REASONING FOR ALL EMPLOYEES ===
             logger.info("[TRAINING] Starting prediction generation for all employees...")
@@ -1319,7 +1371,23 @@ async def get_backtesting_results(
     - Historical trend data
     """
     try:
-        dataset = await get_active_dataset(db)
+        dataset = await get_active_dataset_entry(db)
+        if not dataset:
+            # Return empty results when no dataset exists yet
+            return {
+                "periods": [],
+                "aggregate": {
+                    "total_predictions_analyzed": 0,
+                    "total_high_risk_flagged": 0,
+                    "total_actual_churns": 0,
+                    "total_correct_predictions": 0,
+                    "overall_precision": 0,
+                    "overall_recall": 0,
+                    "overall_accuracy": 0,
+                    "catch_rate_message": "No historical data available yet"
+                },
+                "generated_at": datetime.utcnow().isoformat()
+            }
         results = await model_intelligence_service.get_backtesting_results(
             db, dataset.dataset_id, periods
         )
@@ -1347,7 +1415,21 @@ async def get_prediction_outcomes(
     - Summary statistics
     """
     try:
-        dataset = await get_active_dataset(db)
+        dataset = await get_active_dataset_entry(db)
+        if not dataset:
+            # Return empty results when no dataset exists yet
+            return {
+                "outcomes": [],
+                "summary": {
+                    "total_tracked": 0,
+                    "correct_predictions": 0,
+                    "accuracy": 0,
+                    "employees_who_left": 0,
+                    "high_risk_who_left": 0,
+                    "prediction_fulfilled_rate": 0
+                },
+                "generated_at": datetime.utcnow().isoformat()
+            }
         results = await model_intelligence_service.get_prediction_outcomes(
             db, dataset.dataset_id, limit
         )
@@ -1474,7 +1556,14 @@ async def get_cohort_overview(
     - Tenure cohort statistics
     """
     try:
-        dataset = await get_active_dataset(db)
+        dataset = await get_active_dataset_entry(db)
+        if not dataset:
+            # Return empty results when no dataset exists yet
+            return {
+                "department_cohorts": [],
+                "tenure_cohorts": [],
+                "generated_at": datetime.utcnow().isoformat()
+            }
         overview = await model_intelligence_service.get_cohort_overview(
             db, dataset.dataset_id
         )
@@ -1509,7 +1598,21 @@ async def get_risk_alerts(
     - Severity breakdown
     """
     try:
-        dataset = await get_active_dataset(db)
+        dataset = await get_active_dataset_entry(db)
+        if not dataset:
+            # Return empty results when no dataset exists yet
+            return {
+                "alerts": [],
+                "total_count": 0,
+                "unread_count": 0,
+                "severity_counts": {
+                    "critical": 0,
+                    "high": 0,
+                    "medium": 0,
+                    "low": 0
+                },
+                "generated_at": datetime.utcnow().isoformat()
+            }
         alerts = await risk_alert_service.get_recent_alerts(
             db, dataset.dataset_id, limit, include_read
         )

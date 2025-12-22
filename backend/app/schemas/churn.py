@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
 
@@ -37,10 +37,10 @@ class BatchChurnPredictionRequest(BaseModel):
 
 class ChurnPredictionResponse(BaseModel):
     """Response model for churn prediction"""
-    employee_id: Optional[int]
+    employee_id: Optional[Union[int, str]] = None
     churn_probability: float = Field(..., ge=0.0, le=1.0, description="Probability of churning (0-1)")
     confidence_score: float = Field(default=0.7, ge=0.0, le=1.0, description="Model confidence in prediction (0-1)")
-    confidence_breakdown: Dict[str, float] = Field(default_factory=dict, description="Breakdown of confidence components")
+    confidence_breakdown: Dict[str, Any] = Field(default_factory=dict, description="Breakdown of confidence components")
     risk_level: ChurnRiskLevel
     contributing_factors: List[Dict[str, Any]] = Field(default_factory=list, description="Top factors contributing to churn risk")
     recommendations: List[str] = Field(default_factory=list, description="Recommendations to reduce churn risk")

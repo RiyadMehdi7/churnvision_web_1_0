@@ -220,17 +220,37 @@ class ModelIntelligenceService:
         outcomes = []
 
         # Get predictions with validation outcomes
+        # Use DISTINCT ON to avoid duplicates when hr_data_input has multiple rows per hr_code
+        # We pick the most recent HRDataInput entry per hr_code
+        subquery = (
+            select(
+                HRDataInput.hr_code,
+                HRDataInput.full_name,
+                HRDataInput.structure_name,
+                HRDataInput.status,
+                HRDataInput.termination_date,
+                func.row_number().over(
+                    partition_by=HRDataInput.hr_code,
+                    order_by=desc(HRDataInput.id)
+                ).label('rn')
+            )
+            .subquery()
+        )
+
         query = (
             select(
                 ChurnOutput.hr_code,
                 ChurnOutput.resign_proba,
                 ChurnOutput.generated_at,
-                HRDataInput.full_name,
-                HRDataInput.structure_name,
-                HRDataInput.status,
-                HRDataInput.termination_date
+                subquery.c.full_name,
+                subquery.c.structure_name,
+                subquery.c.status,
+                subquery.c.termination_date
             )
-            .join(HRDataInput, ChurnOutput.hr_code == HRDataInput.hr_code)
+            .join(subquery, and_(
+                ChurnOutput.hr_code == subquery.c.hr_code,
+                subquery.c.rn == 1
+            ))
             .where(ChurnOutput.dataset_id == dataset_id)
             .order_by(desc(ChurnOutput.resign_proba))
             .limit(limit)

@@ -74,6 +74,25 @@ const INSIGHT_PATTERNS: InsightPattern[] = [
   },
 ];
 
+// Backend insight types
+interface BackendInsight {
+  id: number;
+  insightType: string;
+  title: string;
+  summary?: string;
+  relatedEmployeeHrCode?: string;
+  createdAt: string;
+}
+
+interface OrganizationalPattern {
+  id: number;
+  patternType: string;
+  patternKey: string;
+  description?: string;
+  occurrenceCount: number;
+  confidenceScore?: number;
+}
+
 interface UseAgentMemoryReturn {
   context: AgentContext;
   addEmployeeDiscussed: (employee: {
@@ -88,6 +107,22 @@ interface UseAgentMemoryReturn {
   clearInsights: () => void;
   syncToBackend: () => Promise<void>;
   loadFromBackend: () => Promise<void>;
+  clearBackendMemory: () => Promise<void>;
+  saveInsightToBackend: (insight: {
+    insightType: string;
+    title: string;
+    summary?: string;
+    relatedEmployeeHrCode?: string;
+    relatedDepartment?: string;
+    context?: Record<string, unknown>;
+  }) => Promise<BackendInsight | null>;
+  getBackendInsights: (params?: {
+    limit?: number;
+    insight_type?: string;
+    employee_hr_code?: string;
+  }) => Promise<BackendInsight[]>;
+  getEmployeeInsights: (hrCode: string, limit?: number) => Promise<BackendInsight[]>;
+  getOrganizationalPatterns: (patternType?: string, limit?: number) => Promise<OrganizationalPattern[]>;
   isLoading: boolean;
   isSyncing: boolean;
 }
@@ -330,6 +365,85 @@ export function useAgentMemory(): UseAgentMemoryReturn {
     }
   }, []);
 
+  // Clear memory on backend
+  const clearBackendMemory = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      await api.delete('/agent-memory/clear');
+      // Also clear local memory
+      clearMemory();
+    } catch (e) {
+      console.error('Failed to clear backend memory:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [clearMemory]);
+
+  // Save insight to backend for organizational learning
+  const saveInsightToBackend = useCallback(async (insight: {
+    insightType: string;
+    title: string;
+    summary?: string;
+    relatedEmployeeHrCode?: string;
+    relatedDepartment?: string;
+    context?: Record<string, unknown>;
+  }): Promise<BackendInsight | null> => {
+    try {
+      const response = await api.post('/agent-memory/insights', insight);
+      return response.data;
+    } catch (e) {
+      console.error('Failed to save insight to backend:', e);
+      return null;
+    }
+  }, []);
+
+  // Get insights from backend
+  const getBackendInsights = useCallback(async (params?: {
+    limit?: number;
+    insight_type?: string;
+    employee_hr_code?: string;
+  }): Promise<BackendInsight[]> => {
+    try {
+      const response = await api.get('/agent-memory/insights', { params });
+      return response.data || [];
+    } catch (e) {
+      console.error('Failed to get backend insights:', e);
+      return [];
+    }
+  }, []);
+
+  // Get insights for a specific employee
+  const getEmployeeInsights = useCallback(async (
+    hrCode: string,
+    limit = 20
+  ): Promise<BackendInsight[]> => {
+    try {
+      const response = await api.get(`/agent-memory/insights/employee/${hrCode}`, {
+        params: { limit },
+      });
+      return response.data || [];
+    } catch (e) {
+      console.error('Failed to get employee insights:', e);
+      return [];
+    }
+  }, []);
+
+  // Get organizational patterns
+  const getOrganizationalPatterns = useCallback(async (
+    patternType?: string,
+    limit = 20
+  ): Promise<OrganizationalPattern[]> => {
+    try {
+      const response = await api.get('/agent-memory/patterns', {
+        params: { pattern_type: patternType, limit },
+      });
+      return response.data || [];
+    } catch (e) {
+      console.error('Failed to get organizational patterns:', e);
+      return [];
+    }
+  }, []);
+
   return {
     context,
     addEmployeeDiscussed,
@@ -340,6 +454,11 @@ export function useAgentMemory(): UseAgentMemoryReturn {
     clearInsights,
     syncToBackend,
     loadFromBackend,
+    clearBackendMemory,
+    saveInsightToBackend,
+    getBackendInsights,
+    getEmployeeInsights,
+    getOrganizationalPatterns,
     isLoading,
     isSyncing,
   };

@@ -58,7 +58,7 @@ import ibmIcon from '@/assets/providers/ibm.svg';
 import { Progress } from '@/components/ui/progress';
 
 // Settings section types
-type SettingsSection = 'general' | 'license' | 'appearance' | 'ai' | 'data' | 'security' | 'advanced';
+type SettingsSection = 'general' | 'license' | 'appearance' | 'ai' | 'data' | 'security' | 'gdpr' | 'advanced';
 
 interface SettingsSectionData {
   id: SettingsSection;
@@ -175,6 +175,13 @@ export function Settings() {
       description: 'Privacy and security',
       icon: Lock,
       color: 'text-red-600'
+    },
+    {
+      id: 'gdpr',
+      title: 'GDPR Compliance',
+      description: 'Data protection',
+      icon: ShieldCheck,
+      color: 'text-indigo-600'
     },
     {
       id: 'advanced',
@@ -890,7 +897,11 @@ export function Settings() {
                 {activeSection === 'security' && (
                   <SecuritySettings />
                 )}
-                
+
+                {activeSection === 'gdpr' && (
+                  <GDPRSettings />
+                )}
+
                 {activeSection === 'advanced' && (
                   <AdvancedSettings 
                     isResetAlertOpen={isResetAlertOpen}
@@ -1583,6 +1594,456 @@ const SecuritySettings: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+};
+
+// GDPR Settings Component
+const GDPRSettings: React.FC = () => {
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'requests' | 'breaches' | 'ropa'>('dashboard');
+  const [isLoading, setIsLoading] = useState(false);
+  const [complianceStatus, setComplianceStatus] = useState<any>(null);
+  const [requests, setRequests] = useState<any[]>([]);
+  const [breaches, setBreaches] = useState<any[]>([]);
+  const [ropaRecords, setRopaRecords] = useState<any[]>([]);
+
+  // Dialog states
+  const [showRequestDialog, setShowRequestDialog] = useState(false);
+  const [showBreachDialog, setShowBreachDialog] = useState(false);
+  const [showRopaDialog, setShowRopaDialog] = useState(false);
+
+  // Form states
+  const [requestForm, setRequestForm] = useState({ data_subject_id: '', request_type: 'access', description: '' });
+  const [breachForm, setBreachForm] = useState({ title: '', description: '', risk_level: 'medium', detected_at: new Date().toISOString().split('T')[0] });
+  const [ropaForm, setRopaForm] = useState({ activity_name: '', controller_name: '', purpose: '', lawful_basis: 'legitimate_interests', data_categories: '' });
+
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [statusRes, requestsRes, breachesRes, ropaRes] = await Promise.all([
+        api.get('/gdpr/status').catch(() => ({ data: null })),
+        api.get('/gdpr/requests', { params: { limit: 50 } }).catch(() => ({ data: [] })),
+        api.get('/gdpr/breaches', { params: { limit: 50 } }).catch(() => ({ data: [] })),
+        api.get('/gdpr/ropa', { params: { active_only: true } }).catch(() => ({ data: [] })),
+      ]);
+      setComplianceStatus(statusRes.data);
+      setRequests(requestsRes.data || []);
+      setBreaches(breachesRes.data || []);
+      setRopaRecords(ropaRes.data || []);
+    } catch (e) {
+      console.error('Failed to load GDPR data:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const handleCreateRequest = async () => {
+    if (!requestForm.data_subject_id || !requestForm.request_type) {
+      toast({ title: 'Validation Error', description: 'Subject ID and request type required.', variant: 'destructive' });
+      return;
+    }
+    try {
+      await api.post('/gdpr/requests', requestForm);
+      toast({ title: 'Request created', description: 'Data subject request logged successfully.' });
+      setShowRequestDialog(false);
+      setRequestForm({ data_subject_id: '', request_type: 'access', description: '' });
+      loadData();
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Failed to create request', variant: 'destructive' });
+    }
+  };
+
+  const handleReportBreach = async () => {
+    if (!breachForm.title) {
+      toast({ title: 'Validation Error', description: 'Title is required.', variant: 'destructive' });
+      return;
+    }
+    try {
+      await api.post('/gdpr/breaches', breachForm);
+      toast({ title: 'Breach reported', description: 'Data breach has been logged.' });
+      setShowBreachDialog(false);
+      setBreachForm({ title: '', description: '', risk_level: 'medium', detected_at: new Date().toISOString().split('T')[0] });
+      loadData();
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Failed to report breach', variant: 'destructive' });
+    }
+  };
+
+  const handleCreateRopa = async () => {
+    if (!ropaForm.activity_name || !ropaForm.controller_name || !ropaForm.purpose) {
+      toast({ title: 'Validation Error', description: 'Activity name, controller, and purpose required.', variant: 'destructive' });
+      return;
+    }
+    try {
+      await api.post('/gdpr/ropa', {
+        ...ropaForm,
+        data_categories: ropaForm.data_categories.split(',').map(s => s.trim()).filter(Boolean),
+      });
+      toast({ title: 'Activity recorded', description: 'Processing activity added to ROPA.' });
+      setShowRopaDialog(false);
+      setRopaForm({ activity_name: '', controller_name: '', purpose: '', lawful_basis: 'legitimate_interests', data_categories: '' });
+      loadData();
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Failed to create activity', variant: 'destructive' });
+    }
+  };
+
+  const handleProcessRequest = async (requestId: string) => {
+    try {
+      await api.post(`/gdpr/requests/${requestId}/process`);
+      toast({ title: 'Request processed', description: 'The request has been automatically processed.' });
+      loadData();
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Failed to process request', variant: 'destructive' });
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'compliant': return 'text-green-600 bg-green-100';
+      case 'needs_attention': return 'text-yellow-600 bg-yellow-100';
+      case 'critical': return 'text-red-600 bg-red-100';
+      default: return 'text-gray-600 bg-gray-100';
+    }
+  };
+
+  const getRiskColor = (level: string) => {
+    switch (level) {
+      case 'low': return 'text-green-600 bg-green-100';
+      case 'medium': return 'text-yellow-600 bg-yellow-100';
+      case 'high': return 'text-orange-600 bg-orange-100';
+      case 'critical': return 'text-red-600 bg-red-100';
+      default: return 'text-gray-600 bg-gray-100';
+    }
+  };
+
+  const tabs = [
+    { id: 'dashboard', label: 'Dashboard', icon: ShieldCheck },
+    { id: 'requests', label: 'Requests', icon: Globe },
+    { id: 'breaches', label: 'Breaches', icon: AlertTriangle },
+    { id: 'ropa', label: 'ROPA', icon: Database },
+  ] as const;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-indigo-600" />
+            GDPR Compliance Management
+          </CardTitle>
+          <CardDescription>Manage data subject requests, breaches, and processing activities</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/* Tab Navigation */}
+          <div className="flex gap-2 mb-6 border-b pb-2">
+            {tabs.map((tab) => (
+              <Button
+                key={tab.id}
+                variant={activeTab === tab.id ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setActiveTab(tab.id)}
+                className="flex items-center gap-2"
+              >
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+              </Button>
+            ))}
+            <Button variant="outline" size="sm" onClick={loadData} className="ml-auto">
+              <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
+            </Button>
+          </div>
+
+          {/* Dashboard Tab */}
+          {activeTab === 'dashboard' && (
+            <div className="space-y-4">
+              {complianceStatus ? (
+                <>
+                  <div className="flex items-center gap-3 p-4 rounded-lg border">
+                    <ShieldCheck className={cn("w-6 h-6", complianceStatus.overall_status === 'compliant' ? 'text-green-600' : complianceStatus.overall_status === 'critical' ? 'text-red-600' : 'text-yellow-600')} />
+                    <div>
+                      <p className="font-medium">Overall Status</p>
+                      <span className={cn("text-xs font-semibold px-2 py-1 rounded-full", getStatusColor(complianceStatus.overall_status))}>
+                        {complianceStatus.overall_status?.replace('_', ' ').toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-3 rounded-lg border text-center">
+                      <p className="text-2xl font-bold">{complianceStatus.pending_requests || 0}</p>
+                      <p className="text-sm text-gray-500">Pending Requests</p>
+                    </div>
+                    <div className="p-3 rounded-lg border text-center">
+                      <p className="text-2xl font-bold text-red-600">{complianceStatus.overdue_requests || 0}</p>
+                      <p className="text-sm text-gray-500">Overdue</p>
+                    </div>
+                    <div className="p-3 rounded-lg border text-center">
+                      <p className="text-2xl font-bold text-orange-600">{complianceStatus.open_breaches || 0}</p>
+                      <p className="text-sm text-gray-500">Open Breaches</p>
+                    </div>
+                    <div className="p-3 rounded-lg border text-center">
+                      <p className="text-2xl font-bold text-green-600">{complianceStatus.consent_coverage || 0}%</p>
+                      <p className="text-sm text-gray-500">Consent Coverage</p>
+                    </div>
+                  </div>
+                  {complianceStatus.recommendations?.length > 0 && (
+                    <div className="p-4 rounded-lg border bg-yellow-50 dark:bg-yellow-900/20">
+                      <p className="font-medium mb-2">Recommendations</p>
+                      <ul className="space-y-1 text-sm">
+                        {complianceStatus.recommendations.map((rec: string, i: number) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <Info className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                            <span>{rec}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  {isLoading ? 'Loading compliance data...' : 'No compliance data available'}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Requests Tab */}
+          {activeTab === 'requests' && (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => setShowRequestDialog(true)}>
+                  + New Request
+                </Button>
+              </div>
+              {requests.length > 0 ? (
+                <div className="space-y-2">
+                  {requests.map((req: any) => (
+                    <div key={req.id} className="flex items-center justify-between p-3 rounded-lg border">
+                      <div>
+                        <p className="font-medium">{req.request_id}</p>
+                        <p className="text-sm text-gray-500">
+                          {req.request_type} • {req.data_subject_id} • {new Date(req.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={cn("text-xs px-2 py-1 rounded-full", req.request_status === 'completed' ? 'bg-green-100 text-green-700' : req.request_status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700')}>
+                          {req.request_status}
+                        </span>
+                        {req.request_status === 'pending' && (
+                          <Button size="sm" variant="outline" onClick={() => handleProcessRequest(req.request_id)}>
+                            Process
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">No requests found</div>
+              )}
+            </div>
+          )}
+
+          {/* Breaches Tab */}
+          {activeTab === 'breaches' && (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <Button size="sm" variant="destructive" onClick={() => setShowBreachDialog(true)}>
+                  Report Breach
+                </Button>
+              </div>
+              {breaches.length > 0 ? (
+                <div className="space-y-2">
+                  {breaches.map((breach: any) => (
+                    <div key={breach.id} className="p-3 rounded-lg border">
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium">{breach.title}</p>
+                        <span className={cn("text-xs px-2 py-1 rounded-full", getRiskColor(breach.risk_level))}>
+                          {breach.risk_level?.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {breach.breach_id} • Detected: {new Date(breach.detected_at).toLocaleDateString()}
+                        {breach.authority_notified && ' • Authority notified'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-green-600">
+                  <CheckCircle className="w-8 h-8 mx-auto mb-2" />
+                  No breaches recorded
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ROPA Tab */}
+          {activeTab === 'ropa' && (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => setShowRopaDialog(true)}>
+                  + Add Activity
+                </Button>
+              </div>
+              {ropaRecords.length > 0 ? (
+                <div className="space-y-2">
+                  {ropaRecords.map((record: any) => (
+                    <div key={record.id} className="p-3 rounded-lg border">
+                      <p className="font-medium">{record.activity_name}</p>
+                      <p className="text-sm text-gray-500">
+                        Controller: {record.controller_name} • Basis: {record.lawful_basis}
+                      </p>
+                      {record.data_categories?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {record.data_categories.map((cat: string, i: number) => (
+                            <span key={i} className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">
+                              {cat}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">No processing activities recorded</div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Create Request Dialog */}
+      <AlertDialog open={showRequestDialog} onOpenChange={setShowRequestDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Create Data Subject Request</AlertDialogTitle>
+            <AlertDialogDescription>Log a new GDPR request</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Subject ID (HR Code) *</Label>
+              <Input value={requestForm.data_subject_id} onChange={(e) => setRequestForm({ ...requestForm, data_subject_id: e.target.value })} placeholder="e.g., CV000001" />
+            </div>
+            <div>
+              <Label>Request Type *</Label>
+              <select
+                className="w-full p-2 border rounded-md bg-background"
+                value={requestForm.request_type}
+                onChange={(e) => setRequestForm({ ...requestForm, request_type: e.target.value })}
+              >
+                <option value="access">Access (Art. 15)</option>
+                <option value="rectification">Rectification (Art. 16)</option>
+                <option value="erasure">Erasure (Art. 17)</option>
+                <option value="portability">Portability (Art. 20)</option>
+                <option value="restriction">Restriction (Art. 18)</option>
+                <option value="objection">Objection (Art. 21)</option>
+              </select>
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Input value={requestForm.description} onChange={(e) => setRequestForm({ ...requestForm, description: e.target.value })} />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCreateRequest}>Create</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Report Breach Dialog */}
+      <AlertDialog open={showBreachDialog} onOpenChange={setShowBreachDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Report Data Breach</AlertDialogTitle>
+            <AlertDialogDescription>Log a data breach incident</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Title *</Label>
+              <Input value={breachForm.title} onChange={(e) => setBreachForm({ ...breachForm, title: e.target.value })} placeholder="Brief description" />
+            </div>
+            <div>
+              <Label>Risk Level</Label>
+              <select
+                className="w-full p-2 border rounded-md bg-background"
+                value={breachForm.risk_level}
+                onChange={(e) => setBreachForm({ ...breachForm, risk_level: e.target.value })}
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
+            </div>
+            <div>
+              <Label>Detected At</Label>
+              <Input type="date" value={breachForm.detected_at} onChange={(e) => setBreachForm({ ...breachForm, detected_at: e.target.value })} />
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Input value={breachForm.description} onChange={(e) => setBreachForm({ ...breachForm, description: e.target.value })} />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReportBreach} className="bg-red-600 hover:bg-red-700">Report</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Add ROPA Dialog */}
+      <AlertDialog open={showRopaDialog} onOpenChange={setShowRopaDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Add Processing Activity</AlertDialogTitle>
+            <AlertDialogDescription>Document a data processing activity</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Activity Name *</Label>
+              <Input value={ropaForm.activity_name} onChange={(e) => setRopaForm({ ...ropaForm, activity_name: e.target.value })} placeholder="e.g., Employee Churn Prediction" />
+            </div>
+            <div>
+              <Label>Controller Name *</Label>
+              <Input value={ropaForm.controller_name} onChange={(e) => setRopaForm({ ...ropaForm, controller_name: e.target.value })} placeholder="e.g., HR Department" />
+            </div>
+            <div>
+              <Label>Purpose *</Label>
+              <Input value={ropaForm.purpose} onChange={(e) => setRopaForm({ ...ropaForm, purpose: e.target.value })} placeholder="Why is this data processed?" />
+            </div>
+            <div>
+              <Label>Lawful Basis</Label>
+              <select
+                className="w-full p-2 border rounded-md bg-background"
+                value={ropaForm.lawful_basis}
+                onChange={(e) => setRopaForm({ ...ropaForm, lawful_basis: e.target.value })}
+              >
+                <option value="consent">Consent</option>
+                <option value="contract">Contract</option>
+                <option value="legal_obligation">Legal Obligation</option>
+                <option value="vital_interests">Vital Interests</option>
+                <option value="public_task">Public Task</option>
+                <option value="legitimate_interests">Legitimate Interests</option>
+              </select>
+            </div>
+            <div>
+              <Label>Data Categories (comma-separated)</Label>
+              <Input value={ropaForm.data_categories} onChange={(e) => setRopaForm({ ...ropaForm, data_categories: e.target.value })} placeholder="e.g., Employee data, Performance data" />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCreateRopa}>Add Activity</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

@@ -44,3 +44,6 @@ from app.models.rag import RAGDocument, RAGChunk  # noqa
 
 # Chatbot models
 from app.models.chatbot import Conversation, Message, ChatMessage  # noqa
+
+# Behavioral signals models (Slack/Teams metadata)
+from app.models.behavioral_signals import EmployeeBehavioralSignals, BehavioralSignalsSyncLog  # noqa

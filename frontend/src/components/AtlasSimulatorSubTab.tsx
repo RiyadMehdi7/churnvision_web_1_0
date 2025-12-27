@@ -18,9 +18,18 @@ import {
   Sparkles,
   Brain,
   CheckCircle2,
-  Target
+  Target,
+  Gauge,
+  Briefcase,
+  Clock,
+  Calendar,
+  Shield,
+  Award,
+  Building2,
+  DollarSign,
+  Play
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, colors } from '../lib/utils';
 import {
   LineChart,
   Line,
@@ -117,20 +126,43 @@ function formatPercentage(value: number, decimals: number = 1): string {
   return `${(value * 100).toFixed(decimals)}%`;
 }
 
-function getFeatureIcon(featureName: string): string {
-  const icons: Record<string, string> = {
-    satisfaction_level: '😊',
-    last_evaluation: '📊',
-    number_project: '📁',
-    average_monthly_hours: '⏰',
-    time_spend_company: '📅',
-    work_accident: '⚠️',
-    promotion_last_5years: '🚀',
-    department: '🏢',
-    salary_level: '💰'
+// Map feature names to Lucide icons
+function getFeatureIcon(featureName: string): React.ReactNode {
+  const iconMap: Record<string, React.ReactNode> = {
+    satisfaction_level: <Gauge className="w-4 h-4" />,
+    last_evaluation: <Target className="w-4 h-4" />,
+    number_project: <Briefcase className="w-4 h-4" />,
+    average_monthly_hours: <Clock className="w-4 h-4" />,
+    time_spend_company: <Calendar className="w-4 h-4" />,
+    work_accident: <Shield className="w-4 h-4" />,
+    promotion_last_5years: <Award className="w-4 h-4" />,
+    department: <Building2 className="w-4 h-4" />,
+    salary_level: <DollarSign className="w-4 h-4" />
   };
-  return icons[featureName] || '📋';
+  return iconMap[featureName] || <Target className="w-4 h-4" />;
 }
+
+// Clean section card matching design system
+const SectionCard: React.FC<{
+  title: string;
+  description?: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}> = ({ title, description, icon, children, className }) => (
+  <div className={cn("bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden", className)}>
+    <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+      <div className="flex items-center gap-2">
+        {icon && <span className="text-gray-400">{icon}</span>}
+        <h3 className="font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
+      </div>
+      {description && (
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{description}</p>
+      )}
+    </div>
+    <div className="p-5">{children}</div>
+  </div>
+);
 
 export function AtlasSimulatorSubTab({
   selectedEmployeeId,
@@ -304,8 +336,8 @@ export function AtlasSimulatorSubTab({
     switch (feature.type) {
       case 'float':
         return (
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
               <input
                 type="range"
                 min={feature.min_value ?? 0}
@@ -320,20 +352,29 @@ export function AtlasSimulatorSubTab({
                     updateScenarioModification(scenarioId, feature.name, newVal);
                   }
                 }}
-                className="flex-1 accent-blue-500"
+                className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full appearance-none cursor-pointer accent-blue-500"
               />
               <span className={cn(
-                "text-sm font-medium w-14 text-right",
-                hasModification ? "text-blue-600 dark:text-blue-400" : "text-gray-900 dark:text-gray-100"
+                "text-sm font-medium min-w-[3rem] text-right tabular-nums",
+                hasModification ? "text-blue-600 dark:text-blue-400" : "text-gray-700 dark:text-gray-300"
               )}>
                 {((modifiedValue ?? baseValue) as number).toFixed(2)}
               </span>
             </div>
             {hasModification && (
-              <div className="text-xs text-blue-600 dark:text-blue-400">
-                {(baseValue as number).toFixed(2)} → {(modifiedValue as number).toFixed(2)}
-                {feature.impact_direction === 'higher_is_better' && modifiedValue > baseValue && ' ↑'}
-                {feature.impact_direction === 'lower_is_better' && modifiedValue < baseValue && ' ↓'}
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-gray-500 dark:text-gray-400">{(baseValue as number).toFixed(2)}</span>
+                <span className="text-gray-400">→</span>
+                <span className={cn(
+                  "font-medium",
+                  feature.impact_direction === 'higher_is_better' && modifiedValue > baseValue
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : feature.impact_direction === 'lower_is_better' && modifiedValue < baseValue
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-blue-600 dark:text-blue-400"
+                )}>
+                  {(modifiedValue as number).toFixed(2)}
+                </span>
               </div>
             )}
           </div>
@@ -341,8 +382,8 @@ export function AtlasSimulatorSubTab({
 
       case 'int':
         return (
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
               <input
                 type="range"
                 min={feature.min_value ?? 0}
@@ -357,18 +398,20 @@ export function AtlasSimulatorSubTab({
                     updateScenarioModification(scenarioId, feature.name, newVal);
                   }
                 }}
-                className="flex-1 accent-blue-500"
+                className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full appearance-none cursor-pointer accent-blue-500"
               />
               <span className={cn(
-                "text-sm font-medium w-12 text-right",
-                hasModification ? "text-blue-600 dark:text-blue-400" : "text-gray-900 dark:text-gray-100"
+                "text-sm font-medium min-w-[2rem] text-right tabular-nums",
+                hasModification ? "text-blue-600 dark:text-blue-400" : "text-gray-700 dark:text-gray-300"
               )}>
                 {modifiedValue ?? baseValue}
               </span>
             </div>
             {hasModification && (
-              <div className="text-xs text-blue-600 dark:text-blue-400">
-                {baseValue} → {modifiedValue}
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-gray-500 dark:text-gray-400">{baseValue}</span>
+                <span className="text-gray-400">→</span>
+                <span className="text-blue-600 dark:text-blue-400 font-medium">{modifiedValue}</span>
               </div>
             )}
           </div>
@@ -388,16 +431,16 @@ export function AtlasSimulatorSubTab({
                 }
               }}
               className={cn(
-                "w-12 h-6 rounded-full transition-colors relative",
+                "relative w-11 h-6 rounded-full transition-colors",
                 boolValue
-                  ? "bg-green-500"
+                  ? "bg-emerald-500"
                   : "bg-gray-300 dark:bg-gray-600"
               )}
             >
               <span
                 className={cn(
-                  "absolute top-1 w-4 h-4 bg-white rounded-full transition-transform",
-                  boolValue ? "translate-x-7" : "translate-x-1"
+                  "absolute top-1 w-4 h-4 bg-white rounded-full transition-transform shadow-sm",
+                  boolValue ? "translate-x-6" : "translate-x-1"
                 )}
               />
             </button>
@@ -406,7 +449,7 @@ export function AtlasSimulatorSubTab({
             </span>
             {hasModification && (
               <span className="text-xs text-blue-600 dark:text-blue-400">
-                (changed from {baseValue ? 'Yes' : 'No'})
+                (was {baseValue ? 'Yes' : 'No'})
               </span>
             )}
           </div>
@@ -414,7 +457,7 @@ export function AtlasSimulatorSubTab({
 
       case 'categorical':
         return (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1.5">
             {feature.options?.map((option) => (
               <button
                 key={option}
@@ -426,7 +469,7 @@ export function AtlasSimulatorSubTab({
                   }
                 }}
                 className={cn(
-                  "px-2 py-1 text-xs rounded-md transition-colors",
+                  "px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
                   (modifiedValue ?? baseValue) === option
                     ? "bg-blue-600 text-white"
                     : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
@@ -482,14 +525,14 @@ export function AtlasSimulatorSubTab({
   // No employee selected state
   if (!selectedEmployeeId) {
     return (
-      <div className={cn("flex flex-col items-center justify-center py-12 text-center", className)}>
-        <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mb-4">
+      <div className={cn("flex flex-col items-center justify-center py-16 text-center", className)}>
+        <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center mb-4">
           <Brain className="w-8 h-8 text-blue-500" />
         </div>
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
           Atlas Counterfactual Simulator
         </h3>
-        <p className="text-gray-600 dark:text-gray-400 max-w-md">
+        <p className="text-sm text-gray-600 dark:text-gray-400 max-w-md">
           Select an employee to run what-if scenarios using real ML model predictions.
           See exactly how changes would affect their churn probability.
         </p>
@@ -499,21 +542,23 @@ export function AtlasSimulatorSubTab({
 
   if (isLoadingFeatures) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
-        <span className="ml-2 text-gray-600 dark:text-gray-400">Loading ML features...</span>
+      <div className="flex flex-col items-center justify-center py-16">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-3" />
+        <span className="text-sm text-gray-600 dark:text-gray-400">Loading ML features...</span>
       </div>
     );
   }
 
   if (featuresError) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <AlertTriangle className="w-12 h-12 text-amber-500 mb-4" />
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mb-4">
+          <AlertTriangle className="w-8 h-8 text-amber-500" />
+        </div>
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
           Could Not Load Features
         </h3>
-        <p className="text-gray-600 dark:text-gray-400 max-w-md">
+        <p className="text-sm text-gray-600 dark:text-gray-400 max-w-md">
           {featuresError}
         </p>
       </div>
@@ -533,15 +578,15 @@ export function AtlasSimulatorSubTab({
             <Brain className="w-5 h-5 text-blue-500" />
             Counterfactual Simulator
           </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Real ML predictions for <span className="font-medium">{mlFeatures.employee_name || selectedEmployeeId}</span>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            Real ML predictions for <span className="font-medium text-gray-700 dark:text-gray-300">{mlFeatures.employee_name || selectedEmployeeId}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={addScenario}
             disabled={scenarios.length >= 5}
-            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 text-sm"
+            className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
           >
             <Plus className="w-4 h-4" />
             Add Scenario
@@ -549,7 +594,7 @@ export function AtlasSimulatorSubTab({
           {scenarios.length > 0 && scenarios.some(s => Object.keys(s.modifications).length > 0) && (
             <button
               onClick={runAllSimulations}
-              className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1 text-sm"
+              className="px-3 py-1.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-1.5"
             >
               <Sparkles className="w-4 h-4" />
               Run All
@@ -559,24 +604,28 @@ export function AtlasSimulatorSubTab({
       </div>
 
       {/* Current ML Features Overview */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700/50 rounded-lg p-4">
-        <div className="flex items-start gap-2 mb-3">
-          <Target className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+      <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+            <Target className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          </div>
           <div>
-            <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
-              Current ML Model Features
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              Current Model Features
             </p>
-            <p className="text-xs text-blue-600/80 dark:text-blue-400/80">
-              These are the 9 features used by the churn prediction model. Modify them to see real predictions.
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              These are the features used by the churn prediction model. Modify them to see real predictions.
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
           {mlFeatures.perturbable_features.slice(0, 5).map((f) => (
-            <div key={f.name} className="text-center p-2 bg-white/50 dark:bg-gray-800/50 rounded-lg">
-              <span className="text-lg">{getFeatureIcon(f.name)}</span>
-              <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{f.label}</p>
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+            <div key={f.name} className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-gray-400">{getFeatureIcon(f.name)}</span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate mb-0.5">{f.label}</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                 {typeof f.current_value === 'boolean'
                   ? (f.current_value ? 'Yes' : 'No')
                   : typeof f.current_value === 'number'
@@ -594,14 +643,17 @@ export function AtlasSimulatorSubTab({
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center"
+            className="bg-gray-50 dark:bg-gray-800/50 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-10 text-center"
           >
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
-              No scenarios yet. Click "Add Scenario" to start modeling what-if interventions.
+            <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Plus className="w-6 h-6 text-gray-400" />
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              No scenarios yet. Create a scenario to model what-if interventions.
             </p>
             <button
               onClick={addScenario}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-flex items-center gap-2"
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors inline-flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
               Create First Scenario
@@ -619,55 +671,59 @@ export function AtlasSimulatorSubTab({
               >
                 {/* Scenario Header */}
                 <div
-                  className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
-                  style={{ borderTopColor: SCENARIO_COLORS[idx % SCENARIO_COLORS.length], borderTopWidth: 3 }}
+                  className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between"
+                  style={{ borderLeftWidth: 3, borderLeftColor: SCENARIO_COLORS[idx % SCENARIO_COLORS.length] }}
                 >
                   <input
                     type="text"
                     value={scenario.name}
                     onChange={(e) => updateScenarioName(scenario.id, e.target.value)}
-                    className="bg-transparent font-medium text-gray-900 dark:text-gray-100 border-none focus:outline-none focus:ring-0 p-0"
+                    className="bg-transparent font-medium text-gray-900 dark:text-gray-100 border-none focus:outline-none focus:ring-0 p-0 w-full"
                   />
                   <button
                     onClick={() => removeScenario(scenario.id)}
-                    className="text-gray-400 hover:text-red-500"
+                    className="text-gray-400 hover:text-red-500 transition-colors ml-2 flex-shrink-0"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
 
                 {/* Feature Controls */}
-                <div className="p-4 space-y-4 max-h-96 overflow-y-auto">
+                <div className="p-4 space-y-4 max-h-80 overflow-y-auto">
                   {mlFeatures.perturbable_features.map((feature) => (
-                    <div key={feature.name}>
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                        <span>{getFeatureIcon(feature.name)}</span>
-                        {feature.label}
+                    <div key={feature.name} className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400">{getFeatureIcon(feature.name)}</span>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {feature.label}
+                        </label>
                         {feature.impact_direction !== 'neutral' && (
-                          <span className="text-xs text-gray-400">
-                            ({feature.impact_direction === 'higher_is_better' ? '↑ better' : '↓ better'})
+                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                            ({feature.impact_direction === 'higher_is_better' ? '↑' : '↓'} better)
                           </span>
                         )}
-                      </label>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
                         {feature.description}
                       </p>
-                      <div className="mt-1">
+                      <div className="mt-1.5">
                         {renderFeatureControl(feature, scenario.id, scenario.modifications)}
                       </div>
                     </div>
                   ))}
+                </div>
 
-                  {/* Run Button */}
+                {/* Run Button */}
+                <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-700">
                   <button
                     onClick={() => runSimulation(scenario.id)}
                     disabled={scenario.isLoading || Object.keys(scenario.modifications).length === 0}
-                    className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                    className="w-full py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                   >
                     {scenario.isLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      <Brain className="w-4 h-4" />
+                      <Play className="w-4 h-4" />
                     )}
                     {scenario.isLoading ? 'Running Model...' : 'Run Counterfactual'}
                   </button>
@@ -675,46 +731,46 @@ export function AtlasSimulatorSubTab({
 
                 {/* Results */}
                 {scenario.result && (
-                  <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700/50 border-t border-gray-200 dark:border-gray-600">
+                  <div className="px-4 py-4 bg-gray-50 dark:bg-gray-700/30 border-t border-gray-100 dark:border-gray-700">
                     {/* Model prediction badge */}
-                    <div className="flex items-center gap-1 mb-2">
-                      <CheckCircle2 className="w-3 h-3 text-green-500" />
-                      <span className="text-xs text-green-600 dark:text-green-400">
-                        Real ML Prediction (Confidence: {formatPercentage(scenario.result.scenario_confidence)})
+                    <div className="flex items-center gap-1.5 mb-3">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                        ML Prediction • {formatPercentage(scenario.result.scenario_confidence)} confidence
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <span className="text-gray-500 dark:text-gray-400">Churn Delta</span>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Churn Delta</span>
                         <div className={cn(
-                          "font-semibold flex items-center gap-1",
-                          scenario.result.churn_delta < 0 ? "text-green-600" : "text-red-600"
+                          "text-lg font-bold flex items-center gap-1",
+                          scenario.result.churn_delta < 0 ? "text-emerald-600" : "text-red-600"
                         )}>
                           {scenario.result.churn_delta < 0 ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
                           {formatPercentage(Math.abs(scenario.result.churn_delta))}
                         </div>
                       </div>
-                      <div>
-                        <span className="text-gray-500 dark:text-gray-400">ELTV Delta</span>
+                      <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">ELTV Delta</span>
                         <div className={cn(
-                          "font-semibold",
-                          scenario.result.eltv_delta > 0 ? "text-green-600" : "text-red-600"
+                          "text-lg font-bold",
+                          scenario.result.eltv_delta > 0 ? "text-emerald-600" : "text-red-600"
                         )}>
                           {scenario.result.eltv_delta > 0 ? '+' : ''}{formatCurrency(scenario.result.eltv_delta)}
                         </div>
                       </div>
-                      <div>
-                        <span className="text-gray-500 dark:text-gray-400">Cost</span>
-                        <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Annual Cost</span>
+                        <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
                           {formatCurrency(scenario.result.implied_annual_cost)}
                         </div>
                       </div>
-                      <div>
-                        <span className="text-gray-500 dark:text-gray-400">ROI</span>
+                      <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">ROI</span>
                         <div className={cn(
-                          "font-semibold",
-                          scenario.result.implied_roi > 0 ? "text-green-600" : "text-red-600"
+                          "text-lg font-bold",
+                          scenario.result.implied_roi > 0 ? "text-emerald-600" : "text-red-600"
                         )}>
                           {scenario.result.implied_roi.toFixed(0)}%
                         </div>
@@ -723,16 +779,18 @@ export function AtlasSimulatorSubTab({
 
                     {/* Key SHAP factors */}
                     {scenario.result.scenario_factors.length > 0 && (
-                      <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Key Factors (SHAP):</p>
-                        <div className="space-y-1">
+                      <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Key Impact Factors</p>
+                        <div className="space-y-1.5">
                           {scenario.result.scenario_factors.slice(0, 2).map((factor, i) => (
-                            <div key={i} className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                            <div key={i} className="flex items-center gap-2 text-xs">
                               <span className={cn(
-                                "w-2 h-2 rounded-full",
-                                factor.direction === 'decreases_risk' ? "bg-green-500" : "bg-red-500"
+                                "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                                factor.direction === 'decreases_risk' ? "bg-emerald-500" : "bg-red-500"
                               )} />
-                              {factor.message || `${factor.feature}: ${factor.impact}`}
+                              <span className="text-gray-600 dark:text-gray-400 truncate">
+                                {factor.message || `${factor.feature}: ${factor.impact}`}
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -744,8 +802,8 @@ export function AtlasSimulatorSubTab({
                 {scenario.error && (
                   <div className="px-4 py-3 bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800">
                     <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4" />
-                      {scenario.error}
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                      <span className="truncate">{scenario.error}</span>
                     </p>
                   </div>
                 )}
@@ -759,27 +817,36 @@ export function AtlasSimulatorSubTab({
       {scenarios.some(s => s.result) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* ROI Comparison */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <h4 className="text-md font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-green-500" />
-              ROI Comparison
-            </h4>
+          <SectionCard
+            title="ROI Comparison"
+            icon={<TrendingUp className="w-4 h-4" />}
+            description="Return on investment across scenarios"
+          >
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={roiChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis tickFormatter={(v) => `${v}%`} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" strokeOpacity={0.5} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 11, fill: '#6b7280' }}
+                    axisLine={{ stroke: '#e5e7eb' }}
+                  />
+                  <YAxis
+                    tickFormatter={(v) => `${v}%`}
+                    tick={{ fontSize: 11, fill: '#6b7280' }}
+                    axisLine={{ stroke: '#e5e7eb' }}
+                  />
                   <Tooltip
                     formatter={(value: number) => [`${value.toFixed(0)}%`, 'ROI']}
                     contentStyle={{
-                      backgroundColor: '#1f2937',
+                      backgroundColor: colors.tooltip.light,
                       border: 'none',
                       borderRadius: '8px',
-                      color: '#f9fafb'
+                      color: '#f9fafb',
+                      fontSize: '12px'
                     }}
                   />
-                  <Bar dataKey="roi">
+                  <Bar dataKey="roi" radius={[4, 4, 0, 0]}>
                     {roiChartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
@@ -787,30 +854,40 @@ export function AtlasSimulatorSubTab({
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </SectionCard>
 
           {/* Survival Curve Comparison */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <h4 className="text-md font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-              <Target className="w-4 h-4 text-blue-500" />
-              Survival Projection
-            </h4>
+          <SectionCard
+            title="Survival Projection"
+            icon={<Target className="w-4 h-4" />}
+            description="Retention probability over time"
+          >
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={survivalChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" strokeOpacity={0.5} />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fontSize: 11, fill: '#6b7280' }}
+                    axisLine={{ stroke: '#e5e7eb' }}
+                  />
+                  <YAxis
+                    tickFormatter={(v) => `${v}%`}
+                    domain={[0, 100]}
+                    tick={{ fontSize: 11, fill: '#6b7280' }}
+                    axisLine={{ stroke: '#e5e7eb' }}
+                  />
                   <Tooltip
                     formatter={(value: number) => [`${value.toFixed(1)}%`, 'Survival']}
                     contentStyle={{
-                      backgroundColor: '#1f2937',
+                      backgroundColor: colors.tooltip.light,
                       border: 'none',
                       borderRadius: '8px',
-                      color: '#f9fafb'
+                      color: '#f9fafb',
+                      fontSize: '12px'
                     }}
                   />
-                  <Legend />
+                  <Legend wrapperStyle={{ fontSize: '11px' }} />
                   <Line
                     type="monotone"
                     dataKey="Baseline"
@@ -832,7 +909,7 @@ export function AtlasSimulatorSubTab({
                 </LineChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </SectionCard>
         </div>
       )}
     </div>

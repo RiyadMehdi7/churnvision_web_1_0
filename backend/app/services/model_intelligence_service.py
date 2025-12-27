@@ -1,12 +1,15 @@
 """
 Model Intelligence Service
 Provides backtesting, prediction tracking, departure timeline, and cohort analysis.
+
+Risk thresholds are data-driven, computed from user's actual data distribution.
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass, asdict
 import json
 import math
+import logging
 
 from sqlalchemy import select, func, and_, or_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +18,7 @@ from app.models.churn import ChurnOutput, ChurnModel, ChurnReasoning
 from app.models.treatment import RetentionValidation, TreatmentApplication
 from app.models.hr_data import HRDataInput
 from app.models.monitoring import ModelPerformance
+from app.services.data_driven_thresholds_service import data_driven_thresholds_service
 
 
 @dataclass
@@ -84,7 +88,21 @@ class CohortAnalysis:
 
 
 class ModelIntelligenceService:
-    """Service for model intelligence features"""
+    """Service for model intelligence features with data-driven thresholds."""
+
+    def __init__(self):
+        self.thresholds_service = data_driven_thresholds_service
+
+    def _get_risk_thresholds(self, dataset_id: Optional[str] = None) -> Tuple[float, float]:
+        """Get data-driven risk thresholds (high, medium)."""
+        thresholds = self.thresholds_service.get_cached_thresholds(dataset_id)
+        if thresholds and thresholds.risk_high_threshold > 0:
+            return (thresholds.risk_high_threshold, thresholds.risk_medium_threshold)
+        return (0.6, 0.3)  # Fallback only if no data
+
+    def _get_classification_threshold(self, dataset_id: Optional[str] = None) -> float:
+        """Get optimal classification threshold for binary classification."""
+        return self.thresholds_service.get_classification_threshold(dataset_id)
 
     async def get_backtesting_results(
         self,
@@ -114,6 +132,9 @@ class ModelIntelligenceService:
         )
         perf_records = perf_results.scalars().all()
 
+        # Get data-driven risk threshold
+        high_thresh, _ = self._get_risk_thresholds(dataset_id)
+
         # Calculate backtesting metrics from validation data
         if validation_records:
             # Group by month
@@ -129,7 +150,7 @@ class ModelIntelligenceService:
                     }
 
                 monthly_data[month_key]["total"] += 1
-                is_high_risk = float(v.baseline_churn_prob or 0) > 0.6
+                is_high_risk = float(v.baseline_churn_prob or 0) > high_thresh
                 if is_high_risk:
                     monthly_data[month_key]["high_risk"] += 1
 
@@ -259,16 +280,20 @@ class ModelIntelligenceService:
         result = await db.execute(query)
         records = result.all()
 
+        # Get optimal classification threshold (data-driven)
+        classification_threshold = self._get_classification_threshold(dataset_id)
+
         for r in records:
             status_lower = (r.status or "").lower()
             is_left = any(k in status_lower for k in ["resign", "terminated", "left", "inactive", "exit"])
 
             if is_left:
                 actual_outcome = "left"
-                was_correct = float(r.resign_proba or 0) > 0.5
+                # Use data-driven threshold instead of hardcoded 0.5
+                was_correct = float(r.resign_proba or 0) >= classification_threshold
             else:
                 actual_outcome = "stayed"
-                was_correct = float(r.resign_proba or 0) <= 0.5
+                was_correct = float(r.resign_proba or 0) < classification_threshold
 
             prediction_date = r.generated_at.strftime("%Y-%m-%d") if r.generated_at else None
             outcome_date = r.termination_date if is_left else None
@@ -294,11 +319,12 @@ class ModelIntelligenceService:
                 days_to_outcome=days_to_outcome
             ))
 
-        # Calculate summary stats
+        # Calculate summary stats using data-driven threshold
+        high_thresh, _ = self._get_risk_thresholds(dataset_id)
         total = len(outcomes)
         correct = sum(1 for o in outcomes if o.was_correct)
         left = sum(1 for o in outcomes if o.actual_outcome == "left")
-        high_risk_left = sum(1 for o in outcomes if o.actual_outcome == "left" and o.predicted_risk > 0.6)
+        high_risk_left = sum(1 for o in outcomes if o.actual_outcome == "left" and o.predicted_risk > high_thresh)
 
         return {
             "outcomes": [asdict(o) for o in outcomes],
@@ -383,6 +409,11 @@ class ModelIntelligenceService:
         prob_90d = 1 - math.exp(-hazard_rate * 3)
         prob_180d = 1 - math.exp(-hazard_rate * 6)
 
+        # Get data-driven thresholds for urgency classification
+        high_thresh, medium_thresh = self._get_risk_thresholds(dataset_id)
+        critical_thresh = min(0.9, high_thresh + 0.2)
+
+        # Determine departure window based on probabilities (statistical, not data-specific)
         if prob_30d >= 0.5:
             window = "< 30 days"
             urgency = "critical"
@@ -399,9 +430,10 @@ class ModelIntelligenceService:
             window = "6+ months"
             urgency = "low"
 
-        if current_risk >= 0.8:
+        # Override urgency based on data-driven risk thresholds
+        if current_risk >= critical_thresh:
             urgency = "critical"
-        elif current_risk >= 0.6:
+        elif current_risk >= high_thresh:
             urgency = "high" if urgency not in ["critical"] else urgency
 
         return DepartureTimeline(
@@ -539,11 +571,12 @@ class ModelIntelligenceService:
         similar_who_left.sort(key=lambda x: x.similarity_score, reverse=True)
         similar_who_stayed.sort(key=lambda x: x.similarity_score, reverse=True)
 
-        # Identify common risk factors
+        # Identify common risk factors using data-driven thresholds
+        high_thresh, _ = self._get_risk_thresholds(dataset_id)
         common_risk_factors = []
         if similar_who_left:
             avg_risk_left = sum(m.risk_score for m in similar_who_left) / len(similar_who_left)
-            if avg_risk_left > 0.6:
+            if avg_risk_left > high_thresh:
                 common_risk_factors.append("High risk scores common among those who left")
 
             dept_count = sum(1 for m in similar_who_left if m.department == target_dept)
@@ -561,9 +594,9 @@ class ModelIntelligenceService:
         else:
             retention_insights.append("More similar employees have stayed - positive sign")
 
-        # Generate recommended actions
+        # Generate recommended actions using data-driven threshold
         recommended_actions = []
-        if target_risk > 0.6:
+        if target_risk > high_thresh:
             recommended_actions.append("Schedule immediate retention conversation")
         if similar_who_left:
             recommended_actions.append("Review what differentiated those who stayed")

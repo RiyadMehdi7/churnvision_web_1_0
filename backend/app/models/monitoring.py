@@ -4,7 +4,7 @@ from app.db.base_class import Base
 
 
 class ModelPerformance(Base):
-    __tablename__ = "model_performance"
+    __tablename__ = "model_performance"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     evaluation_date = Column(DateTime(timezone=True), nullable=False)
@@ -29,7 +29,7 @@ Index('idx_model_perf_date_version', ModelPerformance.evaluation_date, ModelPerf
 
 
 class ModelPerformanceMonitoring(Base):
-    __tablename__ = "model_performance_monitoring"
+    __tablename__ = "model_performance_monitoring"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
@@ -46,7 +46,7 @@ Index('idx_model_performance_version', ModelPerformanceMonitoring.model_version)
 
 
 class DataDriftMonitoring(Base):
-    __tablename__ = "data_drift_monitoring"
+    __tablename__ = "data_drift_monitoring"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
@@ -65,7 +65,7 @@ Index('idx_data_drift_feature', DataDriftMonitoring.feature_name)
 
 
 class ModelAlert(Base):
-    __tablename__ = "model_alerts"
+    __tablename__ = "model_alerts"  # type: ignore[assignment]
 
     id = Column(String, primary_key=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())

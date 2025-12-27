@@ -24,7 +24,7 @@ class EmployeeBehavioralSignals(Base):
     Collected from Slack, Teams, and other collaboration platforms.
     All data is aggregated/metadata-only - no message content.
     """
-    __tablename__ = "employee_behavioral_signals"
+    __tablename__ = "employee_behavioral_signals"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
@@ -117,7 +117,7 @@ class BehavioralSignalsSyncLog(Base):
 
     Tracks when data was synced and any errors encountered.
     """
-    __tablename__ = "behavioral_signals_sync_log"
+    __tablename__ = "behavioral_signals_sync_log"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     connection_id = Column(String, ForeignKey("connections.connection_id"), nullable=False)

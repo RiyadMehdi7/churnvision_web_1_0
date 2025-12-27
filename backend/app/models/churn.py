@@ -5,7 +5,7 @@ from app.db.base_class import Base
 
 
 class ELTVInput(Base):
-    __tablename__ = "eltv_input"
+    __tablename__ = "eltv_input"  # type: ignore[assignment]
 
     hr_code = Column(String, ForeignKey("hr_data_input.hr_code", ondelete="CASCADE"), primary_key=True)
     full_name = Column(String, nullable=False)
@@ -21,7 +21,7 @@ class ELTVInput(Base):
 
 
 class ELTVOutput(Base):
-    __tablename__ = "eltv_output"
+    __tablename__ = "eltv_output"  # type: ignore[assignment]
 
     hr_code = Column(String, ForeignKey("eltv_input.hr_code", ondelete="CASCADE"), primary_key=True)
     eltv_pre_treatment = Column(Numeric(10, 2), nullable=False)
@@ -39,7 +39,7 @@ Index('idx_eltv_output_treatment_effect', ELTVOutput.treatment_effect)
 
 
 class ChurnOutput(Base):
-    __tablename__ = "churn_output"
+    __tablename__ = "churn_output"  # type: ignore[assignment]
 
     hr_code = Column(String, ForeignKey("hr_data_input.hr_code", ondelete="CASCADE"), nullable=False)
     dataset_id = Column(String, ForeignKey("datasets.dataset_id", ondelete="CASCADE"), nullable=False)
@@ -65,7 +65,7 @@ Index('idx_churn_output_resign_proba', ChurnOutput.resign_proba)
 
 
 class ChurnModel(Base):
-    __tablename__ = "churn_models"
+    __tablename__ = "churn_models"  # type: ignore[assignment]
 
     model_id = Column(Integer, primary_key=True)
     model_name = Column(String, nullable=False)
@@ -93,7 +93,7 @@ class ChurnModel(Base):
 
 
 class BusinessRule(Base):
-    __tablename__ = "business_rules"
+    __tablename__ = "business_rules"  # type: ignore[assignment]
 
     rule_id = Column(Integer, primary_key=True, autoincrement=True)
     rule_name = Column(String, nullable=False)
@@ -112,7 +112,7 @@ Index('idx_business_rules_priority', BusinessRule.priority)
 
 
 class BehavioralStage(Base):
-    __tablename__ = "behavioral_stages"
+    __tablename__ = "behavioral_stages"  # type: ignore[assignment]
 
     stage_id = Column(Integer, primary_key=True, autoincrement=True)
     stage_name = Column(String, nullable=False, unique=True)
@@ -129,7 +129,7 @@ Index('idx_behavioral_stages_active', BehavioralStage.is_active)
 
 
 class ChurnReasoning(Base):
-    __tablename__ = "churn_reasoning"
+    __tablename__ = "churn_reasoning"  # type: ignore[assignment]
 
     hr_code = Column(String, ForeignKey("hr_data_input.hr_code", ondelete="CASCADE"), primary_key=True)
     churn_risk = Column(Numeric, nullable=False)
@@ -157,7 +157,7 @@ Index('idx_churn_reasoning_hr_code_updated', ChurnReasoning.hr_code, ChurnReason
 
 
 class TrainingJob(Base):
-    __tablename__ = "training_jobs"
+    __tablename__ = "training_jobs"  # type: ignore[assignment]
 
     job_id = Column(Integer, primary_key=True)
     dataset_id = Column(String, ForeignKey("datasets.dataset_id", ondelete="CASCADE"), nullable=False)
@@ -174,7 +174,7 @@ Index('idx_training_jobs_dataset_id', TrainingJob.dataset_id)
 
 
 class ModelFeatureImportance(Base):
-    __tablename__ = "model_feature_importances"
+    __tablename__ = "model_feature_importances"  # type: ignore[assignment]
 
     model_version = Column(String, nullable=False, primary_key=True)
     feature_name = Column(String, nullable=False, primary_key=True)
@@ -195,7 +195,7 @@ class DatasetProfileDB(Base):
     This profile is computed when training is triggered and used by
     the ModelRouterService to select the optimal model.
     """
-    __tablename__ = "dataset_profiles"
+    __tablename__ = "dataset_profiles"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True)
     dataset_id = Column(String, ForeignKey("datasets.dataset_id", ondelete="CASCADE"), nullable=False, unique=True)
@@ -260,7 +260,7 @@ class ModelRoutingDecision(Base):
 
     Stores the reasoning and alternatives for transparency and debugging.
     """
-    __tablename__ = "model_routing_decisions"
+    __tablename__ = "model_routing_decisions"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True)
     dataset_id = Column(String, ForeignKey("datasets.dataset_id", ondelete="CASCADE"), nullable=False)

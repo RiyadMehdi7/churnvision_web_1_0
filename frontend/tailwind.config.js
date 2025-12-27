@@ -79,7 +79,20 @@ export default {
   				'2': 'hsl(var(--chart-2))',
   				'3': 'hsl(var(--chart-3))',
   				'4': 'hsl(var(--chart-4))',
-  				'5': 'hsl(var(--chart-5))'
+  				'5': 'hsl(var(--chart-5))',
+  				grid: 'hsl(var(--chart-grid))',
+  				axis: 'hsl(var(--chart-axis))'
+  			},
+  			risk: {
+  				high: 'hsl(var(--risk-high))',
+  				medium: 'hsl(var(--risk-medium))',
+  				low: 'hsl(var(--risk-low))'
+  			},
+  			teams: {
+  				purple: 'hsl(var(--teams-purple))'
+  			},
+  			tooltip: {
+  				bg: 'hsl(var(--tooltip-bg))'
   			}
   		},
   		borderRadius: {

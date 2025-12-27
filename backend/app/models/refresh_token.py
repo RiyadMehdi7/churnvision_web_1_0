@@ -20,7 +20,7 @@ class RefreshToken(Base):
     - Revocation support for logout/security events
     - Device tracking for multi-device management
     """
-    __tablename__ = "refresh_tokens"
+    __tablename__ = "refresh_tokens"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, index=True)
 

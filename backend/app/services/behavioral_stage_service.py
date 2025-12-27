@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.churn import BehavioralStage
+from app.services.data_driven_thresholds_service import data_driven_thresholds_service
 
 
 @dataclass
@@ -36,13 +37,14 @@ class BehavioralStageService:
     """
     Service for classifying employees into behavioral stages
     and calculating stage-specific risk contributions.
+
+    Stage tenure thresholds are computed from data percentiles (quintiles).
     """
 
-    # Default stage definitions (used if DB is empty)
-    DEFAULT_STAGES = {
+    # Stage metadata (descriptions, indicators, etc.)
+    # Tenure thresholds are computed dynamically from data
+    STAGE_METADATA = {
         'onboarding': {
-            'min_tenure': 0,
-            'max_tenure': 0.5,
             'base_risk': 0.35,
             'description': 'New employee in adjustment period',
             'indicators': [
@@ -63,8 +65,6 @@ class BehavioralStageService:
             ]
         },
         'early_career': {
-            'min_tenure': 0.5,
-            'max_tenure': 2,
             'base_risk': 0.25,
             'description': 'Building skills and seeking growth opportunities',
             'indicators': [
@@ -85,8 +85,6 @@ class BehavioralStageService:
             ]
         },
         'established': {
-            'min_tenure': 2,
-            'max_tenure': 5,
             'base_risk': 0.15,
             'description': 'Stable contributor looking for advancement',
             'indicators': [
@@ -107,8 +105,6 @@ class BehavioralStageService:
             ]
         },
         'senior': {
-            'min_tenure': 5,
-            'max_tenure': 10,
             'base_risk': 0.20,
             'description': 'Experienced professional, may seek new challenges',
             'indicators': [
@@ -129,8 +125,6 @@ class BehavioralStageService:
             ]
         },
         'veteran': {
-            'min_tenure': 10,
-            'max_tenure': None,
             'base_risk': 0.10,
             'description': 'Loyal employee with deep institutional knowledge',
             'indicators': [
@@ -156,6 +150,12 @@ class BehavioralStageService:
         self._stages_cache: Optional[Dict[str, Dict]] = None
         self._cache_loaded_at: Optional[datetime] = None
         self._cache_ttl_hours = 1  # Refresh cache every hour
+        self.thresholds_service = data_driven_thresholds_service
+
+    @property
+    def DEFAULT_STAGES(self) -> Dict[str, Dict]:
+        """Backward compatibility property - returns STAGE_METADATA."""
+        return self.STAGE_METADATA
 
     async def _load_stages_from_db(self, db: AsyncSession) -> Dict[str, Dict]:
         """Load stage definitions from database"""
@@ -208,30 +208,38 @@ class BehavioralStageService:
     def _classify_stage(
         self,
         tenure_years: float,
-        stages: Dict[str, Dict]
+        stages: Dict[str, Dict],
+        dataset_id: Optional[str] = None
     ) -> Tuple[str, Dict]:
-        """Classify employee into a stage based on tenure"""
-        for stage_name, stage_def in stages.items():
-            min_tenure = stage_def.get('min_tenure', 0)
-            max_tenure = stage_def.get('max_tenure')
+        """
+        Classify employee into a stage based on tenure.
 
-            if max_tenure is None:
-                if tenure_years >= min_tenure:
-                    return stage_name, stage_def
-            elif min_tenure <= tenure_years < max_tenure:
-                return stage_name, stage_def
+        Uses data-driven tenure thresholds (quintiles) when available.
+        """
+        # Use data-driven stage classification
+        stage_name = self.thresholds_service.get_tenure_stage(tenure_years, dataset_id)
 
-        # Default to established if no match
-        return 'established', stages.get('established', self.DEFAULT_STAGES['established'])
+        # Get the stage definition (from DB cache or metadata)
+        if stage_name in stages:
+            stage_def = stages[stage_name]
+        elif stage_name in self.STAGE_METADATA:
+            stage_def = self.STAGE_METADATA[stage_name]
+        else:
+            stage_def = self.STAGE_METADATA['established']
+
+        return stage_name, stage_def
 
     def _calculate_stage_score(
         self,
         stage_def: Dict,
         employee_data: Dict[str, Any],
-        churn_probability: float
+        churn_probability: float,
+        dataset_id: Optional[str] = None
     ) -> Tuple[float, float, List[str]]:
         """
         Calculate stage-specific risk score and confidence.
+
+        Uses percentile-based adjustments for tenure and salary.
 
         Returns:
             Tuple of (score, confidence, indicators)
@@ -245,17 +253,18 @@ class BehavioralStageService:
         position = employee_data.get('position', '').lower()
         status = employee_data.get('status', '').lower()
 
-        # Tenure-based adjustments
-        if tenure < 1:
-            # Very new employees have higher risk
+        # Tenure-based adjustments using percentiles
+        tenure_percentile = self.thresholds_service.get_feature_percentile(
+            'time_spend_company', float(tenure), dataset_id
+        )
+        if tenure_percentile < 20:  # Bottom 20% tenure
             adjustments += 0.1
-            indicators.append('Very new employee (<1 year)')
-        elif tenure > 7:
-            # Long-tenured employees are generally more stable
+            indicators.append(f'New employee (bottom {tenure_percentile:.0f}% tenure)')
+        elif tenure_percentile > 80:  # Top 20% tenure
             adjustments -= 0.05
-            indicators.append('Long tenure indicates stability')
+            indicators.append(f'Long tenure (top {100-tenure_percentile:.0f}%) indicates stability')
 
-        # Position-based adjustments
+        # Position-based adjustments (titles are universal)
         if 'manager' in position or 'director' in position or 'lead' in position:
             adjustments -= 0.05
             indicators.append('Leadership position increases retention')
@@ -263,15 +272,19 @@ class BehavioralStageService:
             adjustments += 0.05
             indicators.append('Entry-level position has higher mobility')
 
-        # Salary considerations (relative assessment)
-        if salary and salary > 100000:
-            adjustments -= 0.03
-            indicators.append('Competitive compensation')
-        elif salary and salary < 40000:
-            adjustments += 0.05
-            indicators.append('Below-average compensation')
+        # Salary considerations using percentiles
+        if salary:
+            salary_percentile = self.thresholds_service.get_feature_percentile(
+                'employee_cost', float(salary), dataset_id
+            )
+            if salary_percentile >= 75:  # Top 25%
+                adjustments -= 0.03
+                indicators.append(f'Competitive compensation (top {100-salary_percentile:.0f}%)')
+            elif salary_percentile < 25:  # Bottom 25%
+                adjustments += 0.05
+                indicators.append(f'Below-average compensation (bottom {salary_percentile:.0f}%)')
 
-        # Status-based adjustments
+        # Status-based adjustments (categorical, not percentile-based)
         if 'probation' in status:
             adjustments += 0.1
             indicators.append('Probationary status')

@@ -275,7 +275,7 @@ export const ActionProposalCard = memo<ActionProposalCardProps>(({
                         </button>
                         <button
                           onClick={handleOpenTeamsComposer}
-                          className="px-2.5 py-1 rounded text-xs font-medium bg-[#5b5fc7] hover:bg-[#4b4fb7] text-white transition-colors flex items-center gap-1"
+                          className="px-2.5 py-1 rounded text-xs font-medium bg-teams-purple hover:bg-teams-purple/90 text-white transition-colors flex items-center gap-1"
                         >
                           <Calendar size={12} /> Open in Teams
                         </button>

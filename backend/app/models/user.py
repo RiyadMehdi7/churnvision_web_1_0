@@ -4,7 +4,7 @@ from app.db.base_class import Base
 
 
 class User(Base):
-    __tablename__ = "legacy_users"  # Renamed to avoid conflict with UserAccount in auth.py
+    __tablename__ = "legacy_users"  # type: ignore[assignment]  # Renamed to avoid conflict with UserAccount in auth.py
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)

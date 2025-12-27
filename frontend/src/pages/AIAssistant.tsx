@@ -175,12 +175,13 @@ const EchoAvatar = ({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) => {
   const { container, svg } = sizeConfig[size];
 
   return (
-    <div className={`${container} rounded-xl bg-[#75caa9] flex items-center justify-center flex-shrink-0 shadow-md`}>
+    <div className={`${container} rounded-xl bg-app-green flex items-center justify-center flex-shrink-0 shadow-md`}>
       <svg width={svg} height={svg} viewBox="0 0 24 24" fill="none">
         <circle cx="12" cy="12" r="8" fill="white" />
         <path
           d="M8 12L11 15L16 9"
-          stroke="#75caa9"
+          stroke="currentColor"
+          className="text-app-green"
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"

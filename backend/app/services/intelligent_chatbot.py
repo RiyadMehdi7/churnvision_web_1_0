@@ -2182,15 +2182,45 @@ Provide a helpful response using the company and workforce data available."""
         message: str,
         role: str
     ):
-        """Save message to chat_messages table"""
-        chat_message = ChatMessage(
-            session_id=session_id,
-            employee_id=employee_id,
-            message=message,
-            role=role
-        )
-        self.db.add(chat_message)
-        await self.db.commit()
+        """Save message to chat_messages table.
+
+        Uses a fresh database session to avoid connection timeout issues
+        that occur when the LLM response takes a long time (e.g., 200+ seconds).
+        """
+        from app.db.session import AsyncSessionLocal
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            # Try with existing session first (fast path)
+            chat_message = ChatMessage(
+                session_id=session_id,
+                employee_id=employee_id,
+                message=message,
+                role=role
+            )
+            self.db.add(chat_message)
+            await self.db.commit()
+        except Exception as e:
+            # If the connection is stale (common after long LLM calls),
+            # use a fresh session to save the message
+            logger.warning(f"Primary session failed, using fresh session: {e}")
+            await self.db.rollback()
+
+            async with AsyncSessionLocal() as fresh_db:
+                try:
+                    chat_message = ChatMessage(
+                        session_id=session_id,
+                        employee_id=employee_id,
+                        message=message,
+                        role=role
+                    )
+                    fresh_db.add(chat_message)
+                    await fresh_db.commit()
+                except Exception as e2:
+                    logger.error(f"Failed to save chat message with fresh session: {e2}")
+                    # Don't raise - saving chat history is not critical
 
     async def stream_chat(
         self,

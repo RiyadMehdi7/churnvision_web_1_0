@@ -8,16 +8,19 @@ Generates actionable proposals for HR interventions:
 
 All actions require user approval before execution.
 Uses comprehensive employee data for personalization.
+
+Risk thresholds are data-driven, computed from user's actual data distribution.
 """
 
 import json
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
 from app.services.chatbot_service import ChatbotService
+from app.services.data_driven_thresholds_service import data_driven_thresholds_service
 from app.models.hr_data import HRDataInput, InterviewData
 from app.models.churn import ChurnOutput, ChurnReasoning, ELTVOutput
 from app.models.treatment import TreatmentApplication
@@ -27,11 +30,38 @@ class ActionGenerationService:
     """
     Service for generating AI-powered action proposals.
     Uses all available employee data for maximum personalization.
+
+    Risk thresholds are retrieved from data-driven thresholds service.
     """
 
     def __init__(self, db: AsyncSession):
         self.db = db
         self.chatbot_service = ChatbotService(db)
+        self.thresholds_service = data_driven_thresholds_service
+
+    def _get_risk_thresholds(self, dataset_id: Optional[str] = None) -> Tuple[float, float]:
+        """Get data-driven risk thresholds (high, medium)."""
+        thresholds = self.thresholds_service.get_cached_thresholds(dataset_id)
+        if thresholds and thresholds.risk_high_threshold > 0:
+            return (thresholds.risk_high_threshold, thresholds.risk_medium_threshold)
+        return (0.6, 0.3)  # Fallback only if no data
+
+    def _get_risk_level(self, risk_score: float, dataset_id: Optional[str] = None) -> str:
+        """Determine risk level using data-driven thresholds."""
+        high_thresh, medium_thresh = self._get_risk_thresholds(dataset_id)
+        # Critical is top tier of high risk (score >= high + 0.2 typically)
+        critical_thresh = min(0.9, high_thresh + 0.2)
+        if risk_score >= critical_thresh:
+            return "Critical"
+        elif risk_score >= high_thresh:
+            return "High"
+        elif risk_score >= medium_thresh:
+            return "Medium"
+        return "Low"
+
+    def _get_priority(self, risk_score: float, dataset_id: Optional[str] = None) -> str:
+        """Determine priority using data-driven thresholds."""
+        return self._get_risk_level(risk_score, dataset_id).lower()
 
     async def _get_comprehensive_employee_context(self, hr_code: str) -> Dict[str, Any]:
         """
@@ -237,7 +267,8 @@ class ActionGenerationService:
         churn = ctx.get("churn", {})
         if churn:
             risk_score = churn.get("risk_score", 0.5)
-            risk_level = "Critical" if risk_score >= 0.8 else "High" if risk_score >= 0.6 else "Medium" if risk_score >= 0.4 else "Low"
+            dataset_id = ctx.get("employee", {}).get("dataset_id")
+            risk_level = self._get_risk_level(risk_score, dataset_id)
             lines.append(f"Churn Risk: {risk_level} ({risk_score:.0%})")
             lines.append(f"Prediction Confidence: {churn.get('confidence', 70):.0f}%")
 
@@ -276,7 +307,10 @@ class ActionGenerationService:
             for interview in interviews[:2]:
                 lines.append(f"• {interview['type'].title()} Interview ({interview['date']})")
                 if interview.get("sentiment"):
-                    sentiment_label = "Positive" if interview["sentiment"] > 0.6 else "Neutral" if interview["sentiment"] > 0.4 else "Concerning"
+                    # Use data-driven sentiment thresholds
+                    sentiment_label = self.thresholds_service.get_sentiment_label(
+                        interview["sentiment"], dataset_id=ctx.get("dataset_id")
+                    )
                     lines.append(f"  Sentiment: {sentiment_label}")
                 if interview.get("insights"):
                     lines.append(f"  Key Insights: {interview['insights'][:150]}...")
@@ -555,9 +589,10 @@ Return ONLY a JSON object:
 
         emp = ctx["employee"]
         risk_score = ctx.get("churn", {}).get("risk_score", 0.5)
+        dataset_id = emp.get("dataset_id")
 
-        # Determine priority based on risk
-        priority = "critical" if risk_score >= 0.8 else "high" if risk_score >= 0.6 else "medium" if risk_score >= 0.4 else "low"
+        # Determine priority based on data-driven risk thresholds
+        priority = self._get_priority(risk_score, dataset_id)
 
         # Build personalized task description based on context
         task_context = []
@@ -572,11 +607,14 @@ Return ONLY a JSON object:
 
         context_str = ", ".join(task_context) if task_context else "requires attention"
 
+        # Get threshold for urgent action
+        high_thresh, _ = self._get_risk_thresholds(dataset_id)
+
         task_configs = {
             "follow_up": {
                 "title": f"Priority Follow-up: {emp['full_name']}",
                 "description": f"Follow up with {emp['full_name']} ({emp.get('position', 'Employee')}) who {context_str}. Schedule a check-in and address any concerns raised.",
-                "days_until_due": 2 if risk_score >= 0.7 else 5
+                "days_until_due": 2 if risk_score >= high_thresh else 5
             },
             "review_compensation": {
                 "title": f"Compensation Review: {emp['full_name']}",
@@ -641,6 +679,10 @@ Return ONLY a JSON object:
 
         emp = ctx["employee"]
         risk_score = ctx.get("churn", {}).get("risk_score", 0.5)
+        dataset_id = emp.get("dataset_id")
+
+        # Get data-driven thresholds
+        high_thresh, medium_thresh = self._get_risk_thresholds(dataset_id)
 
         actions = []
 
@@ -650,7 +692,7 @@ Return ONLY a JSON object:
             email_type = "career_discussion"
         elif emp.get("performance_rating") and emp["performance_rating"] >= 4:
             email_type = "recognition"
-        elif risk_score >= 0.7:
+        elif risk_score >= high_thresh:
             email_type = "stay_interview"
 
         # Always suggest an email (most non-intrusive)
@@ -658,7 +700,7 @@ Return ONLY a JSON object:
         actions.append(email)
 
         # Critical/High risk: full intervention suite
-        if risk_score >= 0.7:
+        if risk_score >= high_thresh:
             # Urgent 1:1 meeting
             meeting = await self.generate_meeting_proposal(hr_code, "one_on_one", model)
             actions.append(meeting)
@@ -673,7 +715,7 @@ Return ONLY a JSON object:
                 actions.append(comp_task)
 
         # Medium risk: targeted intervention
-        elif risk_score >= 0.4:
+        elif risk_score >= medium_thresh:
             # Career-focused meeting
             meeting_type = "career_planning"
             if emp.get("years_in_role") and emp["years_in_role"] > 3:

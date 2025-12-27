@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hr_data import HRDataInput
 from app.models.churn import ChurnOutput
+from app.services.data_driven_thresholds_service import data_driven_thresholds_service
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,8 @@ class SurvivalAnalysisService:
     - Hazard function: risk of departure at any given time
     - Survival function: probability of staying employed over time
     - Time-to-event: when an employee is likely to leave
+
+    Base hazard rate is computed from actual turnover data.
     """
 
     def __init__(self):
@@ -78,6 +81,7 @@ class SurvivalAnalysisService:
         self._model_fitted = False
         self._baseline_survival = None
         self._feature_columns = []
+        self.thresholds_service = data_driven_thresholds_service
 
     async def fit_survival_model(
         self,
@@ -340,16 +344,18 @@ class SurvivalAnalysisService:
         self,
         hr_code: str,
         tenure: float,
-        risk_score: float
+        risk_score: float,
+        dataset_id: Optional[str] = None
     ) -> SurvivalPrediction:
         """
         Approximate survival predictions using churn probability.
 
         Uses exponential decay model where hazard is proportional to risk score.
+        Base hazard rate is computed from actual turnover data, not hardcoded.
         """
         # Base hazard rate (probability of leaving per year)
-        # Scaled by churn probability
-        base_hazard = 0.15  # 15% annual turnover as baseline
+        # Computed from actual turnover data
+        base_hazard = self.thresholds_service.get_base_hazard_rate(dataset_id)
         hazard_rate = base_hazard + (risk_score * 0.5)  # Risk amplifies hazard
 
         # Survival function: S(t) = exp(-hazard * t)
@@ -372,7 +378,7 @@ class SurvivalAnalysisService:
             median_days = None
 
         departure_window, urgency = self._determine_window_and_urgency(
-            prob_30, prob_60, prob_90, prob_180, risk_score
+            prob_30, prob_60, prob_90, prob_180, risk_score, dataset_id
         )
 
         return SurvivalPrediction(
@@ -387,7 +393,7 @@ class SurvivalAnalysisService:
             departure_window=departure_window,
             urgency=urgency,
             confidence=0.6,  # Lower confidence for approximation
-            hazard_ratio=round(hazard_rate / base_hazard, 2)
+            hazard_ratio=round(hazard_rate / base_hazard, 2) if base_hazard > 0 else 1.0
         )
 
     def _determine_window_and_urgency(
@@ -396,17 +402,25 @@ class SurvivalAnalysisService:
         prob_60: float,
         prob_90: float,
         prob_180: float,
-        risk_score: float
+        risk_score: float,
+        dataset_id: Optional[str] = None
     ) -> Tuple[str, str]:
-        """Determine departure window and urgency from probabilities"""
+        """
+        Determine departure window and urgency from probabilities.
+
+        Uses the risk level from data-driven thresholds to determine urgency.
+        """
+        # Get risk level using data-driven thresholds
+        risk_level = self.thresholds_service.get_risk_level(risk_score, dataset_id)
 
         # Determine departure window based on probability thresholds
+        # Note: probability thresholds (0.5, 0.3) are statistical, not data-specific
         if prob_30 >= 0.5:
             window = "< 30 days"
             urgency = "critical"
         elif prob_60 >= 0.5:
             window = "30-60 days"
-            urgency = "critical" if risk_score > 0.8 else "high"
+            urgency = "critical" if risk_level == 'high' else "high"
         elif prob_90 >= 0.5:
             window = "60-90 days"
             urgency = "high"

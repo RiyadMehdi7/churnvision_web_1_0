@@ -3,12 +3,15 @@ Cached query helpers for ChurnVision Enterprise.
 
 Provides cached versions of expensive aggregation queries used by the chatbot
 and other services. Uses Redis when available, falls back to in-memory cache.
+
+All risk thresholds are retrieved from the data-driven thresholds service,
+computed from user's actual data distribution - no hardcoded values.
 """
 
 import hashlib
 import json
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
 from sqlalchemy import select, func, case, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,8 +19,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.cache import get_cache, CacheTTL
 from app.models.hr_data import HRDataInput
 from app.models.churn import ChurnOutput, ChurnReasoning
+from app.services.data_driven_thresholds_service import data_driven_thresholds_service
 
 logger = logging.getLogger("churnvision.cached_queries")
+
+
+def _get_risk_thresholds(dataset_id: str) -> Tuple[float, float]:
+    """
+    Get data-driven risk thresholds for the dataset.
+
+    Returns (high_threshold, medium_threshold) computed from data percentiles.
+    """
+    thresholds = data_driven_thresholds_service.get_cached_thresholds(dataset_id)
+    if thresholds and thresholds.risk_high_threshold > 0:
+        return (thresholds.risk_high_threshold, thresholds.risk_medium_threshold)
+    # Fallback only if no data has been processed yet
+    return (0.6, 0.3)
 
 
 def _make_cache_key(prefix: str, *args) -> str:
@@ -47,16 +64,19 @@ async def get_cached_company_overview(
         except json.JSONDecodeError:
             pass
 
-    # Execute query
+    # Get data-driven risk thresholds
+    high_thresh, medium_thresh = _get_risk_thresholds(dataset_id)
+
+    # Execute query with data-driven thresholds
     stats_query = select(
         func.count().label("total_employees"),
         func.sum(case((func.lower(HRDataInput.status) == "active", 1), else_=0)).label("active_employees"),
         func.avg(HRDataInput.tenure).label("avg_tenure"),
         func.avg(HRDataInput.employee_cost).label("avg_cost"),
         func.avg(ChurnOutput.resign_proba).label("avg_risk"),
-        func.sum(case((ChurnOutput.resign_proba >= 0.6, 1), else_=0)).label("high_risk"),
-        func.sum(case(((ChurnOutput.resign_proba >= 0.3) & (ChurnOutput.resign_proba < 0.6), 1), else_=0)).label("medium_risk"),
-        func.sum(case((ChurnOutput.resign_proba < 0.3, 1), else_=0)).label("low_risk"),
+        func.sum(case((ChurnOutput.resign_proba >= high_thresh, 1), else_=0)).label("high_risk"),
+        func.sum(case(((ChurnOutput.resign_proba >= medium_thresh) & (ChurnOutput.resign_proba < high_thresh), 1), else_=0)).label("medium_risk"),
+        func.sum(case((ChurnOutput.resign_proba < medium_thresh, 1), else_=0)).label("low_risk"),
     ).select_from(HRDataInput).outerjoin(
         ChurnOutput,
         and_(ChurnOutput.hr_code == HRDataInput.hr_code, ChurnOutput.dataset_id == dataset_id)
@@ -120,9 +140,12 @@ async def get_cached_workforce_statistics(
     result = await db.execute(query)
     employees = result.all()
 
+    # Get data-driven risk thresholds
+    high_thresh, medium_thresh = _get_risk_thresholds(dataset_id)
+
     total = len(employees)
-    high_risk = sum(1 for e, r in employees if r and r.churn_risk and r.churn_risk >= 0.6)
-    medium_risk = sum(1 for e, r in employees if r and r.churn_risk and 0.3 <= r.churn_risk < 0.6)
+    high_risk = sum(1 for e, r in employees if r and r.churn_risk and r.churn_risk >= high_thresh)
+    medium_risk = sum(1 for e, r in employees if r and r.churn_risk and medium_thresh <= r.churn_risk < high_thresh)
     low_risk = total - high_risk - medium_risk
 
     # Department breakdown
@@ -148,7 +171,7 @@ async def get_cached_workforce_statistics(
             "department": dept,
             "count": stats["count"],
             "avgRisk": sum(risks) / len(risks) if risks else 0,
-            "highRiskCount": sum(1 for r in risks if r >= 0.6),
+            "highRiskCount": sum(1 for r in risks if r >= high_thresh),
             "avgMLScore": sum(stats["ml_scores"]) / len(stats["ml_scores"]) if stats["ml_scores"] else 0,
             "avgStageScore": sum(stats["stage_scores"]) / len(stats["stage_scores"]) if stats["stage_scores"] else 0,
             "avgConfidence": sum(stats["confidences"]) / len(stats["confidences"]) if stats["confidences"] else 0
@@ -182,7 +205,7 @@ async def get_cached_workforce_statistics(
         "stageDistribution": stage_distribution,
         "riskTrends": {
             "criticalEmployees": high_risk,
-            "atRiskDepartments": sum(1 for d in department_risks if d["avgRisk"] >= 0.5),
+            "atRiskDepartments": sum(1 for d in department_risks if d["avgRisk"] >= medium_thresh),
             "averageConfidence": sum(d["avgConfidence"] for d in department_risks) / len(department_risks) if department_risks else 0,
             "totalWithReasoningData": sum(1 for e, r in employees if r is not None)
         }
@@ -219,13 +242,16 @@ async def get_cached_department_snapshot(
         except json.JSONDecodeError:
             pass
 
-    # Execute query
+    # Get data-driven risk thresholds
+    high_thresh, _ = _get_risk_thresholds(dataset_id)
+
+    # Execute query with data-driven thresholds
     query = select(
         func.count().label("headcount"),
         func.avg(HRDataInput.tenure).label("avg_tenure"),
         func.avg(HRDataInput.employee_cost).label("avg_cost"),
         func.avg(ChurnOutput.resign_proba).label("avg_risk"),
-        func.sum(case((ChurnOutput.resign_proba >= 0.6, 1), else_=0)).label("high_risk"),
+        func.sum(case((ChurnOutput.resign_proba >= high_thresh, 1), else_=0)).label("high_risk"),
     ).select_from(HRDataInput).outerjoin(
         ChurnOutput,
         and_(ChurnOutput.hr_code == HRDataInput.hr_code, ChurnOutput.dataset_id == dataset_id)
@@ -280,13 +306,16 @@ async def get_cached_manager_team_summary(
         except json.JSONDecodeError:
             pass
 
-    # Execute query
+    # Get data-driven risk thresholds
+    high_thresh, _ = _get_risk_thresholds(dataset_id)
+
+    # Execute query with data-driven thresholds
     query = select(
         func.count().label("team_size"),
         func.avg(HRDataInput.tenure).label("avg_tenure"),
         func.avg(HRDataInput.employee_cost).label("avg_cost"),
         func.avg(ChurnOutput.resign_proba).label("avg_risk"),
-        func.sum(case((ChurnOutput.resign_proba >= 0.6, 1), else_=0)).label("high_risk"),
+        func.sum(case((ChurnOutput.resign_proba >= high_thresh, 1), else_=0)).label("high_risk"),
     ).select_from(HRDataInput).outerjoin(
         ChurnOutput,
         and_(ChurnOutput.hr_code == HRDataInput.hr_code, ChurnOutput.dataset_id == dataset_id)

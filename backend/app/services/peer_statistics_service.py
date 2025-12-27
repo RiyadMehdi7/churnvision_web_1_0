@@ -6,7 +6,8 @@ Calculates percentiles and statistics for peer comparison:
 - Compensation percentiles by department, position, tenure cohort
 - Tenure percentiles by department, position
 
-This enables dynamic, data-driven thresholds instead of hardcoded values.
+This service focuses on peer comparisons and shares its risk threshold
+calculations with the central DataDrivenThresholdsService.
 """
 
 from typing import Dict, Any, Optional, List, Tuple
@@ -18,6 +19,7 @@ from sqlalchemy import select, func, and_
 
 from app.models.hr_data import HRDataInput
 from app.models.churn import ChurnOutput
+from app.services.data_driven_thresholds_service import data_driven_thresholds_service
 
 
 @dataclass
@@ -120,6 +122,7 @@ class PeerStatisticsService:
     async def calculate_risk_thresholds(
         self,
         db: AsyncSession,
+        dataset_id: Optional[str] = None,
         force_refresh: bool = False
     ) -> RiskThresholds:
         """
@@ -129,6 +132,8 @@ class PeerStatisticsService:
         - High risk: Top 25% of churn probabilities (P75+)
         - Medium risk: Middle 50% (P25 to P75)
         - Low risk: Bottom 25% (below P25)
+
+        Also updates the shared DataDrivenThresholdsService cache.
         """
         # Check cache
         if not force_refresh and self._risk_thresholds_cache:
@@ -138,6 +143,8 @@ class PeerStatisticsService:
 
         # Fetch all churn probabilities
         query = select(ChurnOutput.resign_proba)
+        if dataset_id:
+            query = query.where(ChurnOutput.dataset_id == dataset_id)
         result = await db.execute(query)
         probabilities = [float(row[0]) for row in result.fetchall() if row[0] is not None]
 
@@ -160,6 +167,14 @@ class PeerStatisticsService:
                 calculation_method="percentile-based (P25/P75)",
                 sample_size=len(probabilities),
                 calculated_at=datetime.utcnow()
+            )
+
+            # Update the shared DataDrivenThresholdsService cache
+            data_driven_thresholds_service.compute_risk_thresholds_from_predictions(
+                probabilities,
+                dataset_id=dataset_id,
+                high_risk_percentile=75.0,
+                medium_risk_percentile=25.0
             )
 
         self._risk_thresholds_cache = thresholds

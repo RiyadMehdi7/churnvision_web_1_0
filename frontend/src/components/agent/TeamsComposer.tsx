@@ -188,7 +188,7 @@ export const TeamsComposer = memo<TeamsComposerProps>(({
       className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-2xl overflow-hidden max-w-2xl w-full"
     >
       {/* Header - Teams purple style */}
-      <div className="bg-gradient-to-r from-[#5b5fc7] to-[#7b83eb] px-4 py-2.5 flex items-center justify-between">
+      <div className="bg-gradient-to-r from-teams-purple to-[#7b83eb] px-4 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {activeMode === 'chat' ? (
             <MessageSquare size={16} className="text-white/90" />
@@ -237,7 +237,7 @@ export const TeamsComposer = memo<TeamsComposerProps>(({
                 onClick={() => setActiveMode('chat')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   activeMode === 'chat'
-                    ? 'bg-[#5b5fc7] text-white'
+                    ? 'bg-teams-purple text-white'
                     : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
               >
@@ -248,7 +248,7 @@ export const TeamsComposer = memo<TeamsComposerProps>(({
                 onClick={() => setActiveMode('meeting')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   activeMode === 'meeting'
-                    ? 'bg-[#5b5fc7] text-white'
+                    ? 'bg-teams-purple text-white'
                     : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
               >
@@ -259,7 +259,7 @@ export const TeamsComposer = memo<TeamsComposerProps>(({
                 onClick={() => setActiveMode('call')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   activeMode === 'call'
-                    ? 'bg-[#5b5fc7] text-white'
+                    ? 'bg-teams-purple text-white'
                     : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
               >
@@ -327,7 +327,7 @@ export const TeamsComposer = memo<TeamsComposerProps>(({
             {activeMode !== 'call' && (
               <div className="border-b border-gray-100 dark:border-gray-700 px-4 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/10 dark:to-indigo-900/10">
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5 text-[#5b5fc7]">
+                  <div className="flex items-center gap-1.5 text-teams-purple">
                     <Wand2 size={14} />
                     <span className="text-xs font-medium">AI Edit</span>
                   </div>
@@ -339,13 +339,13 @@ export const TeamsComposer = memo<TeamsComposerProps>(({
                       onChange={(e) => setAiInstruction(e.target.value)}
                       onKeyDown={handleAiKeyDown}
                       disabled={isRefining}
-                      className="w-full text-sm text-gray-800 dark:text-gray-200 bg-white dark:bg-slate-700 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 pr-20 focus:outline-none focus:ring-2 focus:ring-[#5b5fc7]/50 disabled:opacity-50"
+                      className="w-full text-sm text-gray-800 dark:text-gray-200 bg-white dark:bg-slate-700 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 pr-20 focus:outline-none focus:ring-2 focus:ring-teams-purple/50 disabled:opacity-50"
                       placeholder="e.g., add more detail, make it concise, add action items..."
                     />
                     <button
                       onClick={handleAiRefine}
                       disabled={!aiInstruction.trim() || isRefining}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-[#5b5fc7] hover:bg-[#4b4fb7] disabled:bg-gray-400 rounded transition-colors"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-teams-purple hover:bg-teams-purple/90 disabled:bg-gray-400 rounded transition-colors"
                     >
                       {isRefining ? (
                         <Loader2 size={12} className="animate-spin" />
@@ -383,7 +383,7 @@ export const TeamsComposer = memo<TeamsComposerProps>(({
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   rows={activeMode === 'chat' ? 6 : 8}
-                  className="w-full text-sm text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-[#5b5fc7]/50 resize-none leading-relaxed"
+                  className="w-full text-sm text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-teams-purple/50 resize-none leading-relaxed"
                   placeholder={activeMode === 'chat' ? 'Type your message...' : 'Meeting agenda and talking points...'}
                 />
               </div>
@@ -392,7 +392,7 @@ export const TeamsComposer = memo<TeamsComposerProps>(({
             {/* Call mode info */}
             {activeMode === 'call' && (
               <div className="px-4 py-6 text-center">
-                <Phone size={32} className="mx-auto text-[#5b5fc7] mb-3" />
+                <Phone size={32} className="mx-auto text-teams-purple mb-3" />
                 <p className="text-sm text-gray-600 dark:text-gray-300">
                   Start a Teams call with <span className="font-medium">{attendeesArray[0] || 'the attendee'}</span>
                 </p>
@@ -410,7 +410,7 @@ export const TeamsComposer = memo<TeamsComposerProps>(({
                   <div className="flex">
                     <button
                       onClick={handlePrimaryAction}
-                      className="flex items-center gap-2 px-4 py-2 bg-[#5b5fc7] hover:bg-[#4b4fb7] text-white text-sm font-medium rounded-l-lg transition-colors"
+                      className="flex items-center gap-2 px-4 py-2 bg-teams-purple hover:bg-teams-purple/90 text-white text-sm font-medium rounded-l-lg transition-colors"
                     >
                       {activeMode === 'chat' ? (
                         <>
@@ -431,7 +431,7 @@ export const TeamsComposer = memo<TeamsComposerProps>(({
                     </button>
                     <button
                       onClick={() => setShowOptions(!showOptions)}
-                      className="px-2 py-2 bg-[#5b5fc7] hover:bg-[#4b4fb7] text-white rounded-r-lg border-l border-[#4b4fb7] transition-colors"
+                      className="px-2 py-2 bg-teams-purple hover:bg-teams-purple/90 text-white rounded-r-lg border-l border-teams-purple/80 transition-colors"
                     >
                       <ChevronDown size={14} />
                     </button>

@@ -6,7 +6,7 @@ from app.db.base_class import Base
 
 class UserAccount(Base):
     """Enhanced user account model with RBAC support"""
-    __tablename__ = "users"
+    __tablename__ = "users"  # type: ignore[assignment]
 
     user_id = Column(String, primary_key=True)
     username = Column(String, unique=True, nullable=False, index=True)
@@ -34,7 +34,7 @@ Index('idx_users_license_key', UserAccount.license_key)
 
 
 class Session(Base):
-    __tablename__ = "sessions"
+    __tablename__ = "sessions"  # type: ignore[assignment]
 
     session_id = Column(String, primary_key=True)
     user_id = Column(String, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
@@ -55,7 +55,7 @@ Index('idx_sessions_token_hash', Session.token_hash)
 
 
 class Role(Base):
-    __tablename__ = "roles"
+    __tablename__ = "roles"  # type: ignore[assignment]
 
     role_id = Column(String, primary_key=True)
     role_name = Column(String, unique=True, nullable=False)
@@ -69,7 +69,7 @@ class Role(Base):
 
 
 class Permission(Base):
-    __tablename__ = "permissions"
+    __tablename__ = "permissions"  # type: ignore[assignment]
 
     permission_id = Column(String, primary_key=True)
     permission_name = Column(String, unique=True, nullable=False)
@@ -83,7 +83,7 @@ class Permission(Base):
 
 
 class RolePermission(Base):
-    __tablename__ = "role_permissions"
+    __tablename__ = "role_permissions"  # type: ignore[assignment]
 
     role_id = Column(String, ForeignKey("roles.role_id", ondelete="CASCADE"), nullable=False)
     permission_id = Column(String, ForeignKey("permissions.permission_id", ondelete="CASCADE"), nullable=False)
@@ -102,7 +102,7 @@ Index('idx_role_permissions_permission_id', RolePermission.permission_id)
 
 
 class UserRole(Base):
-    __tablename__ = "user_roles"
+    __tablename__ = "user_roles"  # type: ignore[assignment]
 
     user_id = Column(String, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     role_id = Column(String, ForeignKey("roles.role_id", ondelete="CASCADE"), nullable=False)

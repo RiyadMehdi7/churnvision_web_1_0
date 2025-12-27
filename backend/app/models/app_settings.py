@@ -12,7 +12,7 @@ from app.db.base_class import Base
 
 
 class AppSettings(Base):
-    __tablename__ = "app_settings"
+    __tablename__ = "app_settings"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, index=True)
 

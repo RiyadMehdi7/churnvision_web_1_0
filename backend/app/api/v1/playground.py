@@ -568,12 +568,29 @@ async def get_roi_dashboard(
     # Get all churn outputs for these employees
     hr_codes = [e.hr_code for e in employees]
 
+    # Use join-based approach instead of IN clause to avoid PostgreSQL parameter limit (32767)
+    # Create a subquery from the employees we already have (using their hr_codes from the main query)
+    employee_hr_codes_subquery = (
+        select(HRDataInput.hr_code)
+        .join(
+            subquery,
+            (HRDataInput.hr_code == subquery.c.hr_code) &
+            (HRDataInput.report_date == subquery.c.max_date)
+        )
+    )
+    if not include_terminated:
+        employee_hr_codes_subquery = employee_hr_codes_subquery.where(HRDataInput.status != 'Resigned')
+    if department_filter:
+        employee_hr_codes_subquery = employee_hr_codes_subquery.where(HRDataInput.structure_name.in_(department_filter))
+
+    employee_hr_codes_subquery = employee_hr_codes_subquery.subquery()
+
     churn_subquery = (
         select(
             ChurnOutput.hr_code,
             func.max(ChurnOutput.generated_at).label('max_date')
         )
-        .where(ChurnOutput.hr_code.in_(hr_codes))
+        .where(ChurnOutput.hr_code.in_(select(employee_hr_codes_subquery.c.hr_code)))
         .group_by(ChurnOutput.hr_code)
         .subquery()
     )

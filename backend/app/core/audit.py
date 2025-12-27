@@ -16,7 +16,7 @@ from app.db.base_class import Base
 
 class AuditLog(Base):
     """Audit log model for tracking user actions"""
-    __tablename__ = "audit_logs"
+    __tablename__ = "audit_logs"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, index=True)
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)

@@ -16,7 +16,7 @@ class RAGDocument(Base):
 
     Documents are processed into chunks for semantic search.
     """
-    __tablename__ = "rag_documents"
+    __tablename__ = "rag_documents"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     title = Column(String(500), nullable=False)
@@ -54,7 +54,7 @@ class RAGChunk(Base):
 
     Each chunk has a corresponding entry in ChromaDB for vector search.
     """
-    __tablename__ = "rag_chunks"
+    __tablename__ = "rag_chunks"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     document_id = Column(Integer, ForeignKey("rag_documents.id", ondelete="CASCADE"), nullable=False)
@@ -84,7 +84,7 @@ class CustomHRRule(Base):
     These rules are explicitly defined by users and take precedence
     over general knowledge and sometimes document content.
     """
-    __tablename__ = "custom_hr_rules"
+    __tablename__ = "custom_hr_rules"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(200), nullable=False)
@@ -114,7 +114,7 @@ class KnowledgeBaseSettings(Base):
     Controls how document retrieval and rule application work.
     Also stores company context for AI personalization.
     """
-    __tablename__ = "knowledge_base_settings"
+    __tablename__ = "knowledge_base_settings"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 

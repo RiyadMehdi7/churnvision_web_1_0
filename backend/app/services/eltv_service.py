@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 import math
 
+from app.services.data_driven_thresholds_service import data_driven_thresholds_service
+
 
 @dataclass
 class SurvivalCurveParams:
@@ -93,19 +95,22 @@ class ELTVService:
     The ELTV represents the present value of an employee's expected future
     contribution, accounting for their probability of staying and the
     time value of money.
+
+    All thresholds are data-driven from user's dataset percentiles.
     """
 
-    # Default configuration
+    # Default configuration (fallbacks only when no data available)
     DEFAULT_HORIZON_MONTHS = 24
     DEFAULT_DISCOUNT_RATE = 0.08  # 8% annual discount rate
     DEFAULT_REPLACEMENT_COST_RATIO = 0.5  # 50% of annual salary
 
     # Revenue multipliers based on position level/percentile
+    # Position levels are determined from data percentiles, not hardcoded salaries
     REVENUE_MULTIPLIERS = {
-        'entry': 2.0,
-        'mid': 2.5,
-        'senior': 3.0,
-        'executive': 3.5
+        'entry': 2.0,      # Bottom 25% salary
+        'mid': 2.5,        # 25-50% salary
+        'senior': 3.0,     # 50-75% salary
+        'executive': 3.5   # Top 25% salary
     }
 
     def __init__(
@@ -118,6 +123,7 @@ class ELTVService:
         self.annual_discount_rate = annual_discount_rate
         self.monthly_discount_rate = (1 + annual_discount_rate) ** (1/12) - 1
         self.replacement_cost_ratio = replacement_cost_ratio
+        self.thresholds_service = data_driven_thresholds_service
 
         # LRU cache for performance
         self._survival_cache: Dict[Tuple[float, float, int], float] = {}
@@ -187,24 +193,31 @@ class ELTVService:
     def get_revenue_multiplier(
         self,
         annual_salary: float,
-        position_level: Optional[str] = None
+        position_level: Optional[str] = None,
+        dataset_id: Optional[str] = None
     ) -> float:
         """
         Determine revenue multiplier based on position level or salary percentile.
 
+        Uses data-driven percentiles to determine position level from salary.
         Higher-level employees typically generate more value relative to their salary.
         """
         if position_level and position_level.lower() in self.REVENUE_MULTIPLIERS:
             return self.REVENUE_MULTIPLIERS[position_level.lower()]
 
-        # Estimate position level from salary
-        if annual_salary >= 150000:
+        # Estimate position level from salary percentile (data-driven)
+        salary_percentile = self.thresholds_service.get_feature_percentile(
+            'employee_cost', annual_salary, dataset_id
+        )
+
+        # Map percentile to position level
+        if salary_percentile >= 75:  # Top 25%
             return self.REVENUE_MULTIPLIERS['executive']
-        elif annual_salary >= 100000:
+        elif salary_percentile >= 50:  # 50-75%
             return self.REVENUE_MULTIPLIERS['senior']
-        elif annual_salary >= 60000:
+        elif salary_percentile >= 25:  # 25-50%
             return self.REVENUE_MULTIPLIERS['mid']
-        else:
+        else:  # Bottom 25%
             return self.REVENUE_MULTIPLIERS['entry']
 
     def calculate_replacement_cost(self, annual_salary: float) -> float:
@@ -386,15 +399,32 @@ class ELTVService:
         else:
             return "low"
 
-    def convert_eltv_to_category(self, eltv: float) -> str:
+    def convert_eltv_to_category(
+        self,
+        eltv: float,
+        dataset_id: Optional[str] = None
+    ) -> str:
         """
-        Convert numeric ELTV to categorical value for performance mode.
+        Convert numeric ELTV to categorical value using data-driven thresholds.
 
-        Categories:
-        - High: ELTV >= $100,000
-        - Medium: ELTV >= $50,000
-        - Low: ELTV < $50,000
+        Categories based on ELTV percentiles:
+        - High: Top 25% (>= p75)
+        - Medium: 25-75% (>= p50)
+        - Low: Bottom 50% (< p50)
         """
+        # Get ELTV thresholds from data
+        thresholds = self.thresholds_service.get_cached_thresholds(dataset_id)
+
+        if thresholds and thresholds.eltv_high_threshold > 0:
+            if eltv >= thresholds.eltv_high_threshold:
+                return "High"
+            elif eltv >= thresholds.eltv_medium_threshold:
+                return "Medium"
+            else:
+                return "Low"
+
+        # Fallback: use the ELTV value itself as a percentile proxy
+        # Without data, use relative comparison (high = top third)
         if eltv >= 100000:
             return "High"
         elif eltv >= 50000:
@@ -406,12 +436,13 @@ class ELTVService:
         self,
         position: Optional[str],
         salary: Optional[float],
-        tenure: Optional[float]
+        tenure: Optional[float],
+        dataset_id: Optional[str] = None
     ) -> str:
         """
-        Estimate position level from available data.
+        Estimate position level from available data using percentile-based thresholds.
         """
-        # Try to infer from position title
+        # Try to infer from position title first
         if position:
             position_lower = position.lower()
             if any(x in position_lower for x in ['director', 'vp', 'chief', 'head', 'executive']):
@@ -421,14 +452,19 @@ class ELTVService:
             elif any(x in position_lower for x in ['junior', 'associate', 'entry', 'intern']):
                 return 'entry'
 
-        # Fall back to salary-based estimation
+        # Fall back to percentile-based salary estimation
         if salary:
-            if salary >= 150000:
+            salary_percentile = self.thresholds_service.get_feature_percentile(
+                'employee_cost', salary, dataset_id
+            )
+            if salary_percentile >= 75:  # Top 25%
                 return 'executive'
-            elif salary >= 100000:
+            elif salary_percentile >= 50:  # 50-75%
                 return 'senior'
-            elif salary >= 60000:
+            elif salary_percentile >= 25:  # 25-50%
                 return 'mid'
+            else:  # Bottom 25%
+                return 'entry'
 
         # Default to mid level
         return 'mid'

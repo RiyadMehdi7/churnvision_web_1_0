@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Brain, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import { Employee } from '../types/employee';
 import { getCurrentThresholds, getRiskLevel, getRiskLevelWithStyles } from '../config/riskThresholds';
+import { getRiskColor } from '../lib/utils';
 
 interface EnhancedEmployeeCardProps {
   employee: Employee;
@@ -39,8 +40,7 @@ export const EnhancedEmployeeCard: React.FC<EnhancedEmployeeCardProps> = ({
   const riskLevel = getRiskLevelForEmployee(probability);
   
   // Animated risk indicator
-  const riskColor = riskLevel === 'High' ? '#ef4444' : 
-                   riskLevel === 'Medium' ? '#f59e0b' : '#10b981';
+  const riskColor = getRiskColor(riskLevel as 'High' | 'Medium' | 'Low');
   
   return (
     <div

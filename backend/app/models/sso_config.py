@@ -17,7 +17,7 @@ class SSOConfig(Base):
     Only one active configuration is allowed at a time.
     Secrets are stored encrypted (handled at application level).
     """
-    __tablename__ = "sso_config"
+    __tablename__ = "sso_config"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, index=True)
 

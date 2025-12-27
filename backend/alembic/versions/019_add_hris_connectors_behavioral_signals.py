@@ -63,8 +63,8 @@ def upgrade() -> None:
         'employee_behavioral_signals',
         sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
 
-        # Employee reference
-        sa.Column('hr_code', sa.String(), sa.ForeignKey('hr_data_input.hr_code', ondelete='SET NULL'), nullable=True),
+        # Employee reference (hr_code is stored for soft-linking, no FK since hr_data_input has composite PK)
+        sa.Column('hr_code', sa.String(), nullable=True),
         sa.Column('email', sa.String(), nullable=False),
 
         # Source platform

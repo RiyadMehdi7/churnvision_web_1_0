@@ -63,7 +63,7 @@ class ConsentRecord(Base):
     For on-premise deployments, consent is typically managed by the
     organization's HR department for employment-related processing.
     """
-    __tablename__ = "gdpr_consent_records"
+    __tablename__ = "gdpr_consent_records"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
@@ -105,7 +105,7 @@ class DataSubjectRequest(Base):
     Organizations must respond to DSARs within 30 days (extendable to 90 days
     for complex requests).
     """
-    __tablename__ = "gdpr_data_subject_requests"
+    __tablename__ = "gdpr_data_subject_requests"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     request_id = Column(String, unique=True, nullable=False, index=True)
@@ -156,7 +156,7 @@ class DataProcessingRecord(Base):
 
     Documents what personal data is processed, why, and how.
     """
-    __tablename__ = "gdpr_processing_records"
+    __tablename__ = "gdpr_processing_records"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
@@ -213,7 +213,7 @@ class DataBreachRecord(Base):
     Breaches must be reported to supervisory authority within 72 hours
     if they pose a risk to data subjects.
     """
-    __tablename__ = "gdpr_breach_records"
+    __tablename__ = "gdpr_breach_records"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     breach_id = Column(String, unique=True, nullable=False, index=True)
@@ -269,7 +269,7 @@ class ErasureLog(Base):
 
     Maintains record of what was deleted and when for compliance verification.
     """
-    __tablename__ = "gdpr_erasure_logs"
+    __tablename__ = "gdpr_erasure_logs"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 

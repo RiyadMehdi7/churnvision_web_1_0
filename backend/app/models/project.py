@@ -5,7 +5,7 @@ from app.db.base_class import Base
 
 
 class Project(Base):
-    __tablename__ = "projects"
+    __tablename__ = "projects"  # type: ignore[assignment]
 
     id = Column(String, primary_key=True)
     name = Column(String, nullable=False, unique=True)

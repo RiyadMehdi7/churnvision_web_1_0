@@ -3,16 +3,19 @@ Treatment Generation Service
 
 Generates personalized treatment suggestions for employees using AI.
 Integrates with RAG subsystem for company-policy-compliant recommendations.
+
+Risk thresholds are data-driven, computed from user's actual data distribution.
 """
 
 import json
 import re
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
 from app.services.chatbot_service import ChatbotService
+from app.services.data_driven_thresholds_service import data_driven_thresholds_service
 from app.models.hr_data import HRDataInput
 from app.models.churn import ChurnOutput, ChurnReasoning
 from app.core.config import settings
@@ -28,12 +31,31 @@ class TreatmentGenerationService:
     - Ground treatments in company policies
     - Validate treatments against custom HR rules
     - Ensure compliance with documented constraints
+
+    Risk thresholds are retrieved from data-driven thresholds service.
     """
 
     def __init__(self, db: AsyncSession):
         self.db = db
         self.chatbot_service = ChatbotService(db)
         self._rag_service = None
+        self.thresholds_service = data_driven_thresholds_service
+
+    def _get_risk_thresholds(self, dataset_id: Optional[str] = None) -> Tuple[float, float]:
+        """Get data-driven risk thresholds (high, medium)."""
+        thresholds = self.thresholds_service.get_cached_thresholds(dataset_id)
+        if thresholds and thresholds.risk_high_threshold > 0:
+            return (thresholds.risk_high_threshold, thresholds.risk_medium_threshold)
+        return (0.6, 0.3)  # Fallback only if no data
+
+    def _get_risk_level(self, risk_score: float, dataset_id: Optional[str] = None) -> str:
+        """Determine risk level using data-driven thresholds."""
+        high_thresh, medium_thresh = self._get_risk_thresholds(dataset_id)
+        if risk_score >= high_thresh:
+            return "High"
+        elif risk_score >= medium_thresh:
+            return "Medium"
+        return "Low"
 
     @property
     def rag_service(self):
@@ -266,7 +288,8 @@ If no specific policy applies, set to "General HR best practice - requires polic
     ) -> str:
 
         risk_score = float(churn_data.resign_proba) if churn_data else 0.5
-        risk_level = "High" if risk_score >= 0.7 else "Medium" if risk_score >= 0.4 else "Low"
+        dataset_id = employee.dataset_id if employee else None
+        risk_level = self._get_risk_level(risk_score, dataset_id)
 
         reasoning_text = reasoning.reasoning if reasoning else "No specific reasoning available."
         recommendations_text = reasoning.recommendations if reasoning and reasoning.recommendations else ""
@@ -300,11 +323,12 @@ If no specific policy applies, set to "General HR best practice - requires polic
         salary = float(employee.employee_cost) if employee.employee_cost else 50000
         tenure = float(employee.tenure) if employee.tenure else 1.0
 
-        # Determine urgency and treatment focus based on risk
-        if risk_score >= 0.7:
+        # Determine urgency and treatment focus based on data-driven risk thresholds
+        high_thresh, medium_thresh = self._get_risk_thresholds(dataset_id)
+        if risk_score >= high_thresh:
             urgency = "CRITICAL - Immediate intervention required"
             focus = "aggressive retention with significant investment"
-        elif risk_score >= 0.4:
+        elif risk_score >= medium_thresh:
             urgency = "ELEVATED - Proactive engagement needed"
             focus = "engagement improvement and career development"
         else:
@@ -434,6 +458,10 @@ Return ONLY a valid JSON array with exactly 5 treatment objects. No explanations
         risk_score = float(churn_data.resign_proba) if churn_data else 0.5
         tenure = float(employee.tenure) if employee and employee.tenure else 1.0
         salary = float(employee.employee_cost) if employee and employee.employee_cost else 50000
+        dataset_id = employee.dataset_id if employee else None
+
+        # Get data-driven thresholds
+        high_thresh, medium_thresh = self._get_risk_thresholds(dataset_id)
 
         treatments = []
 
@@ -448,7 +476,7 @@ Return ONLY a valid JSON array with exactly 5 treatment objects. No explanations
         })
 
         # High risk employees need more aggressive interventions
-        if risk_score >= 0.7:
+        if risk_score >= high_thresh:
             treatments.append({
                 "name": "Retention Bonus",
                 "type": "material",
@@ -467,7 +495,7 @@ Return ONLY a valid JSON array with exactly 5 treatment objects. No explanations
             })
 
         # Medium risk - focus on engagement
-        if risk_score >= 0.4 and risk_score < 0.7:
+        if risk_score >= medium_thresh and risk_score < high_thresh:
             treatments.append({
                 "name": "Career Development Plan",
                 "type": "non-material",

@@ -1,6 +1,8 @@
 """
 Risk Alert Service
 Detects and manages risk change alerts for employees.
+
+Alert thresholds are data-driven, computed from historical risk change distribution.
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
@@ -14,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.churn import ChurnOutput, ChurnReasoning
 from app.models.hr_data import HRDataInput
 from app.models.monitoring import ModelAlert
+from app.services.data_driven_thresholds_service import data_driven_thresholds_service
 
 
 @dataclass
@@ -37,12 +40,40 @@ class RiskAlert:
 
 
 class RiskAlertService:
-    """Service for detecting and managing risk alerts"""
+    """
+    Service for detecting and managing risk alerts.
 
-    # Alert thresholds
-    SIGNIFICANT_INCREASE_THRESHOLD = 0.15  # 15% point increase
-    HIGH_RISK_THRESHOLD = 0.6
-    CRITICAL_RISK_THRESHOLD = 0.8
+    Thresholds are data-driven:
+    - Risk level thresholds come from prediction distribution (percentile-based)
+    - Risk change thresholds come from historical change distribution (std-based)
+    """
+
+    # Fallback thresholds (only used if no data-driven thresholds available)
+    DEFAULT_SIGNIFICANT_INCREASE_THRESHOLD = 0.15
+    DEFAULT_HIGH_RISK_THRESHOLD = 0.6
+    DEFAULT_CRITICAL_RISK_THRESHOLD = 0.8
+
+    def __init__(self):
+        self.thresholds_service = data_driven_thresholds_service
+
+    def _get_risk_thresholds(self, dataset_id: Optional[str] = None) -> tuple:
+        """Get data-driven risk thresholds (critical, high, significant_change)."""
+        thresholds = self.thresholds_service.get_cached_thresholds(dataset_id)
+
+        if thresholds and thresholds.risk_high_threshold > 0:
+            high = thresholds.risk_high_threshold
+            # Critical is top tier - use p95 or high + 20%
+            critical = min(0.9, high + 0.2)
+        else:
+            high = self.DEFAULT_HIGH_RISK_THRESHOLD
+            critical = self.DEFAULT_CRITICAL_RISK_THRESHOLD
+
+        # Get change thresholds
+        change_thresholds = self.thresholds_service.get_risk_change_thresholds(dataset_id)
+        significant_change = change_thresholds.get("significant", self.DEFAULT_SIGNIFICANT_INCREASE_THRESHOLD)
+        moderate_change = change_thresholds.get("moderate", 0.1)
+
+        return critical, high, significant_change, moderate_change
 
     async def detect_risk_changes(
         self,
@@ -53,9 +84,13 @@ class RiskAlertService:
         """
         Detect employees whose risk has changed significantly.
         Compares current predictions with historical data.
+        Uses data-driven thresholds for alert generation.
         """
         alerts = []
         cutoff_time = datetime.utcnow() - timedelta(hours=comparison_hours)
+
+        # Get data-driven thresholds for this dataset
+        critical_thresh, high_thresh, significant_change, moderate_change = self._get_risk_thresholds(dataset_id)
 
         # Get current predictions
         current_result = await db.execute(
@@ -89,26 +124,27 @@ class RiskAlertService:
                 previous_risk = float(old_reasoning[hr_code].churn_risk or 0)
             else:
                 # If no old data, check if this is a new high-risk entry
-                if current_risk >= self.HIGH_RISK_THRESHOLD:
+                if current_risk >= high_thresh:
                     alert = self._create_alert(
                         hr_code=hr_code,
                         full_name=current.full_name or "Unknown",
                         department=current.structure_name or "Unknown",
                         alert_type="new_high_risk",
                         previous_risk=0,
-                        current_risk=current_risk
+                        current_risk=current_risk,
+                        dataset_id=dataset_id
                     )
                     alerts.append(alert)
                 continue
 
             change = current_risk - previous_risk
 
-            # Check for significant increase
-            if change >= self.SIGNIFICANT_INCREASE_THRESHOLD:
+            # Check for significant increase (using data-driven threshold)
+            if change >= significant_change:
                 alert_type = "risk_increase"
-                if current_risk >= self.CRITICAL_RISK_THRESHOLD:
+                if current_risk >= critical_thresh:
                     alert_type = "critical_risk"
-                elif current_risk >= self.HIGH_RISK_THRESHOLD and previous_risk < self.HIGH_RISK_THRESHOLD:
+                elif current_risk >= high_thresh and previous_risk < high_thresh:
                     alert_type = "entered_high_risk"
 
                 alert = self._create_alert(
@@ -117,7 +153,8 @@ class RiskAlertService:
                     department=current.structure_name or "Unknown",
                     alert_type=alert_type,
                     previous_risk=previous_risk,
-                    current_risk=current_risk
+                    current_risk=current_risk,
+                    dataset_id=dataset_id
                 )
                 alerts.append(alert)
 
@@ -134,20 +171,24 @@ class RiskAlertService:
         department: str,
         alert_type: str,
         previous_risk: float,
-        current_risk: float
+        current_risk: float,
+        dataset_id: Optional[str] = None
     ) -> RiskAlert:
-        """Create a risk alert with appropriate messaging."""
+        """Create a risk alert with appropriate messaging using data-driven thresholds."""
         change = current_risk - previous_risk
         change_pct = (change / previous_risk * 100) if previous_risk > 0 else 100
 
-        # Determine severity
-        if current_risk >= self.CRITICAL_RISK_THRESHOLD:
+        # Get data-driven thresholds
+        critical_thresh, high_thresh, significant_change, moderate_change = self._get_risk_thresholds(dataset_id)
+
+        # Determine severity using data-driven thresholds
+        if current_risk >= critical_thresh:
             severity = "critical"
-        elif current_risk >= self.HIGH_RISK_THRESHOLD:
+        elif current_risk >= high_thresh:
             severity = "high"
-        elif change >= 0.2:
+        elif change >= significant_change:
             severity = "high"
-        elif change >= 0.1:
+        elif change >= moderate_change:
             severity = "medium"
         else:
             severity = "low"

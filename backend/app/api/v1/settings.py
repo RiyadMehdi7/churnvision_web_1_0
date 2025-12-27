@@ -1,11 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from decimal import Decimal
+import numpy as np
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
-from app.services.risk_threshold_service import RiskThresholdService
+from app.models.churn import ChurnOutput
+from app.models.hr_data import HRDataInput
+from app.services.data_driven_thresholds_service import data_driven_thresholds_service
 from app.services.app_settings_service import AppSettingsService
 
 router = APIRouter()
@@ -39,6 +44,137 @@ class RiskThresholdsRequest(BaseModel):
     """Request to manually override risk thresholds"""
     highRisk: float = Field(..., ge=0.0, le=1.0, description="High risk threshold (0-1)")
     mediumRisk: float = Field(..., ge=0.0, le=1.0, description="Medium risk threshold (0-1)")
+
+
+# ============================================================================
+# Helper functions for dynamic threshold calculation
+# ============================================================================
+
+MIN_SAMPLE_SIZE = 10
+FALLBACK_THRESHOLDS = {'highRisk': 0.60, 'mediumRisk': 0.30}
+TARGET_HIGH_PCT = 15  # Top 15% are high risk
+TARGET_MEDIUM_PCT = 25  # Next 25% are medium risk
+
+
+async def _get_active_employee_probabilities(
+    db: AsyncSession,
+    dataset_id: Optional[str] = None
+) -> List[float]:
+    """Fetch churn probabilities for all active employees."""
+    query = (
+        select(ChurnOutput.resign_proba)
+        .join(HRDataInput, ChurnOutput.hr_code == HRDataInput.hr_code)
+        .where(HRDataInput.status == 'Active')
+    )
+    if dataset_id:
+        query = query.where(ChurnOutput.dataset_id == dataset_id)
+
+    result = await db.execute(query)
+    rows = result.scalars().all()
+
+    probabilities = []
+    for prob in rows:
+        if prob is not None:
+            float_prob = float(prob) if isinstance(prob, Decimal) else prob
+            if 0 <= float_prob <= 1:
+                probabilities.append(float_prob)
+    return probabilities
+
+
+def _calculate_thresholds_from_distribution(probabilities: List[float]) -> Dict[str, float]:
+    """Calculate thresholds based on percentile distribution."""
+    if len(probabilities) < MIN_SAMPLE_SIZE:
+        return FALLBACK_THRESHOLDS.copy()
+
+    probs = np.array(probabilities)
+    high_percentile = 100 - TARGET_HIGH_PCT
+    medium_percentile = 100 - TARGET_HIGH_PCT - TARGET_MEDIUM_PCT
+
+    high_threshold = float(np.percentile(probs, high_percentile))
+    medium_threshold = float(np.percentile(probs, medium_percentile))
+
+    high_threshold = max(0.1, min(0.95, high_threshold))
+    medium_threshold = max(0.05, min(high_threshold - 0.05, medium_threshold))
+
+    return {
+        'highRisk': round(high_threshold, 3),
+        'mediumRisk': round(medium_threshold, 3)
+    }
+
+
+def _calculate_distribution(
+    probabilities: List[float],
+    thresholds: Dict[str, float]
+) -> Optional[Dict[str, Dict[str, Any]]]:
+    """Calculate the actual distribution of employees in each risk category."""
+    total = len(probabilities)
+    if total == 0:
+        return None
+
+    high_count = sum(1 for p in probabilities if p >= thresholds['highRisk'])
+    medium_count = sum(1 for p in probabilities if thresholds['mediumRisk'] <= p < thresholds['highRisk'])
+    low_count = sum(1 for p in probabilities if p < thresholds['mediumRisk'])
+
+    return {
+        'high': {'count': high_count, 'percentage': round(high_count / total * 100, 1)},
+        'medium': {'count': medium_count, 'percentage': round(medium_count / total * 100, 1)},
+        'low': {'count': low_count, 'percentage': round(low_count / total * 100, 1)}
+    }
+
+
+def _calculate_statistics(probabilities: List[float]) -> Optional[Dict[str, float]]:
+    """Calculate statistics about the probability distribution."""
+    if not probabilities:
+        return None
+
+    probs = np.array(probabilities)
+    return {
+        'mean': round(float(np.mean(probs)), 3),
+        'median': round(float(np.median(probs)), 3),
+        'std': round(float(np.std(probs)), 3),
+        'min': round(float(np.min(probs)), 3),
+        'max': round(float(np.max(probs)), 3),
+        'p25': round(float(np.percentile(probs, 25)), 3),
+        'p75': round(float(np.percentile(probs, 75)), 3)
+    }
+
+
+async def _calculate_dynamic_thresholds(
+    db: AsyncSession,
+    dataset_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """Calculate dynamic risk thresholds and update the data-driven service cache."""
+    probabilities = await _get_active_employee_probabilities(db, dataset_id)
+
+    if len(probabilities) < MIN_SAMPLE_SIZE:
+        return {
+            'thresholds': FALLBACK_THRESHOLDS.copy(),
+            'source': 'fallback',
+            'reason': f'Insufficient data ({len(probabilities)} employees, need {MIN_SAMPLE_SIZE})',
+            'sampleSize': len(probabilities),
+            'distribution': None,
+            'statistics': None
+        }
+
+    thresholds = _calculate_thresholds_from_distribution(probabilities)
+
+    # Update the data-driven thresholds service cache
+    high_thresh, medium_thresh = data_driven_thresholds_service.compute_risk_thresholds_from_predictions(
+        probabilities,
+        dataset_id=dataset_id,
+        high_risk_percentile=100 - TARGET_HIGH_PCT,
+        medium_risk_percentile=100 - TARGET_HIGH_PCT - TARGET_MEDIUM_PCT
+    )
+
+    return {
+        'thresholds': thresholds,
+        'source': 'dynamic',
+        'reason': f'Calculated from {len(probabilities)} active employees',
+        'sampleSize': len(probabilities),
+        'distribution': _calculate_distribution(probabilities, thresholds),
+        'statistics': _calculate_statistics(probabilities)
+    }
+
 
 @router.get("/offline-mode", response_model=OfflineModeResponse)
 async def get_offline_mode(
@@ -150,9 +286,8 @@ async def get_risk_thresholds(
             sampleSize=None
         )
 
-    # Calculate dynamic thresholds
-    service = RiskThresholdService(db)
-    result = await service.calculate_dynamic_thresholds(dataset_id)
+    # Calculate dynamic thresholds using consolidated data-driven service
+    result = await _calculate_dynamic_thresholds(db, dataset_id)
 
     return RiskThresholdsResponse(
         highRisk=result['thresholds']['highRisk'],
@@ -189,8 +324,7 @@ async def get_risk_thresholds_detailed(
             statistics=None
         )
 
-    service = RiskThresholdService(db)
-    result = await service.calculate_dynamic_thresholds(dataset_id)
+    result = await _calculate_dynamic_thresholds(db, dataset_id)
 
     return RiskThresholdsDetailedResponse(
         highRisk=result['thresholds']['highRisk'],
@@ -251,8 +385,7 @@ async def reset_risk_thresholds(
     await settings_service.clear_risk_threshold_override()
 
     # Return the dynamic thresholds
-    service = RiskThresholdService(db)
-    result = await service.calculate_dynamic_thresholds()
+    result = await _calculate_dynamic_thresholds(db)
 
     return RiskThresholdsResponse(
         highRisk=result['thresholds']['highRisk'],

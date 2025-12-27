@@ -228,6 +228,14 @@ class EmployeeService {
       return;
     }
 
+    // Skip caching for very large datasets to avoid localStorage quota issues
+    // localStorage typically has a 5-10MB limit
+    const MAX_CACHEABLE_EMPLOYEES = 5000;
+    if (employees.length > MAX_CACHEABLE_EMPLOYEES) {
+      console.log(`Skipping cache save: dataset too large (${employees.length} employees > ${MAX_CACHEABLE_EMPLOYEES} limit)`);
+      return;
+    }
+
     try {
       const cacheData = {
         timestamp: Date.now(),
@@ -237,7 +245,31 @@ class EmployeeService {
       localStorage.setItem(getEmployeesCacheKey(projectId, datasetId), JSON.stringify(cacheData));
       console.log(`Saved employees to cache with key: ${getEmployeesCacheKey(projectId, datasetId)}`);
     } catch (error) {
-      console.error('Error saving employees to cache:', error);
+      // Handle QuotaExceededError gracefully
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        console.warn('localStorage quota exceeded, continuing without cache');
+        // Try to clear old caches to make room
+        this.clearOldCaches();
+      } else {
+        console.error('Error saving employees to cache:', error);
+      }
+    }
+  }
+
+  // Clear old caches to free up localStorage space
+  private clearOldCaches(): void {
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('churnvision-employees-cache-')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      console.log(`Cleared ${keysToRemove.length} old employee cache entries`);
+    } catch (error) {
+      console.error('Error clearing old caches:', error);
     }
   }
 

@@ -5,7 +5,7 @@ from app.db.base_class import Base
 
 
 class Dataset(Base):
-    __tablename__ = "datasets"
+    __tablename__ = "datasets"  # type: ignore[assignment]
 
     dataset_id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
@@ -41,7 +41,7 @@ Index('idx_datasets_is_active', Dataset.is_active)
 
 
 class Connection(Base):
-    __tablename__ = "connections"
+    __tablename__ = "connections"  # type: ignore[assignment]
 
     connection_id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
@@ -84,7 +84,7 @@ Index('idx_connections_type', Connection.type)
 
 
 class ScopedProject(Base):
-    __tablename__ = "scoped_projects"
+    __tablename__ = "scoped_projects"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     scope_level = Column(String, nullable=False)  # 'manager' or 'director'
@@ -100,7 +100,7 @@ Index('idx_scoped_projects_scope', ScopedProject.scope_level, ScopedProject.scop
 
 
 class ImportProfile(Base):
-    __tablename__ = "import_profiles"
+    __tablename__ = "import_profiles"  # type: ignore[assignment]
 
     id = Column(String, primary_key=True)
     connection_id = Column(String, ForeignKey("connections.connection_id"), nullable=False)

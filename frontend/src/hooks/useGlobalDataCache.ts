@@ -106,10 +106,24 @@ const saveToSessionStorage = (key: string, data: any) => {
     // Use setTimeout to make storage operation non-blocking
     setTimeout(() => {
         try {
+            // Skip caching if data is too large (arrays with >5000 items)
+            // This prevents quota exceeded errors for large datasets
+            if (Array.isArray(data) && data.length > 5000) {
+                console.log(`[saveToSessionStorage] Skipping cache for large dataset (${data.length} items)`);
+                return;
+            }
+
             const payload = JSON.stringify({
                 data,
                 timestamp: Date.now()
             });
+
+            // Also check payload size - skip if > 2MB
+            if (payload.length > 2 * 1024 * 1024) {
+                console.log(`[saveToSessionStorage] Skipping cache for large payload (${(payload.length / 1024 / 1024).toFixed(2)}MB)`);
+                return;
+            }
+
             sessionStorage.setItem(key, payload);
         } catch (e) {
             // If storage quota is exceeded, clear only old items
@@ -133,11 +147,13 @@ const saveToSessionStorage = (key: string, data: any) => {
                 // Remove old items
                 keysToRemove.forEach(k => sessionStorage.removeItem(k));
 
-                // Try again
-                sessionStorage.setItem(key, JSON.stringify({
-                    data,
-                    timestamp: Date.now()
-                }));
+                // Try again only if we removed something
+                if (keysToRemove.length > 0) {
+                    sessionStorage.setItem(key, JSON.stringify({
+                        data,
+                        timestamp: Date.now()
+                    }));
+                }
             } catch (retryError) {
                 console.warn('Storage quota exceeded, continuing without cache');
             }

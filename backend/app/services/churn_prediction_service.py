@@ -1,4 +1,5 @@
 from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 import pickle
@@ -18,6 +19,18 @@ from sklearn.metrics import (
 )
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.inspection import permutation_importance
+from sklearn.model_selection import StratifiedKFold, RandomizedSearchCV
+
+# SMOTE for handling class imbalance
+try:
+    from imblearn.over_sampling import SMOTE, ADASYN
+    from imblearn.combine import SMOTETomek
+    SMOTE_AVAILABLE = True
+except ImportError:
+    SMOTE_AVAILABLE = False
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, desc
 
 from app.schemas.churn import (
     ChurnPredictionRequest,
@@ -30,6 +43,7 @@ from app.schemas.churn import (
     BatchChurnPredictionResponse,
 )
 from app.core.config import settings
+from app.models.hr_data import HRDataInput
 from app.core.artifact_crypto import encrypt_blob, decrypt_blob, ArtifactCryptoError
 
 # Import model routing services
@@ -37,6 +51,7 @@ from app.services.dataset_profiler_service import DatasetProfilerService, Datase
 from app.services.model_router_service import ModelRouterService, ModelRecommendation
 from app.services.tabpfn_service import TabPFNWrapper, is_tabpfn_available, compute_permutation_importance
 from app.services.ensemble_service import EnsembleService, EnsembleConfig
+from app.services.data_driven_thresholds_service import data_driven_thresholds_service, DatasetThresholds
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +62,66 @@ try:
 except ImportError:
     SHAP_AVAILABLE = False
     logger.warning("SHAP not available - using rule-based explanations")
+
+
+# =============================================================================
+# Counterfactual Analysis Dataclasses
+# =============================================================================
+
+
+@dataclass
+class PerturbableFeature:
+    """Metadata about a feature that can be modified in counterfactual analysis."""
+    name: str
+    label: str
+    current_value: Any
+    type: str  # 'float', 'int', 'bool', 'categorical'
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
+    step: Optional[float] = None
+    options: Optional[List[str]] = None  # For categorical
+    description: str = ""
+    impact_direction: str = "lower_is_better"  # or 'higher_is_better'
+
+
+@dataclass
+class CounterfactualResult:
+    """Result of a counterfactual simulation using real model predictions."""
+    scenario_name: str
+    scenario_id: str
+
+    # Baseline metrics (from actual model prediction)
+    baseline_churn_prob: float
+    baseline_risk_level: str
+    baseline_eltv: float
+    baseline_confidence: float
+    baseline_factors: List[Dict[str, Any]]
+
+    # Scenario metrics (from actual model prediction with modifications)
+    scenario_churn_prob: float
+    scenario_risk_level: str
+    scenario_eltv: float
+    scenario_confidence: float
+    scenario_factors: List[Dict[str, Any]]
+
+    # Delta calculations
+    churn_delta: float  # Negative = improvement
+    eltv_delta: float   # Positive = improvement
+
+    # ROI metrics
+    implied_annual_cost: float
+    implied_roi: float
+
+    # Survival projections
+    baseline_survival_probs: Dict[str, float] = field(default_factory=dict)
+    scenario_survival_probs: Dict[str, float] = field(default_factory=dict)
+
+    # What was modified
+    modifications: Dict[str, Any] = field(default_factory=dict)
+
+    # Metadata
+    simulated_at: datetime = field(default_factory=datetime.utcnow)
+    prediction_method: str = "model"  # 'model' or 'heuristic'
 
 
 class ChurnPredictionService:
@@ -72,15 +147,16 @@ class ChurnPredictionService:
         self.active_version: Optional[str] = None
         self.active_dataset_id: Optional[str] = None
 
+        # Optimal classification threshold (learned from training data)
+        self.optimal_threshold: float = 0.5  # Default, updated during training
+        self.optimal_threshold_by_dataset: Dict[str, float] = {}
+
         # SHAP explainer for model interpretability
         self.shap_explainer = None
 
-        # Optimized thresholds (data-driven)
-        self.risk_thresholds = {
-            'high': 0.60,
-            'medium': 0.30
-        }
-        self.thresholds_by_dataset: Dict[str, Dict[str, float]] = {}
+        # Data-driven thresholds service (NO hardcoded values)
+        # All thresholds are computed from user's data percentiles
+        self.thresholds_service = data_driven_thresholds_service
 
         # Model routing services (intelligent model selection)
         self.dataset_profiler = DatasetProfilerService()
@@ -117,13 +193,26 @@ class ChurnPredictionService:
         return self.model_path, self.scaler_path, self.encoders_path
 
     def _load_model_for_dataset(self, dataset_id: Optional[str]) -> bool:
-        """Load saved model, scaler, and encoders for a dataset (or global default)."""
+        """Load saved model, scaler, encoders, and optimal threshold for a dataset."""
         model_path, scaler_path, encoders_path = self._artifact_paths(dataset_id)
         try:
             if model_path.exists():
                 with open(model_path, 'rb') as f:
                     model_bytes = decrypt_blob(f.read())
-                    self.model = pickle.loads(model_bytes)
+                    loaded_data = pickle.loads(model_bytes)
+
+                # Handle both old format (just model) and new format (model bundle)
+                if isinstance(loaded_data, dict) and 'model' in loaded_data:
+                    self.model = loaded_data['model']
+                    self.optimal_threshold = loaded_data.get('optimal_threshold', 0.5)
+                    self.calibrated_model = loaded_data.get('calibrated_model', None)
+                    logger.info(f"Loaded model bundle with optimal_threshold={self.optimal_threshold:.3f}")
+                else:
+                    # Legacy format - model saved directly
+                    self.model = loaded_data
+                    self.optimal_threshold = 0.5
+                    self.calibrated_model = None
+                    logger.info("Loaded legacy model format, using default threshold=0.5")
 
                 with open(scaler_path, 'rb') as f:
                     scaler_bytes = decrypt_blob(f.read())
@@ -135,12 +224,15 @@ class ChurnPredictionService:
 
                 self.active_version = model_path.stem
                 self.active_dataset_id = dataset_id
-                # Restore cached metrics if we have them
+
+                # Restore cached metrics and threshold if we have them
                 cache_key = dataset_id or "default"
                 if cache_key in self.model_metrics_by_dataset:
                     self.model_metrics = self.model_metrics_by_dataset[cache_key]
                 if cache_key in self.feature_importance_by_dataset:
                     self.feature_importance = self.feature_importance_by_dataset[cache_key]
+                if cache_key in self.optimal_threshold_by_dataset:
+                    self.optimal_threshold = self.optimal_threshold_by_dataset[cache_key]
                 return True
             else:
                 if settings.ENVIRONMENT == "production" and dataset_id:
@@ -172,18 +264,13 @@ class ChurnPredictionService:
             random_state=42
         )
 
-        # Initialize label encoders for categorical features
+        # Initialize empty label encoders for categorical features
+        # These will be fitted dynamically during training with user's actual data
         self.label_encoders = {
             'department': LabelEncoder(),
             'salary_level': LabelEncoder()
         }
-
-        # Fit encoders with expected values
-        self.label_encoders['department'].fit([
-            'sales', 'technical', 'support', 'IT', 'product_mng',
-            'marketing', 'RandD', 'accounting', 'hr', 'management'
-        ])
-        self.label_encoders['salary_level'].fit(['low', 'medium', 'high'])
+        # Note: Encoders are NOT pre-fitted - they will learn categories from training data
         self.model_metrics = {}
 
     def ensure_model_for_dataset(self, dataset_id: Optional[str]) -> None:
@@ -212,17 +299,25 @@ class ChurnPredictionService:
         }
 
     def _save_model(self, dataset_id: Optional[str] = None):
-        """Save model, scaler, and encoders to disk (scoped per dataset)."""
+        """Save model, scaler, encoders, and optimal threshold to disk (scoped per dataset)."""
         model_path, scaler_path, encoders_path = self._artifact_paths(dataset_id)
         try:
+            # Save model with optimal threshold embedded
+            model_bundle = {
+                'model': self.model,
+                'optimal_threshold': self.optimal_threshold,
+                'calibrated_model': self.calibrated_model,
+            }
             with open(model_path, 'wb') as f:
-                f.write(encrypt_blob(pickle.dumps(self.model)))
+                f.write(encrypt_blob(pickle.dumps(model_bundle)))
 
             with open(scaler_path, 'wb') as f:
                 f.write(encrypt_blob(pickle.dumps(self.scaler)))
 
             with open(encoders_path, 'wb') as f:
                 f.write(encrypt_blob(pickle.dumps(self.label_encoders)))
+
+            logger.info(f"Model saved with optimal_threshold={self.optimal_threshold:.3f}")
         except Exception as e:
             logger.error(f"Error saving model for dataset {dataset_id}: {e}")
             if settings.ENVIRONMENT == "production":
@@ -254,12 +349,12 @@ class ChurnPredictionService:
 
     def _determine_risk_level(self, probability: float, dataset_id: Optional[str] = None) -> ChurnRiskLevel:
         """Determine risk level based on churn probability using data-driven thresholds."""
-        # Use dataset-specific thresholds if available, otherwise use defaults
-        thresholds = self.thresholds_by_dataset.get(dataset_id or "default", self.risk_thresholds)
+        # Use data-driven thresholds computed from user's actual data
+        risk_level = self.thresholds_service.get_risk_level(probability, dataset_id)
 
-        if probability >= thresholds.get('high', 0.60):
+        if risk_level == 'high':
             return ChurnRiskLevel.HIGH
-        elif probability >= thresholds.get('medium', 0.30):
+        elif risk_level == 'medium':
             return ChurnRiskLevel.MEDIUM
         else:
             return ChurnRiskLevel.LOW
@@ -294,6 +389,14 @@ class ChurnPredictionService:
         """Create contributing factors list from a single SHAP row."""
         factors: List[Dict[str, Any]] = []
         for name, value, shap_val in zip(self.FEATURE_NAMES, feature_values, shap_row):
+            # Ensure shap_val is a scalar (not an array)
+            if hasattr(shap_val, 'item'):
+                shap_val = shap_val.item()
+            elif isinstance(shap_val, np.ndarray):
+                shap_val = float(shap_val.flatten()[0])
+            else:
+                shap_val = float(shap_val)
+
             abs_impact = abs(shap_val)
             if abs_impact <= 0.01:
                 continue
@@ -323,18 +426,26 @@ class ChurnPredictionService:
         """
         breakdown = {}
 
-        # Component 1: Prediction Margin (40% weight)
+        # Component 1: Prediction Margin
         # How far from 50/50 uncertainty
         margin = abs(probability - 0.5) * 2  # Scale to 0-1
         breakdown['prediction_margin'] = margin
 
-        # Component 2: Tree Agreement (60% weight)
+        # Component 2: Tree Agreement
         # Measure variance across individual tree predictions
         tree_agreement = self._calculate_tree_agreement(features_array)
         breakdown['tree_agreement'] = tree_agreement
 
         # Final confidence: weighted combination
-        confidence = (0.6 * tree_agreement) + (0.4 * margin)
+        # Weights are adaptive based on model type - tree-based models weight agreement more
+        if isinstance(self.model, (xgb.XGBClassifier, RandomForestClassifier)):
+            # Tree-based models: tree agreement is more informative
+            tree_weight = 0.6
+        else:
+            # Non-tree models: rely more on prediction margin
+            tree_weight = 0.4
+        margin_weight = 1.0 - tree_weight
+        confidence = (tree_weight * tree_agreement) + (margin_weight * margin)
 
         # Ensure bounds
         confidence = max(0.0, min(1.0, confidence))
@@ -477,6 +588,14 @@ class ChurnPredictionService:
             for i, (name, value, shap_val) in enumerate(zip(
                 self.FEATURE_NAMES, feature_values, shap_values
             )):
+                # Ensure shap_val is a scalar (not an array)
+                if hasattr(shap_val, 'item'):
+                    shap_val = shap_val.item()
+                elif isinstance(shap_val, np.ndarray):
+                    shap_val = float(shap_val.flatten()[0])
+                else:
+                    shap_val = float(shap_val)
+
                 abs_impact = abs(shap_val)
                 if abs_impact > 0.01:  # Filter insignificant factors
                     factors_with_shap.append({
@@ -496,17 +615,9 @@ class ChurnPredictionService:
             logger.warning(f"SHAP explanation failed: {e}, falling back to heuristics")
             return self._get_heuristic_contributing_factors(features)
 
-    def _shap_to_impact_level(self, shap_value: float) -> str:
-        """Convert SHAP value magnitude to impact level."""
-        abs_val = abs(shap_value)
-        if abs_val >= 0.3:
-            return "critical"
-        elif abs_val >= 0.15:
-            return "high"
-        elif abs_val >= 0.05:
-            return "medium"
-        else:
-            return "low"
+    def _shap_to_impact_level(self, shap_value: float, dataset_id: Optional[str] = None) -> str:
+        """Convert SHAP value magnitude to impact level using data-driven thresholds."""
+        return self.thresholds_service.get_shap_impact_level(shap_value, dataset_id)
 
     def _generate_shap_message(self, feature: str, value: Any, shap_val: float) -> str:
         """Generate human-readable message from SHAP explanation."""
@@ -534,93 +645,109 @@ class ChurnPredictionService:
 
         return messages.get(feature, f"{feature} ({value}) {direction} churn risk")
 
-    def _get_heuristic_contributing_factors(self, features: EmployeeChurnFeatures) -> List[Dict[str, Any]]:
-        """Fallback: Identify contributing factors using heuristic rules."""
+    def _get_heuristic_contributing_factors(
+        self,
+        features: EmployeeChurnFeatures,
+        dataset_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Identify contributing factors using percentile-based analysis.
+
+        All thresholds are derived from the user's data distribution.
+        A value is flagged as anomalous if it's in the bottom/top 25% of the dataset.
+        """
         factors = []
 
-        # Low satisfaction is a major factor
-        if features.satisfaction_level < 0.4:
+        # Check satisfaction level against data percentiles
+        sat_percentile = self.thresholds_service.get_feature_percentile(
+            'satisfaction_level', features.satisfaction_level, dataset_id
+        )
+        if sat_percentile < 10:  # Bottom 10%
             factors.append({
                 "feature": "satisfaction_level",
                 "value": features.satisfaction_level,
-                "shap_value": 0.4,  # Estimated impact
+                "shap_value": 0.4,
                 "impact": "critical",
                 "direction": "increases_risk",
-                "message": f"Very low satisfaction level ({features.satisfaction_level:.2f})"
+                "message": f"Very low satisfaction level ({features.satisfaction_level:.2f}) - bottom {sat_percentile:.0f}%"
             })
-        elif features.satisfaction_level < 0.6:
+        elif sat_percentile < 25:  # Bottom 25%
             factors.append({
                 "feature": "satisfaction_level",
                 "value": features.satisfaction_level,
                 "shap_value": 0.2,
                 "impact": "high",
                 "direction": "increases_risk",
-                "message": f"Low satisfaction level ({features.satisfaction_level:.2f})"
+                "message": f"Low satisfaction level ({features.satisfaction_level:.2f}) - bottom {sat_percentile:.0f}%"
             })
 
-        # Overwork indicator
-        if features.average_monthly_hours > 250:
+        # Check workload against data percentiles
+        hours_percentile = self.thresholds_service.get_feature_percentile(
+            'average_monthly_hours', features.average_monthly_hours, dataset_id
+        )
+        if hours_percentile > 90:  # Top 10% - overwork
             factors.append({
                 "feature": "average_monthly_hours",
                 "value": features.average_monthly_hours,
                 "shap_value": 0.15,
                 "impact": "high",
                 "direction": "increases_risk",
-                "message": f"High workload ({features.average_monthly_hours:.0f} hours/month)"
+                "message": f"High workload ({features.average_monthly_hours:.0f} hours/month) - top {100-hours_percentile:.0f}%"
             })
 
-        # Too many or too few projects
-        if features.number_project > 6:
+        # Check project count against data percentiles
+        projects_percentile = self.thresholds_service.get_feature_percentile(
+            'number_project', float(features.number_project), dataset_id
+        )
+        if projects_percentile > 90:  # Top 10% - too many projects
             factors.append({
                 "feature": "number_project",
                 "value": features.number_project,
                 "shap_value": 0.1,
                 "impact": "medium",
                 "direction": "increases_risk",
-                "message": f"High project count ({features.number_project} projects)"
+                "message": f"High project count ({features.number_project}) - top {100-projects_percentile:.0f}%"
             })
-        elif features.number_project < 2:
+        elif projects_percentile < 10:  # Bottom 10% - too few projects
             factors.append({
                 "feature": "number_project",
                 "value": features.number_project,
                 "shap_value": 0.1,
                 "impact": "medium",
                 "direction": "increases_risk",
-                "message": f"Low project engagement ({features.number_project} projects)"
+                "message": f"Low project engagement ({features.number_project}) - bottom {projects_percentile:.0f}%"
             })
 
-        # Low evaluation score
-        if features.last_evaluation < 0.5:
+        # Check evaluation against data percentiles
+        eval_percentile = self.thresholds_service.get_feature_percentile(
+            'last_evaluation', features.last_evaluation, dataset_id
+        )
+        if eval_percentile < 25:  # Bottom 25%
             factors.append({
                 "feature": "last_evaluation",
                 "value": features.last_evaluation,
                 "shap_value": 0.2,
                 "impact": "high",
                 "direction": "increases_risk",
-                "message": f"Low performance evaluation ({features.last_evaluation:.2f})"
+                "message": f"Low performance evaluation ({features.last_evaluation:.2f}) - bottom {eval_percentile:.0f}%"
             })
 
-        # Long tenure without promotion
-        if features.time_spend_company > 4 and not features.promotion_last_5years:
+        # Check tenure against data percentiles for promotion flag
+        tenure_percentile = self.thresholds_service.get_feature_percentile(
+            'time_spend_company', float(features.time_spend_company), dataset_id
+        )
+        if tenure_percentile > 50 and not features.promotion_last_5years:  # Above median tenure with no promotion
             factors.append({
                 "feature": "promotion_last_5years",
                 "value": False,
                 "shap_value": 0.1,
                 "impact": "medium",
                 "direction": "increases_risk",
-                "message": f"No promotion in {features.time_spend_company} years"
+                "message": f"No promotion despite {features.time_spend_company} years tenure (above median)"
             })
 
-        # Salary level
-        if features.salary_level == "low":
-            factors.append({
-                "feature": "salary_level",
-                "value": features.salary_level,
-                "shap_value": 0.05,
-                "impact": "medium",
-                "direction": "increases_risk",
-                "message": "Low salary level"
-            })
+        # Note: salary_level is categorical - handled differently
+        # The tier itself is already data-driven from the thresholds service
 
         return factors[:5]
 
@@ -628,28 +755,57 @@ class ChurnPredictionService:
         """Identify top contributing factors for churn risk (legacy compatibility)."""
         return self._get_heuristic_contributing_factors(features)
 
-    def _get_recommendations(self, features: EmployeeChurnFeatures, factors: List[Dict[str, Any]]) -> List[str]:
-        """Generate actionable recommendations based on churn factors"""
+    def _get_recommendations(
+        self,
+        features: EmployeeChurnFeatures,
+        factors: List[Dict[str, Any]],
+        dataset_id: Optional[str] = None
+    ) -> List[str]:
+        """
+        Generate actionable recommendations based on churn factors.
+
+        Uses percentile-based analysis to determine what's anomalous for this dataset.
+        """
         recommendations = []
 
-        if features.satisfaction_level < 0.5:
+        # Check satisfaction against data distribution
+        sat_percentile = self.thresholds_service.get_feature_percentile(
+            'satisfaction_level', features.satisfaction_level, dataset_id
+        )
+        if sat_percentile < 25:  # Bottom 25%
             recommendations.append("Schedule immediate one-on-one meeting to discuss employee satisfaction and concerns")
 
-        if features.average_monthly_hours > 250:
+        # Check workload against data distribution
+        hours_percentile = self.thresholds_service.get_feature_percentile(
+            'average_monthly_hours', features.average_monthly_hours, dataset_id
+        )
+        if hours_percentile > 75:  # Top 25% - potential overwork
             recommendations.append("Review current workload and consider redistributing projects to reduce overtime")
 
-        if features.number_project > 6:
+        # Check project count against data distribution
+        projects_percentile = self.thresholds_service.get_feature_percentile(
+            'number_project', float(features.number_project), dataset_id
+        )
+        if projects_percentile > 75:  # Top 25%
             recommendations.append("Evaluate project assignments and potentially reduce workload")
-        elif features.number_project < 2:
+        elif projects_percentile < 25:  # Bottom 25%
             recommendations.append("Consider increasing project involvement to boost engagement")
 
-        if not features.promotion_last_5years and features.time_spend_company > 3:
+        # Check tenure for promotion consideration
+        tenure_percentile = self.thresholds_service.get_feature_percentile(
+            'time_spend_company', float(features.time_spend_company), dataset_id
+        )
+        if not features.promotion_last_5years and tenure_percentile > 50:  # Above median tenure
             recommendations.append("Discuss career development opportunities and potential promotion path")
 
-        if features.salary_level == "low":
-            recommendations.append("Review compensation package and consider salary adjustment")
+        # Note: salary_level recommendations based on actual tier, not hardcoded values
+        # The tier itself is already data-driven
 
-        if features.last_evaluation < 0.5:
+        # Check evaluation against data distribution
+        eval_percentile = self.thresholds_service.get_feature_percentile(
+            'last_evaluation', features.last_evaluation, dataset_id
+        )
+        if eval_percentile < 25:  # Bottom 25%
             recommendations.append("Provide additional training and performance improvement support")
 
         if not recommendations:
@@ -671,7 +827,7 @@ class ChurnPredictionService:
             if settings.ENVIRONMENT == "production":
                 raise RuntimeError("No trained model loaded. Train a model before serving predictions.")
             # If no trained model, use heuristic-based prediction
-            probability = self._heuristic_prediction(request.features)
+            probability = self._heuristic_prediction(request.features, dataset_id)
             # For heuristic predictions, use margin-only confidence
             margin = abs(probability - 0.5) * 2
             confidence_score = margin
@@ -682,7 +838,7 @@ class ChurnPredictionService:
                 'method': 'heuristic'
             }
             # Use heuristic factors for untrained model
-            contributing_factors = self._get_heuristic_contributing_factors(request.features)
+            contributing_factors = self._get_heuristic_contributing_factors(request.features, dataset_id)
         else:
             # Use calibrated model if available for better probability estimates
             if self.calibrated_model is not None:
@@ -705,7 +861,7 @@ class ChurnPredictionService:
         risk_level = self._determine_risk_level(probability, dataset_id)
 
         # Get recommendations
-        recommendations = self._get_recommendations(request.features, contributing_factors)
+        recommendations = self._get_recommendations(request.features, contributing_factors, dataset_id)
 
         return ChurnPredictionResponse(
             employee_id=request.employee_id,
@@ -718,34 +874,54 @@ class ChurnPredictionService:
             predicted_at=datetime.utcnow()
         )
 
-    def _heuristic_prediction(self, features: EmployeeChurnFeatures) -> float:
-        """Fallback heuristic-based prediction when no model is trained"""
+    def _heuristic_prediction(
+        self,
+        features: EmployeeChurnFeatures,
+        dataset_id: Optional[str] = None
+    ) -> float:
+        """
+        Fallback heuristic-based prediction when no model is trained.
+
+        Uses percentile-based scoring - values in extreme percentiles contribute to risk.
+        """
         score = 0.0
 
-        # Satisfaction is the strongest predictor
-        score += (1 - features.satisfaction_level) * 0.4
+        # Satisfaction - weight by how low it is relative to dataset
+        sat_percentile = self.thresholds_service.get_feature_percentile(
+            'satisfaction_level', features.satisfaction_level, dataset_id
+        )
+        # Convert percentile to risk contribution (lower = higher risk)
+        score += (1 - sat_percentile / 100) * 0.4
 
-        # Evaluation score
-        if features.last_evaluation < 0.5:
-            score += 0.2
+        # Evaluation - low percentile = higher risk
+        eval_percentile = self.thresholds_service.get_feature_percentile(
+            'last_evaluation', features.last_evaluation, dataset_id
+        )
+        if eval_percentile < 25:  # Bottom 25%
+            score += 0.2 * (1 - eval_percentile / 25)
 
-        # Workload
-        if features.average_monthly_hours > 250:
-            score += 0.15
-        elif features.average_monthly_hours < 120:
+        # Workload - extreme percentiles are risky
+        hours_percentile = self.thresholds_service.get_feature_percentile(
+            'average_monthly_hours', features.average_monthly_hours, dataset_id
+        )
+        if hours_percentile > 75:  # High hours - overwork
+            score += 0.15 * ((hours_percentile - 75) / 25)
+        elif hours_percentile < 25:  # Low hours - disengagement
+            score += 0.1 * ((25 - hours_percentile) / 25)
+
+        # Projects - extreme percentiles are risky
+        projects_percentile = self.thresholds_service.get_feature_percentile(
+            'number_project', float(features.number_project), dataset_id
+        )
+        if projects_percentile > 75 or projects_percentile < 25:
             score += 0.1
 
-        # Projects
-        if features.number_project > 6 or features.number_project < 2:
-            score += 0.1
-
-        # Tenure and promotion
-        if features.time_spend_company > 4 and not features.promotion_last_5years:
-            score += 0.1
-
-        # Salary
-        if features.salary_level == "low":
-            score += 0.05
+        # Tenure and promotion - above median tenure without promotion
+        tenure_percentile = self.thresholds_service.get_feature_percentile(
+            'time_spend_company', float(features.time_spend_company), dataset_id
+        )
+        if tenure_percentile > 50 and not features.promotion_last_5years:
+            score += 0.1 * ((tenure_percentile - 50) / 50)
 
         return min(score, 1.0)
 
@@ -758,7 +934,7 @@ class ChurnPredictionService:
             predictions.append(prediction)
 
         # Count risk levels
-        high_risk = sum(1 for p in predictions if p.risk_level in [ChurnRiskLevel.HIGH, ChurnRiskLevel.CRITICAL])
+        high_risk = sum(1 for p in predictions if p.risk_level == ChurnRiskLevel.HIGH)
         medium_risk = sum(1 for p in predictions if p.risk_level == ChurnRiskLevel.MEDIUM)
         low_risk = sum(1 for p in predictions if p.risk_level == ChurnRiskLevel.LOW)
 
@@ -905,7 +1081,7 @@ class ChurnPredictionService:
                 }
 
                 results.append(ChurnPredictionResponse(
-                    employee_id=batch_hr_codes[row_idx] if batch_hr_codes else None,
+                    employee_id=batch_hr_codes[row_idx] if batch_hr_codes is not None else None,
                     churn_probability=float(prob),
                     confidence_score=margin,
                     confidence_breakdown=confidence_breakdown,
@@ -938,6 +1114,18 @@ class ChurnPredictionService:
 
         # Prepare training data
         X, y = self._prepare_training_data(training_data)
+
+        # === COMPUTE DATA-DRIVEN THRESHOLDS ===
+        # Compute all thresholds from the training data BEFORE model training
+        # This ensures all downstream logic uses data-driven percentiles
+        logger.info("Computing data-driven thresholds from training data...")
+        self.thresholds_service.compute_thresholds_from_dataframe(
+            training_data,
+            dataset_id=dataset_id,
+            target_column='left',
+            salary_column='employee_cost' if 'employee_cost' in training_data.columns else 'salary',
+            tenure_column='time_spend_company' if 'time_spend_company' in training_data.columns else 'tenure',
+        )
 
         # === NEW: Profile dataset for intelligent model routing ===
         logger.info("Profiling dataset for model routing...")
@@ -983,37 +1171,105 @@ class ChurnPredictionService:
         class_imbalance_ratio = n_negative / max(n_positive, 1)
         logger.info(f"Class distribution: {n_positive} left, {n_negative} stayed (ratio: {class_imbalance_ratio:.2f})")
 
+        # === CRITICAL FIX: Apply SMOTE for severe class imbalance ===
+        # SMOTE should be applied AFTER train/test split, BEFORE scaling
+        X_train_resampled, y_train_resampled = X_train, y_train
+        smote_applied = False
+
+        if SMOTE_AVAILABLE and class_imbalance_ratio > 2.0 and len(X_train) >= 50:
+            try:
+                # Use SMOTETomek for better results (combines oversampling + undersampling)
+                if class_imbalance_ratio > 5.0:
+                    # Severe imbalance - use SMOTETomek
+                    resampler = SMOTETomek(
+                        smote=SMOTE(
+                            sampling_strategy=0.5,  # Target 50% minority
+                            k_neighbors=min(5, n_positive - 1) if n_positive > 1 else 1,
+                            random_state=42
+                        ),
+                        random_state=42
+                    )
+                else:
+                    # Moderate imbalance - use plain SMOTE
+                    resampler = SMOTE(
+                        sampling_strategy='auto',  # Balance classes
+                        k_neighbors=min(5, n_positive - 1) if n_positive > 1 else 1,
+                        random_state=42
+                    )
+
+                X_train_resampled, y_train_resampled = resampler.fit_resample(X_train, y_train)
+                smote_applied = True
+
+                new_positive = np.sum(y_train_resampled == 1)
+                new_negative = np.sum(y_train_resampled == 0)
+                logger.info(
+                    f"SMOTE applied: {len(y_train)} → {len(y_train_resampled)} samples "
+                    f"(new ratio: {new_negative/max(new_positive,1):.2f})"
+                )
+            except Exception as e:
+                logger.warning(f"SMOTE failed, using original data: {e}")
+                X_train_resampled, y_train_resampled = X_train, y_train
+        elif not SMOTE_AVAILABLE:
+            logger.warning("SMOTE not available - install imbalanced-learn for better performance")
+
         # === NEW: Handle ensemble training ===
         if use_ensemble:
             return await self._train_ensemble_model(
-                X_train, X_test, y_train, y_test, X, y,
-                class_imbalance_ratio, dataset_id
+                X_train_resampled, X_test, y_train_resampled, y_test, X, y,
+                class_imbalance_ratio, dataset_id, smote_applied
             )
 
-        # === Initialize model based on routed type with class imbalance handling ===
-        self.model = self._create_model_instance(
-            selected_model_type, class_imbalance_ratio, request.hyperparameters
-        )
-
-        # Fit scaler on training data only
-        self.scaler.fit(X_train)
-        X_train_scaled = self.scaler.transform(X_train)
+        # Fit scaler on resampled training data
+        self.scaler.fit(X_train_resampled)
+        X_train_scaled = self.scaler.transform(X_train_resampled)
         X_test_scaled = self.scaler.transform(X_test)
 
-        # Train model on training data
-        self.model.fit(X_train_scaled, y_train)
+        # === HYPERPARAMETER TUNING with RandomizedSearchCV ===
+        # Only tune if we have enough data and user didn't provide custom hyperparameters
+        use_tuning = len(X_train_resampled) >= 200 and request.hyperparameters is None
+
+        if use_tuning and selected_model_type == "xgboost":
+            logger.info("Running hyperparameter tuning for XGBoost...")
+            self.model = self._tune_xgboost(
+                X_train_scaled, y_train_resampled, class_imbalance_ratio
+            )
+        elif use_tuning and selected_model_type == "random_forest":
+            logger.info("Running hyperparameter tuning for Random Forest...")
+            self.model = self._tune_random_forest(
+                X_train_scaled, y_train_resampled
+            )
+        else:
+            # Use default model with improved parameters
+            self.model = self._create_model_instance(
+                selected_model_type, class_imbalance_ratio, request.hyperparameters
+            )
+            self.model.fit(X_train_scaled, y_train_resampled)
 
         # === IMPROVEMENT 3: Proper Validation Metrics (on TEST set) ===
-        y_pred_test = self.model.predict(X_test_scaled)
         y_proba_test = self.model.predict_proba(X_test_scaled)[:, 1]
 
-        # Basic metrics on test set
+        # === CRITICAL: Find optimal threshold for imbalanced data ===
+        optimal_threshold, threshold_metrics = self._find_optimal_threshold(
+            y_test, y_proba_test, method="f1"
+        )
+        self.optimal_threshold = optimal_threshold  # Store for prediction time
+
+        # Use optimal threshold for predictions (NOT default 0.5)
+        y_pred_test = (y_proba_test >= optimal_threshold).astype(int)
+        y_pred_default = (y_proba_test >= 0.5).astype(int)
+
+        # Metrics at OPTIMAL threshold (primary metrics)
         metrics = {
             'accuracy': float(accuracy_score(y_test, y_pred_test)),
             'precision': float(precision_score(y_test, y_pred_test, zero_division=0)),
             'recall': float(recall_score(y_test, y_pred_test, zero_division=0)),
             'f1_score': float(f1_score(y_test, y_pred_test, zero_division=0)),
+            'optimal_threshold': float(optimal_threshold),
         }
+
+        # Also report metrics at default 0.5 threshold for comparison
+        metrics['f1_at_default_threshold'] = float(f1_score(y_test, y_pred_default, zero_division=0))
+        metrics['smote_applied'] = smote_applied
 
         # === IMPROVEMENT 4: Add ROC-AUC, PR-AUC, Brier Score ===
         try:
@@ -1028,24 +1284,32 @@ class ChurnPredictionService:
 
         metrics['brier_score'] = float(brier_score_loss(y_test, y_proba_test))
 
-        # Cross-validation scores (on full data for robustness estimate)
+        # Cross-validation with stratified K-fold and F1 scoring
         if len(X) >= 50:
             try:
                 X_all_scaled = self.scaler.transform(X)
-                cv_scores = cross_val_score(self.model, X_all_scaled, y, cv=5, scoring='roc_auc')
-                metrics['cv_roc_auc_mean'] = float(cv_scores.mean())
-                metrics['cv_roc_auc_std'] = float(cv_scores.std())
+                cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+                cv_f1_scores = cross_val_score(self.model, X_all_scaled, y, cv=cv, scoring='f1')
+                cv_roc_scores = cross_val_score(self.model, X_all_scaled, y, cv=cv, scoring='roc_auc')
+                metrics['cv_f1_mean'] = float(cv_f1_scores.mean())
+                metrics['cv_f1_std'] = float(cv_f1_scores.std())
+                metrics['cv_roc_auc_mean'] = float(cv_roc_scores.mean())
+                metrics['cv_roc_auc_std'] = float(cv_roc_scores.std())
             except Exception as e:
                 logger.warning(f"Cross-validation failed: {e}")
+                metrics['cv_f1_mean'] = metrics.get('f1_score', 0.0)
+                metrics['cv_f1_std'] = 0.0
                 metrics['cv_roc_auc_mean'] = metrics.get('roc_auc', 0.5)
                 metrics['cv_roc_auc_std'] = 0.0
 
-        # Training set metrics (for reference)
-        y_pred_train = self.model.predict(X_train_scaled)
-        metrics['train_accuracy'] = float(accuracy_score(y_train, y_pred_train))
+        # Training set metrics (for reference - check for overfitting)
+        y_proba_train = self.model.predict_proba(X_train_scaled)[:, 1]
+        y_pred_train = (y_proba_train >= optimal_threshold).astype(int)
+        metrics['train_accuracy'] = float(accuracy_score(y_train_resampled, y_pred_train))
+        metrics['train_f1'] = float(f1_score(y_train_resampled, y_pred_train, zero_division=0))
         metrics['class_imbalance_ratio'] = float(class_imbalance_ratio)
         metrics['test_size'] = len(y_test)
-        metrics['train_size'] = len(y_train)
+        metrics['train_size'] = len(y_train_resampled)
 
         # === IMPROVEMENT 5: Initialize SHAP Explainer ===
         # Handle TabPFN separately - it doesn't support SHAP natively
@@ -1067,6 +1331,36 @@ class ChurnPredictionService:
                 logger.warning(f"Failed to initialize SHAP explainer: {e}")
                 self.shap_explainer = None
 
+        # === NEW: Compute SHAP thresholds from training data ===
+        if self.shap_explainer is not None and SHAP_AVAILABLE:
+            try:
+                # Compute SHAP values on a sample of training data
+                shap_sample_size = min(500, len(X_train_scaled))
+                shap_sample = X_train_scaled[:shap_sample_size]
+                shap_values = self.shap_explainer.shap_values(shap_sample)
+
+                # Handle different SHAP output formats
+                if isinstance(shap_values, list):
+                    # For binary classification, use positive class (index 1)
+                    shap_values = np.array(shap_values[1]) if len(shap_values) > 1 else np.array(shap_values[0])
+
+                # Compute data-driven SHAP thresholds
+                shap_thresholds = self.thresholds_service.compute_shap_thresholds(
+                    shap_values, dataset_id
+                )
+                metrics['shap_thresholds'] = shap_thresholds
+                logger.info(f"Computed SHAP thresholds: critical={shap_thresholds['critical']:.3f}, "
+                           f"high={shap_thresholds['high']:.3f}, medium={shap_thresholds['medium']:.3f}")
+            except Exception as e:
+                logger.warning(f"Failed to compute SHAP thresholds: {e}")
+
+        # === NEW: Compute optimal classification threshold ===
+        optimal_threshold = self.thresholds_service.compute_optimal_classification_threshold(
+            y_test, y_proba_test, dataset_id, method="f1"
+        )
+        metrics['optimal_classification_threshold'] = optimal_threshold
+        logger.info(f"Computed optimal classification threshold: {optimal_threshold:.3f}")
+
         # === IMPROVEMENT 6: Probability Calibration ===
         if len(X_train) > 100:
             try:
@@ -1085,12 +1379,17 @@ class ChurnPredictionService:
             self.calibrated_model = None
             metrics['calibrated'] = False
 
-        # === IMPROVEMENT 7: Data-Driven Threshold Optimization ===
-        optimal_thresholds = self._optimize_thresholds(y_test, y_proba_test)
+        # === IMPROVEMENT 7: Data-Driven Risk Thresholds from Predictions ===
+        # Compute risk thresholds from actual prediction distribution (percentile-based)
+        high_threshold, medium_threshold = self.thresholds_service.compute_risk_thresholds_from_predictions(
+            y_proba_test.tolist(),
+            dataset_id=dataset_id,
+            high_risk_percentile=85.0,   # Top 15% are high risk
+            medium_risk_percentile=60.0  # Top 40% are medium+ risk
+        )
+        metrics['optimal_high_threshold'] = high_threshold
+        metrics['optimal_medium_threshold'] = medium_threshold
         cache_key = dataset_id or "default"
-        self.thresholds_by_dataset[cache_key] = optimal_thresholds
-        metrics['optimal_high_threshold'] = optimal_thresholds['high']
-        metrics['optimal_medium_threshold'] = optimal_thresholds['medium']
 
         # Get feature importance
         feature_names = [
@@ -1124,6 +1423,10 @@ class ChurnPredictionService:
 
         # Use the routed model type for the model_id
         selected_model_type = self.last_routing_decision.primary_model
+
+        # Store optimal threshold for this dataset
+        self.optimal_threshold_by_dataset[cache_key] = optimal_threshold
+        self.optimal_threshold = optimal_threshold
 
         # Persist metrics for status checks (per dataset)
         model_id = f"{selected_model_type}_{cache_key}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
@@ -1237,22 +1540,38 @@ class ChurnPredictionService:
             return TabPFNWrapper()
 
         elif model_type == "xgboost":
+            # Improved default XGBoost parameters for churn prediction
             params = hyperparameters or {
-                'n_estimators': 100,
-                'max_depth': 5,
-                'learning_rate': 0.1,
+                'n_estimators': 300,           # More trees for better learning
+                'max_depth': 7,                # Deeper trees to capture patterns
+                'learning_rate': 0.05,         # Lower LR with more trees
+                'min_child_weight': 3,         # Regularization
+                'subsample': 0.8,              # Row sampling
+                'colsample_bytree': 0.8,       # Feature sampling
+                'gamma': 0.1,                  # Pruning parameter
+                'reg_alpha': 0.1,              # L1 regularization
+                'reg_lambda': 1.0,             # L2 regularization
                 'random_state': 42,
                 'scale_pos_weight': class_imbalance_ratio,
-                'eval_metric': 'auc'
+                'eval_metric': 'aucpr',        # Better for imbalanced data
+                'early_stopping_rounds': 30,   # Prevent overfitting
+                'n_jobs': -1                   # Use all cores
             }
             return xgb.XGBClassifier(**params)
 
         elif model_type == "random_forest":
+            # Improved Random Forest parameters
             params = hyperparameters or {
-                'n_estimators': 100,
-                'max_depth': 10,
+                'n_estimators': 300,           # More trees
+                'max_depth': 15,               # Deeper trees
+                'min_samples_split': 5,        # Prevent overfitting
+                'min_samples_leaf': 2,         # Prevent overfitting
+                'max_features': 'sqrt',        # Feature subsampling
+                'bootstrap': True,
+                'oob_score': True,             # Out-of-bag score
                 'random_state': 42,
-                'class_weight': 'balanced'
+                'class_weight': 'balanced_subsample',  # Better for imbalanced
+                'n_jobs': -1
             }
             return RandomForestClassifier(**params)
 
@@ -1267,13 +1586,180 @@ class ChurnPredictionService:
         else:
             logger.warning(f"Unknown model type '{model_type}', defaulting to XGBoost")
             return xgb.XGBClassifier(
-                n_estimators=100,
-                max_depth=5,
-                learning_rate=0.1,
+                n_estimators=300,
+                max_depth=7,
+                learning_rate=0.05,
                 random_state=42,
                 scale_pos_weight=class_imbalance_ratio,
-                eval_metric='auc'
+                eval_metric='aucpr'
             )
+
+    def _tune_xgboost(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        class_imbalance_ratio: float
+    ) -> xgb.XGBClassifier:
+        """
+        Tune XGBoost hyperparameters using RandomizedSearchCV with stratified K-fold.
+        Optimizes for F1 score which is more appropriate for imbalanced churn data.
+        """
+        # Define search space - focused on most impactful parameters
+        param_distributions = {
+            'n_estimators': [100, 200, 300, 400],
+            'max_depth': [4, 5, 6, 7, 8, 10],
+            'learning_rate': [0.01, 0.03, 0.05, 0.1],
+            'min_child_weight': [1, 3, 5, 7],
+            'subsample': [0.6, 0.7, 0.8, 0.9],
+            'colsample_bytree': [0.6, 0.7, 0.8, 0.9],
+            'gamma': [0, 0.1, 0.2, 0.3],
+            'reg_alpha': [0, 0.01, 0.1, 1.0],
+            'reg_lambda': [0.5, 1.0, 2.0],
+        }
+
+        # Base estimator with fixed parameters
+        base_model = xgb.XGBClassifier(
+            random_state=42,
+            scale_pos_weight=class_imbalance_ratio,
+            eval_metric='aucpr',
+            n_jobs=-1,
+            use_label_encoder=False
+        )
+
+        # Stratified K-fold for imbalanced data
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+        # RandomizedSearchCV - faster than GridSearch, often as good
+        search = RandomizedSearchCV(
+            estimator=base_model,
+            param_distributions=param_distributions,
+            n_iter=30,                # Number of parameter settings sampled
+            scoring='f1',             # Optimize for F1 (better for imbalanced)
+            cv=cv,
+            random_state=42,
+            n_jobs=-1,
+            verbose=1
+        )
+
+        logger.info("Starting XGBoost hyperparameter search (30 iterations)...")
+        search.fit(X_train, y_train)
+
+        logger.info(
+            f"Best XGBoost params: {search.best_params_}, "
+            f"Best CV F1: {search.best_score_:.4f}"
+        )
+
+        return search.best_estimator_
+
+    def _tune_random_forest(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray
+    ) -> RandomForestClassifier:
+        """
+        Tune Random Forest hyperparameters using RandomizedSearchCV.
+        """
+        param_distributions = {
+            'n_estimators': [100, 200, 300, 400, 500],
+            'max_depth': [8, 10, 12, 15, 20, None],
+            'min_samples_split': [2, 5, 10],
+            'min_samples_leaf': [1, 2, 4],
+            'max_features': ['sqrt', 'log2', 0.5],
+            'bootstrap': [True, False],
+        }
+
+        base_model = RandomForestClassifier(
+            random_state=42,
+            class_weight='balanced_subsample',
+            n_jobs=-1
+        )
+
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+        search = RandomizedSearchCV(
+            estimator=base_model,
+            param_distributions=param_distributions,
+            n_iter=30,
+            scoring='f1',
+            cv=cv,
+            random_state=42,
+            n_jobs=-1,
+            verbose=1
+        )
+
+        logger.info("Starting Random Forest hyperparameter search (30 iterations)...")
+        search.fit(X_train, y_train)
+
+        logger.info(
+            f"Best RF params: {search.best_params_}, "
+            f"Best CV F1: {search.best_score_:.4f}"
+        )
+
+        return search.best_estimator_
+
+    def _find_optimal_threshold(
+        self,
+        y_true: np.ndarray,
+        y_proba: np.ndarray,
+        method: str = "f1"
+    ) -> Tuple[float, Dict[str, float]]:
+        """
+        Find optimal classification threshold for imbalanced churn prediction.
+
+        Args:
+            y_true: True labels
+            y_proba: Predicted probabilities
+            method: Optimization method - "f1", "f2" (recall-weighted), or "youden"
+
+        Returns:
+            Tuple of (optimal_threshold, metrics_at_threshold)
+        """
+        from sklearn.metrics import f1_score as f1_metric, fbeta_score
+
+        thresholds = np.arange(0.1, 0.9, 0.01)
+        best_threshold = 0.5
+        best_score = 0
+
+        for threshold in thresholds:
+            y_pred = (y_proba >= threshold).astype(int)
+
+            if method == "f1":
+                score = f1_metric(y_true, y_pred, zero_division=0)
+            elif method == "f2":
+                # F2 gives more weight to recall (important for churn)
+                score = fbeta_score(y_true, y_pred, beta=2, zero_division=0)
+            elif method == "youden":
+                # Youden's J statistic = sensitivity + specificity - 1
+                tn = np.sum((y_pred == 0) & (y_true == 0))
+                fp = np.sum((y_pred == 1) & (y_true == 0))
+                fn = np.sum((y_pred == 0) & (y_true == 1))
+                tp = np.sum((y_pred == 1) & (y_true == 1))
+                sensitivity = tp / max(tp + fn, 1)
+                specificity = tn / max(tn + fp, 1)
+                score = sensitivity + specificity - 1
+            else:
+                score = f1_metric(y_true, y_pred, zero_division=0)
+
+            if score > best_score:
+                best_score = score
+                best_threshold = threshold
+
+        # Calculate final metrics at optimal threshold
+        y_pred_opt = (y_proba >= best_threshold).astype(int)
+        metrics = {
+            'threshold': float(best_threshold),
+            'f1': float(f1_metric(y_true, y_pred_opt, zero_division=0)),
+            'precision': float(precision_score(y_true, y_pred_opt, zero_division=0)),
+            'recall': float(recall_score(y_true, y_pred_opt, zero_division=0)),
+        }
+
+        logger.info(
+            f"Optimal threshold ({method}): {best_threshold:.3f} → "
+            f"F1={metrics['f1']:.3f}, Precision={metrics['precision']:.3f}, "
+            f"Recall={metrics['recall']:.3f}"
+        )
+
+        return best_threshold, metrics
 
     async def _train_ensemble_model(
         self,
@@ -1284,7 +1770,8 @@ class ChurnPredictionService:
         X_all: np.ndarray,
         y_all: np.ndarray,
         class_imbalance_ratio: float,
-        dataset_id: Optional[str]
+        dataset_id: Optional[str],
+        smote_applied: bool = False
     ) -> ModelTrainingResponse:
         """
         Train an ensemble of models when routing recommends it.
@@ -1456,3 +1943,489 @@ class ChurnPredictionService:
         y = df['left'].values  # Assuming 'left' column indicates churn
 
         return X, y
+
+    # =========================================================================
+    # Counterfactual Analysis Methods
+    # =========================================================================
+
+    # Feature metadata for building the UI
+    # Note: 'options' for categorical features are populated dynamically from label encoders
+    FEATURE_METADATA = {
+        'satisfaction_level': {
+            'label': 'Satisfaction Level',
+            'type': 'float',
+            'min_value': 0.0,
+            'max_value': 1.0,
+            'step': 0.05,
+            'description': 'Employee satisfaction score (0 = very unsatisfied, 1 = very satisfied)',
+            'impact_direction': 'higher_is_better',
+            'cost_per_point': 2000,  # Cost to improve by 0.1
+        },
+        'last_evaluation': {
+            'label': 'Last Evaluation Score',
+            'type': 'float',
+            'min_value': 0.0,
+            'max_value': 1.0,
+            'step': 0.05,
+            'description': 'Last performance evaluation score (0-1)',
+            'impact_direction': 'higher_is_better',
+            'cost_per_point': 1500,
+        },
+        'number_project': {
+            'label': 'Number of Projects',
+            'type': 'int',
+            'min_value': 1,
+            'max_value': 10,
+            'step': 1,
+            'description': 'Number of projects assigned',
+            'impact_direction': 'neutral',  # Too few or too many can be bad
+            'cost_per_point': 0,
+        },
+        'average_monthly_hours': {
+            'label': 'Average Monthly Hours',
+            'type': 'float',
+            'min_value': 80,
+            'max_value': 300,
+            'step': 5,
+            'description': 'Average monthly working hours',
+            'impact_direction': 'lower_is_better',  # Less overwork
+            'cost_per_point': 50,  # Cost of reducing 1 hour
+        },
+        'time_spend_company': {
+            'label': 'Years at Company',
+            'type': 'int',
+            'min_value': 0,
+            'max_value': 30,
+            'step': 1,
+            'description': 'Years spent at the company (tenure)',
+            'impact_direction': 'higher_is_better',
+            'cost_per_point': 0,  # Can't directly change tenure
+        },
+        'work_accident': {
+            'label': 'Work Accident History',
+            'type': 'bool',
+            'description': 'Whether the employee has had a work accident',
+            'impact_direction': 'neutral',
+            'cost_per_point': 0,
+        },
+        'promotion_last_5years': {
+            'label': 'Promoted in Last 5 Years',
+            'type': 'bool',
+            'description': 'Whether the employee was promoted in the last 5 years',
+            'impact_direction': 'higher_is_better',
+            'cost_per_point': 5000,  # Average promotion cost
+        },
+        'department': {
+            'label': 'Department',
+            'type': 'categorical',
+            # options populated dynamically from label_encoders['department'].classes_
+            'description': 'Employee department',
+            'impact_direction': 'neutral',
+            'cost_per_point': 2000,  # Department transfer cost
+        },
+        'salary_level': {
+            'label': 'Salary Level',
+            'type': 'categorical',
+            # options populated dynamically from label_encoders['salary_level'].classes_
+            'description': 'Salary tier',
+            'impact_direction': 'higher_is_better',
+            'cost_per_point': 15000,  # Cost to move up one tier
+        },
+    }
+
+    def _map_structure_to_department(self, structure_name: str) -> str:
+        """
+        Map HR structure name to department value.
+
+        Returns the structure_name as-is (normalized to lowercase).
+        The label encoder will handle mapping to numeric values during prediction.
+        If no structure name is provided, returns 'general' as a fallback.
+        """
+        if not structure_name:
+            return 'general'
+
+        # Return the structure name as-is - the label encoder will handle it
+        # This allows the system to work with whatever departments the user has
+        return structure_name.strip().lower()
+
+    def _derive_salary_level(
+        self,
+        employee_cost: Optional[float],
+        dataset_id: Optional[str] = None
+    ) -> str:
+        """
+        Derive salary level from employee cost using data-driven thresholds.
+
+        Uses percentile-based tiers computed from the actual salary distribution.
+        """
+        if employee_cost is None:
+            return 'medium'
+
+        # Use data-driven salary tier based on percentiles
+        return self.thresholds_service.get_salary_tier(float(employee_cost), dataset_id)
+
+    async def get_employee_ml_features(
+        self,
+        db: AsyncSession,
+        employee_id: str,
+        dataset_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get the ML features for an employee that can be perturbed.
+
+        Sources (in order of preference):
+        1. HRDataInput.additional_data mapped to ML features
+        2. Intelligent defaults with HR-derived values
+
+        Required columns: hr_code, full_name, structure_name, position, status,
+                         manager_id, tenure, termination_date, employee_cost
+        All other fields go to additional_data and are parsed for ML features.
+        """
+        # Get the latest HR data for this employee
+        query = select(HRDataInput).where(
+            HRDataInput.hr_code == employee_id
+        )
+        if dataset_id:
+            query = query.where(HRDataInput.dataset_id == dataset_id)
+
+        query = query.order_by(desc(HRDataInput.report_date)).limit(1)
+        result = await db.execute(query)
+        employee = result.scalar_one_or_none()
+
+        if not employee:
+            raise ValueError(f"Employee {employee_id} not found")
+
+        # Get additional_data if available
+        additional_data = employee.additional_data or {}
+
+        # Build ML features from available data
+        features = {
+            # Try to get from additional_data first, then use defaults
+            'satisfaction_level': float(
+                additional_data.get('satisfaction_level',
+                additional_data.get('satisfaction', 0.6))
+            ),
+            'last_evaluation': float(
+                additional_data.get('last_evaluation',
+                additional_data.get('performance_rating_latest',
+                additional_data.get('evaluation', 0.7)) / 5.0  # Normalize if 1-5 scale
+                if additional_data.get('performance_rating_latest', 0) > 1 else 0.7)
+            ),
+            'number_project': int(
+                additional_data.get('number_project',
+                additional_data.get('projects', 3))
+            ),
+            'average_monthly_hours': float(
+                additional_data.get('average_monthly_hours',
+                additional_data.get('avg_hours', 160))
+            ),
+            'time_spend_company': int(float(employee.tenure or 0)),
+            'work_accident': bool(
+                additional_data.get('work_accident', False)
+            ),
+            'promotion_last_5years': bool(
+                additional_data.get('promotion_last_5years',
+                additional_data.get('promotions_24m', 0) > 0)
+            ),
+            'department': self._map_structure_to_department(employee.structure_name),
+            'salary_level': additional_data.get(
+                'salary_level',
+                self._derive_salary_level(employee.employee_cost, dataset_id)
+            ),
+        }
+
+        # Validate and clamp numeric values
+        features['satisfaction_level'] = max(0.0, min(1.0, features['satisfaction_level']))
+        features['last_evaluation'] = max(0.0, min(1.0, features['last_evaluation']))
+        features['number_project'] = max(1, min(10, features['number_project']))
+        features['average_monthly_hours'] = max(80, min(300, features['average_monthly_hours']))
+        features['time_spend_company'] = max(0, min(30, features['time_spend_company']))
+
+        # Categorical values are kept as-is - the label encoder handles unknown values
+        # via _safe_encode_series() which uses the first known class as fallback
+
+        return features
+
+    def _get_categorical_options(self, feature_name: str) -> Optional[List[str]]:
+        """
+        Get the valid options for a categorical feature from the label encoder.
+
+        Returns the classes the encoder learned during training.
+        """
+        if feature_name not in self.label_encoders:
+            return None
+
+        encoder = self.label_encoders[feature_name]
+        if hasattr(encoder, 'classes_') and len(encoder.classes_) > 0:
+            return encoder.classes_.tolist()
+
+        return None
+
+    def get_perturbable_features(
+        self,
+        current_features: Dict[str, Any]
+    ) -> List[PerturbableFeature]:
+        """
+        Build list of perturbable features with metadata for UI.
+
+        Categorical options are populated dynamically from the trained label encoders.
+        """
+        result = []
+
+        for name, meta in self.FEATURE_METADATA.items():
+            current_value = current_features.get(name)
+
+            # For categorical features, get options from label encoders
+            options = None
+            if meta['type'] == 'categorical':
+                options = self._get_categorical_options(name)
+
+            feature = PerturbableFeature(
+                name=name,
+                label=meta['label'],
+                current_value=current_value,
+                type=meta['type'],
+                min_value=meta.get('min_value'),
+                max_value=meta.get('max_value'),
+                step=meta.get('step'),
+                options=options,
+                description=meta['description'],
+                impact_direction=meta['impact_direction'],
+            )
+            result.append(feature)
+
+        return result
+
+    def _calculate_counterfactual_cost(
+        self,
+        modifications: Dict[str, Any],
+        base_features: Dict[str, Any]
+    ) -> float:
+        """Calculate the estimated annual cost of modifications."""
+        total_cost = 0.0
+
+        for feature, new_value in modifications.items():
+            if feature not in self.FEATURE_METADATA:
+                continue
+
+            meta = self.FEATURE_METADATA[feature]
+            cost_per_point = meta.get('cost_per_point', 0)
+            old_value = base_features.get(feature)
+
+            if cost_per_point == 0:
+                continue
+
+            if meta['type'] == 'float':
+                # Calculate proportional cost
+                delta = abs(float(new_value) - float(old_value or 0))
+                if feature == 'satisfaction_level':
+                    # Cost per 0.1 improvement
+                    total_cost += (delta / 0.1) * cost_per_point
+                elif feature == 'average_monthly_hours':
+                    # Cost of reducing hours
+                    if new_value < old_value:
+                        total_cost += (old_value - new_value) * cost_per_point
+                else:
+                    total_cost += delta * cost_per_point
+
+            elif meta['type'] == 'bool':
+                # Cost only if changing from False to True
+                if new_value and not old_value:
+                    total_cost += cost_per_point
+
+            elif meta['type'] == 'categorical':
+                if feature == 'salary_level':
+                    # Cost to move up tiers
+                    tiers = {'low': 0, 'medium': 1, 'high': 2}
+                    old_tier = tiers.get(str(old_value), 1)
+                    new_tier = tiers.get(str(new_value), 1)
+                    if new_tier > old_tier:
+                        total_cost += (new_tier - old_tier) * cost_per_point
+                elif feature == 'department':
+                    # Cost of department transfer
+                    if new_value != old_value:
+                        total_cost += cost_per_point
+
+        return total_cost
+
+    def _apply_counterfactual_modifications(
+        self,
+        base_features: Dict[str, Any],
+        modifications: Dict[str, Any]
+    ) -> EmployeeChurnFeatures:
+        """Apply modifications to base features and create EmployeeChurnFeatures."""
+        modified = base_features.copy()
+
+        for key, value in modifications.items():
+            if key in modified:
+                modified[key] = value
+
+        # Validate and create EmployeeChurnFeatures
+        # Categorical values are passed as-is - the encoder handles unknown values gracefully
+        return EmployeeChurnFeatures(
+            satisfaction_level=max(0.0, min(1.0, float(modified['satisfaction_level']))),
+            last_evaluation=max(0.0, min(1.0, float(modified['last_evaluation']))),
+            number_project=max(1, min(10, int(modified['number_project']))),
+            average_monthly_hours=max(80, min(300, float(modified['average_monthly_hours']))),
+            time_spend_company=max(0, min(30, int(modified['time_spend_company']))),
+            work_accident=bool(modified['work_accident']),
+            promotion_last_5years=bool(modified['promotion_last_5years']),
+            department=str(modified['department']),
+            salary_level=str(modified['salary_level']),
+        )
+
+    def _get_counterfactual_risk_level(
+        self,
+        probability: float,
+        dataset_id: Optional[str] = None
+    ) -> str:
+        """Determine risk level from probability using data-driven thresholds."""
+        risk_level = self.thresholds_service.get_risk_level(probability, dataset_id)
+        # Capitalize for display
+        return risk_level.capitalize()
+
+    async def simulate_counterfactual(
+        self,
+        employee_id: str,
+        base_features: Dict[str, Any],
+        modifications: Dict[str, Any],
+        dataset_id: Optional[str] = None,
+        scenario_name: Optional[str] = None,
+        scenario_id: Optional[str] = None,
+        annual_salary: Optional[float] = None
+    ) -> CounterfactualResult:
+        """
+        Run TRUE counterfactual simulation using ML model perturbation.
+
+        This calls the actual ChurnPredictionService with both baseline
+        and modified features to get real model predictions.
+        """
+        # Import here to avoid circular dependency
+        from app.services.eltv_service import eltv_service
+
+        scenario_id = scenario_id or f"counterfactual_{datetime.utcnow().timestamp()}"
+        scenario_name = scenario_name or f"Scenario: {', '.join(modifications.keys())}"
+
+        # Create EmployeeChurnFeatures for baseline
+        base_churn_features = self._apply_counterfactual_modifications(base_features, {})
+
+        # Create EmployeeChurnFeatures with modifications
+        modified_churn_features = self._apply_counterfactual_modifications(base_features, modifications)
+
+        # Get REAL model predictions
+        baseline_prediction = await self.predict_churn(
+            ChurnPredictionRequest(features=base_churn_features),
+            dataset_id=dataset_id
+        )
+
+        scenario_prediction = await self.predict_churn(
+            ChurnPredictionRequest(features=modified_churn_features),
+            dataset_id=dataset_id
+        )
+
+        # Calculate ELTV for both scenarios
+        salary = annual_salary or 70000.0  # Default salary for ELTV
+        tenure = base_features.get('time_spend_company', 3)
+
+        # Estimate position level for ELTV
+        position_level = eltv_service.estimate_position_level(
+            position="Employee",
+            salary=salary,
+            tenure=tenure
+        )
+
+        baseline_eltv_result = eltv_service.calculate_eltv(
+            annual_salary=salary,
+            churn_probability=baseline_prediction.churn_probability,
+            tenure_years=tenure,
+            position_level=position_level
+        )
+
+        scenario_eltv_result = eltv_service.calculate_eltv(
+            annual_salary=salary,
+            churn_probability=scenario_prediction.churn_probability,
+            tenure_years=tenure,
+            position_level=position_level
+        )
+
+        # Calculate deltas
+        churn_delta = scenario_prediction.churn_probability - baseline_prediction.churn_probability
+        eltv_delta = scenario_eltv_result.eltv - baseline_eltv_result.eltv
+
+        # Calculate modification cost
+        modification_cost = self._calculate_counterfactual_cost(modifications, base_features)
+
+        # Calculate ROI
+        if modification_cost > 0:
+            implied_roi = ((eltv_delta - modification_cost) / modification_cost) * 100
+        else:
+            implied_roi = float('inf') if eltv_delta > 0 else 0
+
+        return CounterfactualResult(
+            scenario_name=scenario_name,
+            scenario_id=scenario_id,
+            # Baseline (from actual model)
+            baseline_churn_prob=baseline_prediction.churn_probability,
+            baseline_risk_level=self._get_counterfactual_risk_level(baseline_prediction.churn_probability, dataset_id),
+            baseline_eltv=baseline_eltv_result.eltv,
+            baseline_confidence=baseline_prediction.confidence_score,
+            baseline_factors=baseline_prediction.contributing_factors,
+            # Scenario (from actual model)
+            scenario_churn_prob=scenario_prediction.churn_probability,
+            scenario_risk_level=self._get_counterfactual_risk_level(scenario_prediction.churn_probability, dataset_id),
+            scenario_eltv=scenario_eltv_result.eltv,
+            scenario_confidence=scenario_prediction.confidence_score,
+            scenario_factors=scenario_prediction.contributing_factors,
+            # Deltas
+            churn_delta=churn_delta,
+            eltv_delta=eltv_delta,
+            # ROI
+            implied_annual_cost=modification_cost,
+            implied_roi=min(999.99, max(-999.99, implied_roi)),
+            # Survival
+            baseline_survival_probs=baseline_eltv_result.survival_probabilities,
+            scenario_survival_probs=scenario_eltv_result.survival_probabilities,
+            # Modifications
+            modifications=modifications,
+            simulated_at=datetime.utcnow(),
+            prediction_method="model"
+        )
+
+    async def batch_counterfactuals(
+        self,
+        employee_id: str,
+        base_features: Dict[str, Any],
+        scenarios: List[Dict[str, Any]],
+        dataset_id: Optional[str] = None,
+        annual_salary: Optional[float] = None
+    ) -> List[CounterfactualResult]:
+        """
+        Run multiple counterfactual scenarios for comparison.
+
+        Each scenario should have:
+        - name: Display name
+        - modifications: Dict of feature modifications
+        """
+        results = []
+
+        for idx, scenario in enumerate(scenarios):
+            modifications = scenario.get('modifications', {})
+            name = scenario.get('name', f"Scenario {idx + 1}")
+            scenario_id = scenario.get('id', f"scenario_{idx}")
+
+            result = await self.simulate_counterfactual(
+                employee_id=employee_id,
+                base_features=base_features,
+                modifications=modifications,
+                dataset_id=dataset_id,
+                scenario_name=name,
+                scenario_id=scenario_id,
+                annual_salary=annual_salary
+            )
+            results.append(result)
+
+        return results
+
+
+# Singleton instance for dependency injection
+churn_prediction_service = ChurnPredictionService()

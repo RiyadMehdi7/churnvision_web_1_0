@@ -5,7 +5,7 @@ from app.db.base_class import Base
 
 
 class TreatmentDefinition(Base):
-    __tablename__ = "treatment_definitions"
+    __tablename__ = "treatment_definitions"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
@@ -33,7 +33,7 @@ Index('idx_treatment_definitions_custom', TreatmentDefinition.is_custom)
 
 
 class TreatmentApplication(Base):
-    __tablename__ = "treatment_applications"
+    __tablename__ = "treatment_applications"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     employee_id = Column(String, nullable=True)
@@ -75,7 +75,7 @@ Index('idx_treatment_applications_simulation', TreatmentApplication.is_simulatio
 
 
 class TreatmentRecommendation(Base):
-    __tablename__ = "treatment_recommendations"
+    __tablename__ = "treatment_recommendations"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     employee_id = Column(String, nullable=False)
@@ -98,7 +98,7 @@ class TreatmentRecommendation(Base):
 
 
 class RetentionValidation(Base):
-    __tablename__ = "retention_validation"
+    __tablename__ = "retention_validation"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     employee_id = Column(String, nullable=False)
@@ -123,7 +123,7 @@ Index('idx_retention_val_employee_period', RetentionValidation.employee_id, Rete
 
 
 class ABTestGroup(Base):
-    __tablename__ = "ab_test_groups"
+    __tablename__ = "ab_test_groups"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     test_name = Column(String, nullable=False)
@@ -147,7 +147,7 @@ Index('idx_ab_groups_test_assignment', ABTestGroup.test_name, ABTestGroup.group_
 
 
 class TreatmentEffectiveness(Base):
-    __tablename__ = "treatment_effectiveness"
+    __tablename__ = "treatment_effectiveness"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     treatment_type = Column(String, nullable=False)
@@ -174,7 +174,7 @@ class TreatmentEffectiveness(Base):
 
 
 class HRSyncLog(Base):
-    __tablename__ = "hr_sync_log"
+    __tablename__ = "hr_sync_log"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     sync_date = Column(DateTime(timezone=True), nullable=False)

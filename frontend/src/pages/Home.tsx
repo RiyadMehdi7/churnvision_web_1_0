@@ -9,7 +9,7 @@ import {
   Brain,
   Clock,
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, colors } from '../lib/utils';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useGlobalDataCache } from '../hooks/useGlobalDataCache';
 import { useProject } from '../contexts/ProjectContext';
@@ -488,18 +488,20 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
         highRisk: d.highRiskCount,
         mediumRisk: d.mediumRiskCount
       }))}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+        <CartesianGrid strokeDasharray="3 3" stroke={colors.chart.grid.light} className="dark:stroke-dark-700" />
         <XAxis
           dataKey="name"
           angle={-45}
           textAnchor="end"
           height={80}
           tick={{ fontSize: 11 }}
-          stroke="#6b7280"
+          stroke={colors.chart.axis.light}
+          className="dark:stroke-dark-400"
         />
         <YAxis
           tick={{ fontSize: 11 }}
-          stroke="#6b7280"
+          stroke={colors.chart.axis.light}
+          className="dark:stroke-dark-400"
           label={{ value: 'Risk %', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
         />
         <Tooltip
@@ -508,7 +510,7 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
             name === 'risk' ? 'Average Risk' : name
           ]}
         />
-        <Bar dataKey="risk" fill="#3b82f6" name="Average Risk" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="risk" fill={colors.chart.primary} name="Average Risk" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -521,18 +523,20 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
         risk: p.avgRisk,
         count: p.count
       }))}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+        <CartesianGrid strokeDasharray="3 3" stroke={colors.chart.grid.light} className="dark:stroke-dark-700" />
         <XAxis
           dataKey="name"
           angle={-45}
           textAnchor="end"
           height={80}
           tick={{ fontSize: 11 }}
-          stroke="#6b7280"
+          stroke={colors.chart.axis.light}
+          className="dark:stroke-dark-400"
         />
         <YAxis
           tick={{ fontSize: 11 }}
-          stroke="#6b7280"
+          stroke={colors.chart.axis.light}
+          className="dark:stroke-dark-400"
           label={{ value: 'Risk %', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
         />
         <Tooltip
@@ -541,7 +545,7 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
             name === 'risk' ? 'Average Risk' : name
           ]}
         />
-        <Bar dataKey="risk" fill="#10b981" name="Average Risk" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="risk" fill={colors.chart.success} name="Average Risk" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -554,15 +558,17 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
         risk: t.avgRisk,
         count: t.count
       }))}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+        <CartesianGrid strokeDasharray="3 3" stroke={colors.chart.grid.light} className="dark:stroke-dark-700" />
         <XAxis
           dataKey="name"
           tick={{ fontSize: 11 }}
-          stroke="#6b7280"
+          stroke={colors.chart.axis.light}
+          className="dark:stroke-dark-400"
         />
         <YAxis
           tick={{ fontSize: 11 }}
-          stroke="#6b7280"
+          stroke={colors.chart.axis.light}
+          className="dark:stroke-dark-400"
           label={{ value: 'Risk %', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
         />
         <Tooltip
@@ -571,7 +577,7 @@ function analyzeEmployeePatterns(employees: any[], thresholds = { highRisk: 0.7,
             name === 'risk' ? 'Average Risk' : name
           ]}
         />
-        <Bar dataKey="risk" fill="#f59e0b" name="Average Risk" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="risk" fill={colors.chart.warning} name="Average Risk" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -1953,15 +1959,9 @@ export function Home(): React.ReactElement {
   if (!activeProject) {
     return (
       <div
-        className="h-full w-full flex items-center justify-center text-center p-6 bg-gray-50 dark:bg-gray-900"
+        className="h-full w-full flex items-center justify-center text-center p-6 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-dark-700"
         style={{
           minHeight: '400px',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#f9fafb', // Neutral light gray
-          border: '1px solid #e5e7eb', // Neutral border
         }}
       >
         <div>

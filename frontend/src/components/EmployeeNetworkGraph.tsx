@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { Employee, RiskLevel } from '../types/employee';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { colors } from '../lib/utils';
 
 interface EmployeeNetworkGraphProps {
   employees: Employee[];
@@ -40,9 +41,9 @@ interface ClusterMeta {
 }
 
 const riskColorMap: Record<RiskLevel, string> = {
-  [RiskLevel.High]: '#ef4444',
-  [RiskLevel.Medium]: '#f59e0b',
-  [RiskLevel.Low]: '#10b981'
+  [RiskLevel.High]: colors.risk.high,
+  [RiskLevel.Medium]: colors.risk.medium,
+  [RiskLevel.Low]: colors.risk.low
 };
 
 const defaultDepartments = ['All'];
@@ -479,11 +480,11 @@ const EmployeeNetworkGraph: React.FC<EmployeeNetworkGraphProps> = ({ employees, 
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <span className="inline-flex h-3 w-3 rounded-full bg-[#ef4444]" />
+            <span className="inline-flex h-3 w-3 rounded-full bg-risk-high" />
             High Risk
-            <span className="inline-flex h-3 w-3 rounded-full bg-[#f59e0b] ml-3" />
+            <span className="inline-flex h-3 w-3 rounded-full bg-risk-medium ml-3" />
             Medium
-            <span className="inline-flex h-3 w-3 rounded-full bg-[#10b981] ml-3" />
+            <span className="inline-flex h-3 w-3 rounded-full bg-risk-low ml-3" />
             Low
           </div>
           <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
@@ -553,7 +554,7 @@ const EmployeeNetworkGraph: React.FC<EmployeeNetworkGraphProps> = ({ employees, 
                     const x2 = toPixelX(target.x);
                     const y2 = toPixelY(target.y);
                     const strokeWidth = 1 + edge.weight * 2.5;
-                    const stroke = edge.isRiskPath ? '#ef4444' : '#94a3b8';
+                    const stroke = edge.isRiskPath ? colors.risk.high : colors.gray[400];
                     const opacity = edge.isRiskPath ? 0.6 : 0.35 + edge.weight * 0.3;
 
                     return (
@@ -590,8 +591,8 @@ const EmployeeNetworkGraph: React.FC<EmployeeNetworkGraphProps> = ({ employees, 
                     const x = toPixelX(node.x);
                     const y = toPixelY(node.y);
                     const radius = 10 + (node.isHighRisk ? 4 : 0) + (node.isResigned ? 2 : 0);
-                    const fill = riskColorMap[node.riskLevel] ?? '#3b82f6';
-                    const stroke = node.isResigned ? '#475569' : '#1e293b';
+                    const fill = riskColorMap[node.riskLevel] ?? colors.chart.primary;
+                    const stroke = node.isResigned ? colors.gray[600] : colors.gray[800];
 
                     return (
                       <g

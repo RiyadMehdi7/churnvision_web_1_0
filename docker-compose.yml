@@ -20,6 +20,7 @@ services:
       - ./backend/alembic:/app/alembic
       - ./backend/alembic.ini:/app/alembic.ini
       - ./ml/models:/app/models  # Writable for model training
+      - churnvision_data:/app/churnvision_data  # Persist uploaded datasets
     depends_on:
       - db
       - ollama
@@ -154,3 +155,4 @@ volumes:
   redis_data:
   prometheus_data:
   grafana_data:
+  churnvision_data:

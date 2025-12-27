@@ -19,7 +19,7 @@ class AgentSession(Base):
     Stores agent session data for a user.
     Each user has one active session that persists across browser sessions.
     """
-    __tablename__ = "agent_sessions"
+    __tablename__ = "agent_sessions"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True, unique=True)
@@ -47,7 +47,7 @@ class AgentInsight(Base):
     Stores individual insights discovered during conversations.
     Allows for organizational learning across users.
     """
-    __tablename__ = "agent_insights"
+    __tablename__ = "agent_insights"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
@@ -73,7 +73,7 @@ class OrganizationalPattern(Base):
     Stores patterns discovered across the organization.
     Used for advanced recommendations.
     """
-    __tablename__ = "organizational_patterns"
+    __tablename__ = "organizational_patterns"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, index=True)
 

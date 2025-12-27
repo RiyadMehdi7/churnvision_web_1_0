@@ -5,7 +5,7 @@ from app.db.base_class import Base
 
 
 class Conversation(Base):
-    __tablename__ = "conversations"
+    __tablename__ = "conversations"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
@@ -20,7 +20,7 @@ class Conversation(Base):
 
 
 class Message(Base):
-    __tablename__ = "messages"
+    __tablename__ = "messages"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, index=True)
     conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -35,7 +35,7 @@ class Message(Base):
 
 class ChatMessage(Base):
     """Alternative chat messages table for AI Assistant chat history"""
-    __tablename__ = "chat_messages"
+    __tablename__ = "chat_messages"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String, nullable=False, index=True)

@@ -1,5 +1,6 @@
 @tailwind base;
 @tailwind components;
+@tailwind utilities;
 
 @layer base {
   :root {
@@ -47,6 +48,26 @@
     --shadow-sm: 0px 1px 2px rgba(15, 23, 42, 0.06);
     --shadow-md: 0px 20px 45px rgba(15, 23, 42, 0.10);
     --shadow-border: rgba(15, 23, 42, 0.08);
+
+    /* Risk level colors */
+    --risk-high: 0 84% 60%;
+    --risk-medium: 38 92% 50%;
+    --risk-low: 158 45% 62%;
+
+    /* Chart colors */
+    --chart-grid: 220 13% 91%;
+    --chart-axis: 215 14% 47%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 158 45% 62%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 262 83% 58%;
+    --chart-5: 0 84% 60%;
+
+    /* Third-party brand colors */
+    --teams-purple: 238 42% 57%;
+
+    /* Tooltip background */
+    --tooltip-bg: 220 13% 18%;
   }
 
   .dark {
@@ -92,6 +113,26 @@
     --shadow-sm: 0px 1px 2px rgba(0, 0, 0, 0.45);
     --shadow-md: 0px 16px 35px rgba(0, 0, 0, 0.55);
     --shadow-border: rgba(15, 23, 42, 0.55);
+
+    /* Risk level colors - dark mode */
+    --risk-high: 0 72% 51%;
+    --risk-medium: 38 92% 50%;
+    --risk-low: 158 45% 62%;
+
+    /* Chart colors - dark mode */
+    --chart-grid: 217 19% 27%;
+    --chart-axis: 215 20% 65%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 158 45% 62%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 262 83% 58%;
+    --chart-5: 0 72% 51%;
+
+    /* Third-party brand colors */
+    --teams-purple: 238 42% 57%;
+
+    /* Tooltip background */
+    --tooltip-bg: 220 26% 14%;
   }
 }
 

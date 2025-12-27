@@ -941,7 +941,8 @@ async def get_model_metrics(
     - Number of predictions made
     """
     try:
-        dataset = await get_active_dataset(db)
+        # Don't validate file - this endpoint only uses DB data
+        dataset = await get_active_dataset(db, validate_file=False)
         dataset_id = dataset.dataset_id
         cache_key = dataset_id or "default"
 
@@ -1458,7 +1459,8 @@ async def get_departure_timeline(
     - Urgency level
     """
     try:
-        dataset = await get_active_dataset(db)
+        # Don't validate file - this endpoint only uses DB data
+        dataset = await get_active_dataset(db, validate_file=False)
         timeline = await model_intelligence_service.get_departure_timeline(
             db, hr_code, dataset.dataset_id
         )
@@ -1487,7 +1489,8 @@ async def get_batch_departure_timelines(
     Get departure timelines for multiple high-risk employees.
     """
     try:
-        dataset = await get_active_dataset(db)
+        # Don't validate file - this endpoint only uses DB data
+        dataset = await get_active_dataset(db, validate_file=False)
         timelines = await model_intelligence_service.get_batch_departure_timelines(
             db, dataset.dataset_id, limit
         )
@@ -1517,7 +1520,8 @@ async def get_cohort_analysis(
     - Retention insights
     """
     try:
-        dataset = await get_active_dataset(db)
+        # Don't validate file - this endpoint only uses DB data
+        dataset = await get_active_dataset(db, validate_file=False)
         analysis = await model_intelligence_service.get_cohort_analysis(
             db, hr_code, dataset.dataset_id
         )
@@ -1722,7 +1726,8 @@ async def get_survival_prediction(
     - Hazard ratio relative to baseline
     """
     try:
-        dataset = await get_active_dataset(db)
+        # Don't validate file - this endpoint only uses DB data
+        dataset = await get_active_dataset(db, validate_file=False)
         prediction = await survival_service.predict_survival(db, hr_code, dataset.dataset_id)
 
         if not prediction:
@@ -1754,7 +1759,8 @@ async def get_batch_survival_predictions(
     Returns predictions sorted by urgency (critical first).
     """
     try:
-        dataset = await get_active_dataset(db)
+        # Don't validate file - this endpoint only uses DB data
+        dataset = await get_active_dataset(db, validate_file=False)
         predictions = await survival_service.get_batch_predictions(db, dataset.dataset_id, limit)
 
         return {
@@ -1794,7 +1800,8 @@ async def get_realized_metrics(
     These metrics prove (or disprove) that the model is useful.
     """
     try:
-        dataset = await get_active_dataset(db)
+        # Don't validate file - this endpoint only uses DB data
+        dataset = await get_active_dataset(db, validate_file=False)
         metrics = await outcome_tracking_service.calculate_realized_metrics(
             db, dataset.dataset_id
         )
@@ -1827,7 +1834,8 @@ async def get_outcome_tracking(
     Use this to audit specific predictions and understand model behavior.
     """
     try:
-        dataset = await get_active_dataset(db)
+        # Don't validate file - this endpoint only uses DB data
+        dataset = await get_active_dataset(db, validate_file=False)
         outcomes = await outcome_tracking_service.verify_predictions(
             db, dataset.dataset_id, lookback_days
         )
@@ -1855,7 +1863,8 @@ async def get_accuracy_by_cohort(
     - Human-readable interpretation
     """
     try:
-        dataset = await get_active_dataset(db)
+        # Don't validate file - this endpoint only uses DB data
+        dataset = await get_active_dataset(db, validate_file=False)
         results = await outcome_tracking_service.get_accuracy_by_cohort(
             db, dataset.dataset_id
         )
@@ -1893,7 +1902,8 @@ async def get_routing_info(
     - Alternative model options
     """
     try:
-        dataset = await get_active_dataset(db)
+        # Don't validate file - this endpoint only uses DB data
+        dataset = await get_active_dataset(db, validate_file=False)
 
         # Get profile
         profile_result = await db.execute(

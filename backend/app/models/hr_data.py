@@ -5,7 +5,7 @@ from app.db.base_class import Base
 
 
 class HRDataInput(Base):
-    __tablename__ = "hr_data_input"
+    __tablename__ = "hr_data_input"  # type: ignore[assignment]
 
     hr_code = Column(String, primary_key=True)
     dataset_id = Column(String, ForeignKey("datasets.dataset_id", ondelete="CASCADE"), primary_key=True)
@@ -41,7 +41,7 @@ Index('idx_hr_data_active_cost', HRDataInput.status, HRDataInput.employee_cost)
 
 
 class EmployeeSnapshot(Base):
-    __tablename__ = "employee_snapshots"
+    __tablename__ = "employee_snapshots"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     dataset_id = Column(String, ForeignKey("datasets.dataset_id", ondelete="CASCADE"), nullable=False)
@@ -69,7 +69,7 @@ Index('idx_snapshots_report_date', EmployeeSnapshot.report_date)
 
 
 class InterviewData(Base):
-    __tablename__ = "interview_data"
+    __tablename__ = "interview_data"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     hr_code = Column(String, ForeignKey("hr_data_input.hr_code", ondelete="CASCADE"), nullable=False)

@@ -2,7 +2,7 @@ from app.db.base_class import Base
 from sqlalchemy import Column, Integer, String, Float, Boolean
 
 class Employee(Base):
-    __tablename__ = "employees"
+    __tablename__ = "employees"  # type: ignore[assignment]
 
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(String, index=True) # Multi-tenancy

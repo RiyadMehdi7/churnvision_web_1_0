@@ -1801,9 +1801,7 @@ export function AIAssistant(): React.ReactElement {
   if (!activeProject) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-gray-50 dark:bg-gray-900">
-        <div className="mb-4">
-          <EchoAvatar size="lg" />
-        </div>
+        <MessageSquare className="mx-auto h-16 w-16 text-gray-400 dark:text-gray-600 mb-4" />
         <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
           No Project Active
         </h2>

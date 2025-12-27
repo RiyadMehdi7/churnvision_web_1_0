@@ -1957,15 +1957,42 @@ Confidence Level: {reasoning.get('confidence_level', 0.7):.0%}"""
 
         # ===== BUILD COMPANY CONTEXT =====
         company_context = ""
+        workforce_stats = context.get("workforce_stats", {})
+
         if company_overview:
+            # Note: Keys use camelCase from cached_queries_service
+            risk_dist = company_overview.get('riskDistribution', {})
             company_context = f"""
 === COMPANY OVERVIEW ===
-Total Employees: {company_overview.get('total_employees', 'N/A')}
-Active Employees: {company_overview.get('active_employees', 'N/A')}
-High Risk Count: {company_overview.get('high_risk_count', 'N/A')}
-Average Risk: {company_overview.get('avg_risk', 0):.1%}
-Average Tenure: {company_overview.get('avg_tenure', 0):.1f} years
+Total Employees: {company_overview.get('totalEmployees', 'N/A')}
+Active Employees: {company_overview.get('activeEmployees', 'N/A')}
+High Risk: {risk_dist.get('high', 0)} | Medium Risk: {risk_dist.get('medium', 0)} | Low Risk: {risk_dist.get('low', 0)}
+Average Risk Score: {company_overview.get('avgRisk', 0):.1%}
+Average Tenure: {company_overview.get('avgTenure', 0):.1f} years
+Average Employee Cost: ${company_overview.get('avgCost', 0):,.0f}/year
 """
+
+        # Add department breakdown from workforce_stats
+        dept_risks = workforce_stats.get('departmentRisks', [])
+        if dept_risks:
+            company_context += "\n=== DEPARTMENT RISK BREAKDOWN ===\n"
+            for dept in dept_risks[:8]:  # Top 8 departments
+                company_context += f"• {dept.get('department', 'Unknown')}: {dept.get('count', 0)} employees, {dept.get('avgRisk', 0):.1%} avg risk, {dept.get('highRiskCount', 0)} high-risk\n"
+
+        # Add stage distribution
+        stage_dist = workforce_stats.get('stageDistribution', [])
+        if stage_dist:
+            company_context += "\n=== EMPLOYEE LIFECYCLE STAGES ===\n"
+            for stage in stage_dist:
+                company_context += f"• {stage.get('stage', 'Unknown')}: {stage.get('count', 0)} employees ({stage.get('avgRisk', 0):.1%} avg risk)\n"
+
+        # Add risk trends summary
+        risk_trends = workforce_stats.get('riskTrends', {})
+        if risk_trends:
+            company_context += f"\n=== RISK INSIGHTS ===\n"
+            company_context += f"Critical Employees (Immediate Action): {risk_trends.get('criticalEmployees', 0)}\n"
+            company_context += f"At-Risk Departments: {risk_trends.get('atRiskDepartments', 0)}\n"
+            company_context += f"Average Prediction Confidence: {risk_trends.get('averageConfidence', 0):.1%}\n"
 
         # Add company profile context from Knowledge Base settings
         company_profile_context = ""

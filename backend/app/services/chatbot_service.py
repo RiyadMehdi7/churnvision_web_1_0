@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any, Literal
+from typing import List, Optional, Dict, Any, Literal, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -17,9 +17,21 @@ from app.schemas.chatbot import (
     ConversationCreate,
     ConversationListResponse
 )
+from app.services.pii_masking_service import (
+    PIIMaskingService,
+    MaskingContext,
+    SalaryPercentiles,
+    calculate_salary_percentiles_from_db
+)
 
 # Provider type for routing
 ProviderType = Literal["ollama", "openai", "azure", "qwen", "mistral", "ibm"]
+
+# Cloud providers that require PII masking (data leaves on-premise)
+CLOUD_PROVIDERS: set = {"openai", "azure", "qwen", "mistral", "ibm"}
+
+# Local providers where data stays on-premise (no masking needed)
+LOCAL_PROVIDERS: set = {"ollama"}
 
 # Model to provider mapping
 MODEL_PROVIDER_MAP: Dict[str, ProviderType] = {
@@ -49,6 +61,28 @@ MODEL_PROVIDER_MAP: Dict[str, ProviderType] = {
 class ChatbotService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._pii_masking_service = PIIMaskingService()
+        self._percentiles_loaded = False
+
+    async def _ensure_salary_percentiles(self) -> None:
+        """
+        Load salary percentiles from the database if not already loaded.
+        Called lazily before masking is needed.
+        """
+        if self._percentiles_loaded or not settings.PII_MASKING_ENABLED:
+            return
+
+        try:
+            percentiles = await calculate_salary_percentiles_from_db(self.db)
+            if percentiles.employee_count > 0:
+                self._pii_masking_service.set_salary_percentiles(percentiles)
+                print(f"[PII] Loaded salary percentiles from {percentiles.employee_count} employees: "
+                      f"p20=${percentiles.p20:,.0f}, p40=${percentiles.p40:,.0f}, "
+                      f"p60=${percentiles.p60:,.0f}, p80=${percentiles.p80:,.0f}", flush=True)
+            self._percentiles_loaded = True
+        except Exception as e:
+            print(f"[PII] Warning: Failed to load salary percentiles: {e}", flush=True)
+            self._percentiles_loaded = True  # Don't retry on failure
 
     def _determine_provider(self, model: str) -> ProviderType:
         """Determine provider based on model name"""
@@ -311,31 +345,75 @@ class ChatbotService:
         messages: List[Dict[str, str]],
         model: str,
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        masking_context: Optional[MaskingContext] = None
     ) -> tuple[str, Dict[str, Any]]:
-        """Get response from LLM provider based on model selection"""
+        """
+        Get response from LLM provider based on model selection.
 
+        For cloud providers (OpenAI, Azure, Qwen, Mistral, IBM):
+        - PII is automatically masked before sending
+        - Response is unmasked before returning
+
+        For local providers (Ollama):
+        - No masking applied, data stays on-premise
+
+        Args:
+            messages: Chat messages to send
+            model: Model name
+            temperature: Generation temperature
+            max_tokens: Max tokens to generate
+            masking_context: Optional pre-populated MaskingContext for consistent masking
+
+        Returns:
+            (response_content, metadata)
+        """
         provider = self._determine_provider(model)
 
         metadata = {
             "model": model,
             "provider": provider,
-            "temperature": temperature
+            "temperature": temperature,
+            "pii_masked": False
         }
+
+        # Apply PII masking for cloud providers
+        should_mask = (
+            provider in CLOUD_PROVIDERS and
+            settings.PII_MASKING_ENABLED
+        )
+
+        if should_mask:
+            # Ensure salary percentiles are loaded for accurate masking
+            await self._ensure_salary_percentiles()
+            masking_context = masking_context or MaskingContext()
+            masked_messages = self._mask_messages(messages, masking_context)
+            metadata["pii_masked"] = True
+            metadata["pii_tokens_masked"] = len(masking_context.name_map) + len(masking_context.id_map)
+            messages_to_send = masked_messages
+            print(f"[LLM] PII masking applied for {provider}: {len(masking_context.name_map)} names, {len(masking_context.id_map)} IDs masked", flush=True)
+        else:
+            messages_to_send = messages
+            if provider in CLOUD_PROVIDERS and not settings.PII_MASKING_ENABLED:
+                print(f"[LLM] WARNING: Cloud provider {provider} used without PII masking!", flush=True)
 
         try:
             if provider == "openai":
-                content, usage = await self._call_openai(messages, model, temperature, max_tokens)
+                content, usage = await self._call_openai(messages_to_send, model, temperature, max_tokens)
             elif provider == "azure":
-                content, usage = await self._call_azure(messages, model, temperature, max_tokens)
+                content, usage = await self._call_azure(messages_to_send, model, temperature, max_tokens)
             elif provider == "qwen":
-                content, usage = await self._call_qwen(messages, model, temperature, max_tokens)
+                content, usage = await self._call_qwen(messages_to_send, model, temperature, max_tokens)
             elif provider == "mistral":
-                content, usage = await self._call_mistral(messages, model, temperature, max_tokens)
+                content, usage = await self._call_mistral(messages_to_send, model, temperature, max_tokens)
             elif provider == "ibm":
-                content, usage = await self._call_ibm(messages, model, temperature, max_tokens)
+                content, usage = await self._call_ibm(messages_to_send, model, temperature, max_tokens)
             else:  # ollama (default)
-                content, usage = await self._call_ollama(messages, model, temperature, max_tokens)
+                content, usage = await self._call_ollama(messages_to_send, model, temperature, max_tokens)
+
+            # Unmask response for cloud providers
+            if should_mask and masking_context:
+                content = self._pii_masking_service.unmask_text(content, masking_context)
 
             metadata.update(usage)
             return content, metadata
@@ -345,6 +423,23 @@ class ChatbotService:
         except Exception as e:
             error_type = type(e).__name__
             raise Exception(f"LLM API error ({provider}): [{error_type}] {str(e)}")
+
+    def _mask_messages(
+        self,
+        messages: List[Dict[str, str]],
+        context: MaskingContext
+    ) -> List[Dict[str, str]]:
+        """Mask PII in all message contents."""
+        masked_messages = []
+        for msg in messages:
+            masked_msg = msg.copy()
+            if 'content' in masked_msg and masked_msg['content']:
+                masked_msg['content'] = self._pii_masking_service.mask_text(
+                    masked_msg['content'],
+                    context
+                )
+            masked_messages.append(masked_msg)
+        return masked_messages
 
     async def create_conversation(self, user_id: int, title: Optional[str] = None) -> Conversation:
         """Create a new conversation"""

@@ -134,6 +134,15 @@ class ChurnPredictionService:
         'promotion_last_5years', 'department', 'salary_level'
     ]
 
+    # Default categorical values for encoding when model is not trained
+    # These are used for fallback encoding in counterfactual simulations
+    DEPARTMENT_CATEGORIES = [
+        'sales', 'accounting', 'hr', 'technical', 'support', 'management',
+        'IT', 'product_mng', 'marketing', 'RandD', 'engineering', 'finance',
+        'operations', 'legal', 'unknown'
+    ]
+    SALARY_CATEGORIES = ['low', 'medium', 'high']
+
     def __init__(self):
         self.model = None
         self.calibrated_model = None  # For probability calibration
@@ -273,6 +282,31 @@ class ChurnPredictionService:
         # Note: Encoders are NOT pre-fitted - they will learn categories from training data
         self.model_metrics = {}
 
+    def _is_model_fitted(self) -> bool:
+        """Check if the model is actually trained and ready for predictions."""
+        if self.model is None:
+            return False
+
+        # For XGBoost, check if booster exists (indicates model is fitted)
+        if isinstance(self.model, xgb.XGBClassifier):
+            try:
+                # XGBoost models have a booster after fitting
+                _ = self.model.get_booster()
+                return True
+            except Exception:
+                return False
+
+        # For scikit-learn models, check for classes_ attribute
+        if hasattr(self.model, 'classes_'):
+            return True
+
+        # For calibrated models
+        if isinstance(self.model, CalibratedClassifierCV):
+            return hasattr(self.model, 'calibrated_classifiers_')
+
+        # Default: assume fitted if model exists
+        return True
+
     def ensure_model_for_dataset(self, dataset_id: Optional[str]) -> None:
         """Load the appropriate model artifacts for the given dataset if needed."""
         target_dataset = dataset_id or None
@@ -325,9 +359,17 @@ class ChurnPredictionService:
 
     def _prepare_features(self, features: EmployeeChurnFeatures) -> np.ndarray:
         """Convert employee features to model input format"""
-        # Encode categorical variables
-        department_encoded = self.label_encoders['department'].transform([features.department])[0]
-        salary_encoded = self.label_encoders['salary_level'].transform([features.salary_level])[0]
+        # Encode categorical variables with fallback for unfitted encoders
+        department_encoded = self._safe_encode_single(
+            features.department,
+            self.label_encoders['department'],
+            self.DEPARTMENT_CATEGORIES
+        )
+        salary_encoded = self._safe_encode_single(
+            features.salary_level,
+            self.label_encoders['salary_level'],
+            self.SALARY_CATEGORIES
+        )
 
         # Create feature array in the correct order
         feature_array = np.array([[
@@ -342,7 +384,19 @@ class ChurnPredictionService:
             salary_encoded
         ]])
 
-        # Scale features
+        # Scale features with fallback for unfitted scaler
+        if not hasattr(self.scaler, 'mean_') or self.scaler.mean_ is None:
+            # Scaler not fitted - use reasonable defaults based on typical HR data ranges
+            # This is a fallback for counterfactual simulations when model isn't trained
+            default_means = np.array([0.6, 0.7, 4.0, 200.0, 3.5, 0.15, 0.02, 4.0, 1.0])
+            default_scales = np.array([0.25, 0.2, 1.5, 50.0, 2.0, 0.35, 0.14, 3.0, 0.8])
+            self.scaler.mean_ = default_means
+            self.scaler.scale_ = default_scales
+            self.scaler.var_ = default_scales ** 2
+            self.scaler.n_features_in_ = 9
+            self.scaler.n_samples_seen_ = 1
+            logger.debug("Using default scaler parameters for unfitted scaler")
+
         feature_array_scaled = self.scaler.transform(feature_array)
 
         return feature_array_scaled
@@ -358,6 +412,49 @@ class ChurnPredictionService:
             return ChurnRiskLevel.MEDIUM
         else:
             return ChurnRiskLevel.LOW
+
+    def _safe_encode_single(self, value: str, encoder: LabelEncoder, default_categories: List[str]) -> int:
+        """
+        Encode a single categorical value with fallback for unfitted encoders.
+
+        Args:
+            value: The categorical value to encode
+            encoder: The LabelEncoder instance (may or may not be fitted)
+            default_categories: Fallback categories to use if encoder is not fitted
+
+        Returns:
+            Integer encoded value
+        """
+        # Normalize the value
+        normalized_value = str(value).lower().strip() if value else "unknown"
+
+        # Check if encoder is fitted
+        if not hasattr(encoder, "classes_") or len(encoder.classes_) == 0:
+            # Encoder not fitted - fit it with default categories
+            encoder.fit(default_categories)
+            logger.debug(f"Fitted encoder with default categories: {default_categories}")
+
+        # Get known classes
+        known_classes = set(c.lower() if isinstance(c, str) else str(c) for c in encoder.classes_)
+
+        # Handle unknown values by mapping to first known class
+        if normalized_value not in known_classes:
+            # Try exact match first
+            exact_match = [c for c in encoder.classes_ if str(c).lower() == normalized_value]
+            if exact_match:
+                return int(encoder.transform([exact_match[0]])[0])
+
+            # Fallback to first class
+            fallback = encoder.classes_[0]
+            logger.debug(f"Unknown value '{value}' mapped to fallback '{fallback}'")
+            return int(encoder.transform([fallback])[0])
+
+        # Find the matching class (case-insensitive)
+        matching_class = next(
+            (c for c in encoder.classes_ if str(c).lower() == normalized_value),
+            encoder.classes_[0]
+        )
+        return int(encoder.transform([matching_class])[0])
 
     def _safe_encode_series(self, series: pd.Series, encoder: LabelEncoder) -> np.ndarray:
         """Encode categorical series with fallback for unseen values."""
@@ -822,8 +919,8 @@ class ChurnPredictionService:
         # Prepare features
         features_array = self._prepare_features(request.features)
 
-        # Get prediction
-        if self.model is None:
+        # Get prediction - check if model is actually fitted, not just initialized
+        if not self._is_model_fitted():
             if settings.ENVIRONMENT == "production":
                 raise RuntimeError("No trained model loaded. Train a model before serving predictions.")
             # If no trained model, use heuristic-based prediction
@@ -967,7 +1064,7 @@ class ChurnPredictionService:
         ]
 
         # Fallback for untrained model: use heuristic path row-by-row (rare)
-        if self.model is None:
+        if not self._is_model_fitted():
             results: List[ChurnPredictionResponse] = []
             for idx, row in feature_frame.iterrows():
                 features_obj = EmployeeChurnFeatures(

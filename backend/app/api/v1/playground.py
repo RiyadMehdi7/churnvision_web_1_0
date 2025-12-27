@@ -39,6 +39,7 @@ from app.schemas.roi_dashboard import (
 )
 from app.services.eltv_service import eltv_service
 from app.services.treatment_service import treatment_validation_service
+from app.services.roi_dashboard_service import roi_dashboard_service
 
 router = APIRouter()
 
@@ -611,6 +612,10 @@ async def get_roi_dashboard(
     HIGH_RISK_THRESHOLD = 0.7
     MEDIUM_RISK_THRESHOLD = 0.4
 
+    # Get treatment effectiveness data early for use in calculations
+    early_effectiveness = await roi_dashboard_service.get_realized_effectiveness(db)
+    early_effectiveness_rate = early_effectiveness or 0.0
+
     # Calculate metrics per employee
     employee_metrics = []
     department_data = {}
@@ -652,8 +657,8 @@ async def get_roi_dashboard(
             position_level=position_level
         )
 
-        # Calculate potential recovery (assuming 30% churn reduction with treatment)
-        treated_churn = max(0.05, churn_prob * 0.7)
+        # Calculate potential recovery using data-driven effectiveness rate
+        treated_churn = max(0.05, churn_prob * (1 - early_effectiveness_rate))
         eltv_treated = eltv_service.calculate_eltv(
             annual_salary=salary,
             churn_probability=treated_churn,
@@ -703,9 +708,29 @@ async def get_roi_dashboard(
     avg_churn = sum(e['churn_prob'] for e in employee_metrics) / total_employees if total_employees > 0 else 0
     avg_eltv = sum(e['eltv'] for e in employee_metrics) / total_employees if total_employees > 0 else 0
 
-    # Estimate treatment cost (average $5000 per high-risk employee)
-    estimated_treatment_cost = high_risk * 5000
-    aggregate_roi = ((total_recovery - estimated_treatment_cost) / estimated_treatment_cost * 100) if estimated_treatment_cost > 0 else 0
+    # Get real treatment data from database
+    treatment_summary = await roi_dashboard_service.get_treatment_summary(db, department_filter)
+    treated_hr_codes = await roi_dashboard_service.get_treated_hr_codes(db)
+    avg_treatment_cost = await roi_dashboard_service.get_average_treatment_cost(db)
+    avg_effectiveness = await roi_dashboard_service.get_realized_effectiveness(db)
+
+    # Use actual data values (no fallbacks)
+    effectiveness_rate = avg_effectiveness or 0.0
+    cost_per_treatment = avg_treatment_cost or 0.0
+
+    # Calculate treatments applied and pending
+    treatments_applied = treatment_summary.total_applied
+    high_risk_hr_codes = [e['hr_code'] for e in employee_metrics if e['risk_level'] == 'high']
+    treatments_pending = len([hr for hr in high_risk_hr_codes if hr not in treated_hr_codes])
+
+    # Calculate ROI using real data if available, otherwise estimate
+    if treatment_summary.total_applied > 0:
+        roi_metrics = await roi_dashboard_service.calculate_actual_roi(db)
+        aggregate_roi = roi_metrics.roi_percentage
+    else:
+        # Projection based on average treatment cost
+        estimated_treatment_cost = high_risk * cost_per_treatment
+        aggregate_roi = ((total_recovery - estimated_treatment_cost) / estimated_treatment_cost * 100) if estimated_treatment_cost > 0 else 0
 
     portfolio_summary = PortfolioSummary(
         total_employees=total_employees,
@@ -715,8 +740,8 @@ async def get_roi_dashboard(
         total_eltv_at_risk=round(total_eltv_at_risk, 2),
         recovery_potential=round(total_recovery, 2),
         aggregate_roi=round(aggregate_roi, 2),
-        treatments_applied=0,  # Would come from treatment tracking table
-        treatments_pending=high_risk,
+        treatments_applied=treatments_applied,
+        treatments_pending=treatments_pending,
         avg_churn_probability=round(avg_churn, 4),
         avg_eltv=round(avg_eltv, 2)
     )
@@ -734,8 +759,8 @@ async def get_roi_dashboard(
         # Priority score based on risk concentration and employee count
         priority_score = (risk_concentration * 0.6) + (high_risk_in_dept / max(emp_count, 1) * 40)
 
-        # Recommended budget: $5000 per high-risk employee
-        recommended_budget = high_risk_in_dept * 5000
+        # Recommended budget: use data-driven cost per treatment
+        recommended_budget = high_risk_in_dept * cost_per_treatment
 
         department_breakdown.append(DepartmentROI(
             department=dept,
@@ -776,9 +801,9 @@ async def get_roi_dashboard(
 
             baseline_eltv += emp_eltv * survival_prob
 
-            # With treatment: assume 30% churn reduction for high/medium risk
+            # With treatment: use data-driven effectiveness rate
             if emp['risk_level'] in ('high', 'medium'):
-                improved_survival = min(1.0, survival_prob + (1 - survival_prob) * 0.3)
+                improved_survival = min(1.0, survival_prob + (1 - survival_prob) * effectiveness_rate)
                 treated_eltv += emp_eltv * improved_survival
             else:
                 treated_eltv += emp_eltv * survival_prob
@@ -787,7 +812,7 @@ async def get_roi_dashboard(
             if survival_prob < 0.5:
                 expected_departures_baseline += 1
             if emp['risk_level'] in ('high', 'medium'):
-                improved_survival = min(1.0, survival_prob + (1 - survival_prob) * 0.3)
+                improved_survival = min(1.0, survival_prob + (1 - survival_prob) * effectiveness_rate)
                 if improved_survival < 0.5:
                     expected_departures_treated += 1
             else:
@@ -809,15 +834,29 @@ async def get_roi_dashboard(
             expected_departures_treated=expected_departures_treated
         ))
 
-    # Treatment ROI summary (placeholder - would come from treatment tracking)
-    treatment_roi_summary = TreatmentROISummary(
-        total_treatment_cost=0,
-        total_eltv_preserved=0,
-        net_benefit=0,
-        overall_roi_percentage=0,
-        treatments_by_type={},
-        avg_treatment_effectiveness=0.15  # Default assumption
-    )
+    # Treatment ROI summary from real data
+    treatments_by_type = await roi_dashboard_service.get_treatments_by_type(db)
+
+    if treatment_summary.total_applied > 0:
+        roi_metrics = await roi_dashboard_service.calculate_actual_roi(db)
+        treatment_roi_summary = TreatmentROISummary(
+            total_treatment_cost=roi_metrics.total_cost,
+            total_eltv_preserved=roi_metrics.total_eltv_preserved,
+            net_benefit=roi_metrics.net_benefit,
+            overall_roi_percentage=roi_metrics.roi_percentage,
+            treatments_by_type=treatments_by_type,
+            avg_treatment_effectiveness=effectiveness_rate
+        )
+    else:
+        # No treatments yet - show zeros
+        treatment_roi_summary = TreatmentROISummary(
+            total_treatment_cost=0,
+            total_eltv_preserved=0,
+            net_benefit=0,
+            overall_roi_percentage=0,
+            treatments_by_type={},
+            avg_treatment_effectiveness=0.0
+        )
 
     return ROIDashboardData(
         portfolio_summary=portfolio_summary,

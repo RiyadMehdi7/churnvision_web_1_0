@@ -177,6 +177,13 @@ class Settings(BaseSettings):
     CHATBOT_SYSTEM_PROMPT: str = "You are a helpful AI assistant for ChurnVision Enterprise, an employee churn prediction platform. You help users understand their workforce data, analyze employee turnover patterns, and make data-driven HR decisions."
     LLM_REQUEST_TIMEOUT: int = 300  # seconds - 5min for dev (Gemma 3 slow in Docker, fast on prod with GPU)
 
+    # PII Masking for Cloud LLM Providers (GDPR/Privacy Compliance)
+    # When enabled, employee names, IDs, salaries are masked before sending to cloud LLMs
+    # and unmasked in the response. Local providers (Ollama) are never masked.
+    PII_MASKING_ENABLED: bool = True  # Default: ON for privacy compliance
+    PII_MASK_DEPARTMENTS: bool = False  # Also mask department names
+    PII_MASK_POSITIONS: bool = False  # Also mask job titles
+
     # Action execution feature flag (email/meeting/task integrations)
     ACTION_EXECUTION_ENABLED: bool = False
 

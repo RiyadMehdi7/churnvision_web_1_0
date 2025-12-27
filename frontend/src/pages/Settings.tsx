@@ -1297,7 +1297,7 @@ const manifestProviders: ProviderCatalogEntry[] = [
   {
     id: 'local',
     label: 'ChurnVision Local',
-    description: 'Qwen 3 4B - Privacy-focused, offline operation, no external calls',
+    description: 'Privacy-focused, offline operation, no external calls',
     deployment: 'local',
     badge: 'Default',
     metrics: { speed: 85, performance: 88, intelligence: 86 }

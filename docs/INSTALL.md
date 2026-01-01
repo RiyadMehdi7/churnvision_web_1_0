@@ -336,5 +336,5 @@ docker compose -f docker-compose.prod.yml exec ollama ollama pull qwen2.5:3b
 ## Next Steps
 
 - [Upgrade Guide](UPGRADE.md) - How to upgrade ChurnVision
-- [Backup & Restore](BACKUP.md) - Backup and disaster recovery
-- [Troubleshooting](TROUBLESHOOT.md) - Common issues and solutions
+- [Disaster Recovery](DISASTER_RECOVERY.md) - Backup and disaster recovery
+- [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions

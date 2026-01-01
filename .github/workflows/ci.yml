@@ -95,8 +95,7 @@ jobs:
       - name: Frontend tests
         run: |
           cd frontend
-          # Vitest doesn't support Jest's --runInBand; use --run instead.
-          bun run test -- --run
+          bun run test
 
       - name: Frontend dependency audit
         run: |

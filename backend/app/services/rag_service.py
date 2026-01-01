@@ -164,6 +164,7 @@ class RAGService:
         include_custom_rules: bool = True,
         document_types: List[str] = None,
         top_k: int = None,
+        min_similarity: float = None,
     ) -> Dict[str, Any]:
         """
         Retrieve relevant context for a query.
@@ -178,16 +179,31 @@ class RAGService:
             include_custom_rules: Whether to include custom rules
             document_types: Filter by document types
             top_k: Number of chunks to retrieve
+            min_similarity: Minimum similarity threshold (uses DB settings if not provided)
 
         Returns:
             Dictionary with documents, custom_rules, and sources
         """
+        # Get settings from database for retrieval parameters
+        if min_similarity is None or top_k is None:
+            try:
+                kb_settings = await self.get_settings(project_id=project_id)
+                if min_similarity is None:
+                    min_similarity = kb_settings.similarity_threshold or settings.RAG_SIMILARITY_THRESHOLD
+                if top_k is None:
+                    top_k = kb_settings.retrieval_top_k or settings.RAG_TOP_K
+            except Exception:
+                # Fallback to config defaults if settings fetch fails
+                min_similarity = min_similarity or settings.RAG_SIMILARITY_THRESHOLD
+                top_k = top_k or settings.RAG_TOP_K
+
         # Semantic search in vector store
         search_results = self.vector_store.search(
             query=query,
-            top_k=top_k or settings.RAG_TOP_K,
+            top_k=top_k,
             project_id=project_id,
             document_types=document_types,
+            min_similarity=min_similarity,
         )
 
         # Fetch custom rules if enabled
@@ -217,6 +233,10 @@ class RAGService:
                     "category": rule.category,
                     "rule_text": rule.rule_text,
                     "priority": rule.priority,
+                    "is_active": rule.is_active,
+                    "created_at": rule.created_at,
+                    "updated_at": rule.updated_at,
+                    "project_id": rule.project_id,
                 }
                 for rule in custom_rules
             ],

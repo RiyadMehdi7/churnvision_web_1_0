@@ -276,7 +276,7 @@ export function ModelIntelligenceTab({ className }: ModelIntelligenceTabProps) {
                     tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
                   />
                   <Tooltip
-                    formatter={(value: number) => [`${(value * 100).toFixed(1)}%`, '']}
+                    formatter={(value) => [`${((value as number) * 100).toFixed(1)}%`, '']}
                     labelFormatter={(label) => `Period: ${label}`}
                   />
                   <Legend />

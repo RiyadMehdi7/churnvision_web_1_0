@@ -837,7 +837,7 @@ export function AtlasSimulatorSubTab({
                     axisLine={{ stroke: '#e5e7eb' }}
                   />
                   <Tooltip
-                    formatter={(value: number) => [`${value.toFixed(0)}%`, 'ROI']}
+                    formatter={(value) => [`${(value as number)?.toFixed(0) ?? 0}%`, 'ROI']}
                     contentStyle={{
                       backgroundColor: colors.tooltip.light,
                       border: 'none',
@@ -878,7 +878,7 @@ export function AtlasSimulatorSubTab({
                     axisLine={{ stroke: '#e5e7eb' }}
                   />
                   <Tooltip
-                    formatter={(value: number) => [`${value.toFixed(1)}%`, 'Survival']}
+                    formatter={(value) => [`${(value as number)?.toFixed(1) ?? 0}%`, 'Survival']}
                     contentStyle={{
                       backgroundColor: colors.tooltip.light,
                       border: 'none',

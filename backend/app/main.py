@@ -15,7 +15,11 @@ from app.api.v1 import api_router
 from app.db.session import check_db_connection
 from app.core.logging_config import setup_logging, RequestLoggingMiddleware
 from app.core.rate_limiter import limiter, rate_limit_exceeded_handler
-from app.core.shutdown import lifespan_manager, RequestTrackingMiddleware, get_shutdown_manager
+from app.core.shutdown import (
+    lifespan_manager,
+    RequestTrackingMiddleware,
+    get_shutdown_manager,
+)
 from app.core.data_retention import get_retention_service
 from app.core.csrf import CSRFMiddleware, RequestSizeLimitMiddleware
 from app.api.deps import get_current_superuser
@@ -32,6 +36,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     Middleware to add security headers to all responses.
     Helps prevent XSS, clickjacking, and other common attacks.
     """
+
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
 
@@ -48,7 +53,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
         # Permissions policy - restrict browser features
-        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(), microphone=(), camera=()"
+        )
 
         # Content Security Policy (relaxed for API, stricter for HTML responses)
         if "text/html" in response.headers.get("content-type", ""):
@@ -65,6 +72,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 class ErrorResponse(BaseModel):
     """Standardized error response format."""
+
     error: str
     detail: str | None = None
     timestamp: str
@@ -73,6 +81,7 @@ class ErrorResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """Health check response format."""
+
     status: str
     service: str
     version: str
@@ -117,6 +126,7 @@ def get_cors_headers(request: Request) -> dict:
     # Strict origin matching - prevent subdomain bypass attacks
     # e.g., "localhost:3000.attacker.com" should NOT match "localhost:3000"
     from urllib.parse import urlparse
+
     try:
         parsed_origin = urlparse(origin)
         # Reconstruct origin to normalize it (handles trailing slashes, etc.)
@@ -182,11 +192,12 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 # CORS Middleware (env-driven)
 # When credentials are needed, we must specify exact origins (not "*")
+# Restrict methods to only those needed for security
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -197,7 +208,9 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CSRFMiddleware)
 
 # Request Size Limit Middleware (prevents large payload DoS)
-app.add_middleware(RequestSizeLimitMiddleware, max_size=10 * 1024 * 1024)  # 10 MB default
+app.add_middleware(
+    RequestSizeLimitMiddleware, max_size=10 * 1024 * 1024
+)  # 10 MB default
 
 # Request tracking middleware for graceful shutdown
 app.add_middleware(RequestTrackingMiddleware)
@@ -238,11 +251,15 @@ async def check_redis_connection() -> bool:
     cached = _health_cache["redis"]
 
     # Return cached result if still valid
-    if cached["healthy"] is not None and (now - cached["timestamp"]) < _HEALTH_CACHE_TTL:
+    if (
+        cached["healthy"] is not None
+        and (now - cached["timestamp"]) < _HEALTH_CACHE_TTL
+    ):
         return cached["healthy"]
 
     try:
         from app.core.cache import get_cache
+
         cache = await get_cache()
         await cache.set("health_check", "ok", ttl=10)
         _health_cache["redis"] = {"healthy": True, "timestamp": now}
@@ -259,11 +276,15 @@ async def check_ollama_connection() -> bool:
     cached = _health_cache["ollama"]
 
     # Return cached result if still valid
-    if cached["healthy"] is not None and (now - cached["timestamp"]) < _HEALTH_CACHE_TTL:
+    if (
+        cached["healthy"] is not None
+        and (now - cached["timestamp"]) < _HEALTH_CACHE_TTL
+    ):
         return cached["healthy"]
 
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
             healthy = resp.status_code == 200
@@ -297,7 +318,9 @@ async def health_check():
     all_healthy = all(checks.values())
 
     response = HealthResponse(
-        status="healthy" if all_healthy else ("degraded" if critical_healthy else "unhealthy"),
+        status="healthy"
+        if all_healthy
+        else ("degraded" if critical_healthy else "unhealthy"),
         service="churnvision-backend",
         version="1.0.0",
         environment=settings.ENVIRONMENT,
@@ -357,9 +380,7 @@ async def startup_event():
 
 
 @app.get("/admin/retention/run", tags=["admin"])
-async def run_data_retention(
-    current_user: User = Depends(get_current_superuser)
-):
+async def run_data_retention(current_user: User = Depends(get_current_superuser)):
     """
     Manually trigger data retention cleanup.
     Requires superuser authentication.
@@ -370,9 +391,7 @@ async def run_data_retention(
 
 
 @app.get("/admin/retention/report", tags=["admin"])
-async def get_retention_report(
-    current_user: User = Depends(get_current_superuser)
-):
+async def get_retention_report(current_user: User = Depends(get_current_superuser)):
     """Get data retention compliance report. Requires superuser authentication."""
     retention_service = get_retention_service()
     return await retention_service.generate_retention_report()

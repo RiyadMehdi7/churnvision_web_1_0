@@ -202,7 +202,7 @@ class Settings(BaseSettings):
     RAG_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     RAG_COLLECTION_NAME: str = "churnvision_docs"
     RAG_TOP_K: int = 5  # Number of chunks to retrieve
-    RAG_SIMILARITY_THRESHOLD: float = 0.7  # Minimum similarity score
+    RAG_SIMILARITY_THRESHOLD: float = 0.3  # Minimum similarity score (lowered for better semantic matching)
     RAG_MAX_DOCUMENT_SIZE_MB: int = 50  # Maximum document size in MB
 
     @computed_field

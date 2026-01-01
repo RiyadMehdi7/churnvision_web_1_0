@@ -104,13 +104,25 @@ async def upload_document(
     # Use filename as title if not provided
     doc_title = title or file.filename
 
+    # Fix MIME type detection for files that browsers send as octet-stream
+    mime_type = file.content_type
+    if mime_type in ("application/octet-stream", None, ""):
+        # Map file extensions to correct MIME types
+        extension_mime_map = {
+            ".md": "text/markdown",
+            ".txt": "text/plain",
+            ".pdf": "application/pdf",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+        mime_type = extension_mime_map.get(file_ext, mime_type)
+
     # Process document
     try:
         rag_service = RAGService(db)
         document = await rag_service.ingest_document(
             file_path=str(file_path),
             title=doc_title,
-            mime_type=file.content_type,
+            mime_type=mime_type,
             document_type=document_type,
             tags=tags,
             project_id=project_id,
@@ -430,8 +442,10 @@ async def query_knowledge_base(
                 category=rule.get("category"),
                 rule_text=rule["rule_text"],
                 priority=rule.get("priority", 5),
-                is_active=True,
-                created_at=None,
+                is_active=rule.get("is_active", True),
+                created_at=rule.get("created_at"),
+                updated_at=rule.get("updated_at"),
+                project_id=rule.get("project_id"),
             )
             for rule in context.get("custom_rules", [])
         ],

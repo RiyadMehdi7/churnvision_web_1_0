@@ -418,7 +418,7 @@ export function ROIDashboardTab({ className }: ROIDashboardTabProps) {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value: number, name: string) => [value, name]}
+                      formatter={(value, name) => [value as number, name as string]}
                       contentStyle={{
                         backgroundColor: colors.tooltip.light,
                         border: 'none',
@@ -517,7 +517,7 @@ export function ROIDashboardTab({ className }: ROIDashboardTabProps) {
                     axisLine={{ stroke: '#e5e7eb' }}
                   />
                   <Tooltip
-                    formatter={(value: number) => [formatCurrency(value), 'ELTV at Risk']}
+                    formatter={(value) => [formatCurrency(value as number), 'ELTV at Risk']}
                     contentStyle={{
                       backgroundColor: colors.tooltip.light,
                       border: 'none',
@@ -644,9 +644,9 @@ export function ROIDashboardTab({ className }: ROIDashboardTabProps) {
                     axisLine={{ stroke: '#e5e7eb' }}
                   />
                   <Tooltip
-                    formatter={(value: number, name: string) => [
-                      formatCurrency(value),
-                      name === 'eltv_baseline' ? 'Without Treatment' : 'With Treatment'
+                    formatter={(value, name) => [
+                      formatCurrency(value as number),
+                      (name as string) === 'eltv_baseline' ? 'Without Treatment' : 'With Treatment'
                     ]}
                     contentStyle={{
                       backgroundColor: colors.tooltip.light,
@@ -704,7 +704,7 @@ export function ROIDashboardTab({ className }: ROIDashboardTabProps) {
                     axisLine={{ stroke: '#e5e7eb' }}
                   />
                   <Tooltip
-                    formatter={(value: number) => [formatCurrency(value), 'Cumulative Recovery']}
+                    formatter={(value) => [formatCurrency(value as number), 'Cumulative Recovery']}
                     contentStyle={{
                       backgroundColor: colors.tooltip.light,
                       border: 'none',

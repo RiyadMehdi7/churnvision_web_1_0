@@ -174,7 +174,7 @@ export function CohortAnalysisTab({ className, selectedEmployeeHrCode }: CohortA
                   width={90}
                 />
                 <Tooltip
-                  formatter={(value: number) => [`${(value * 100).toFixed(1)}%`, 'Avg Risk']}
+                  formatter={(value) => [`${((value as number) * 100).toFixed(1)}%`, 'Avg Risk']}
                   labelFormatter={(label) => `${label}`}
                 />
                 <Bar dataKey="avg_risk" name="Average Risk">
@@ -211,7 +211,7 @@ export function CohortAnalysisTab({ className, selectedEmployeeHrCode }: CohortA
                   stroke="#6b7280"
                 />
                 <Tooltip
-                  formatter={(value: number) => [`${(value * 100).toFixed(1)}%`, 'Avg Risk']}
+                  formatter={(value) => [`${((value as number) * 100).toFixed(1)}%`, 'Avg Risk']}
                 />
                 <Bar dataKey="avg_risk" name="Average Risk">
                   {cohortOverview.tenure_cohorts.map((entry, index) => (

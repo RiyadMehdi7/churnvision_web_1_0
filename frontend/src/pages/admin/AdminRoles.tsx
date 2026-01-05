@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { adminService, PermissionsByResource } from '../../services/adminService';
+import { adminService, PermissionsByResource, RoleWithPermissions, PermissionResponse } from '../../services/adminService';
 import { Shield, Check, X } from 'lucide-react';
 import { Skeleton } from '../../components/ui/skeleton';
 import { cn } from '../../lib/utils';
@@ -57,7 +57,7 @@ export function AdminRoles() {
       <div>
         <h3 className="text-lg font-semibold text-foreground mb-4">System Roles</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {roles?.map((role) => (
+          {roles?.map((role: RoleWithPermissions) => (
             <div
               key={role.role_id}
               className="bg-background rounded-lg border border-border p-4"
@@ -100,7 +100,7 @@ export function AdminRoles() {
                   <th className="text-left px-4 py-3 text-sm font-medium text-neutral-muted sticky left-0 bg-surface-subtle z-10 min-w-[200px]">
                     Permission
                   </th>
-                  {roles?.map((role) => (
+                  {roles?.map((role: RoleWithPermissions) => (
                     <th
                       key={role.role_id}
                       className="text-center px-4 py-3 text-sm font-medium text-neutral-muted min-w-[100px]"
@@ -113,7 +113,7 @@ export function AdminRoles() {
                 </tr>
               </thead>
               <tbody>
-                {permissionsByResource?.map((group) => (
+                {permissionsByResource?.map((group: PermissionsByResource) => (
                   <React.Fragment key={group.resource_type}>
                     {/* Resource Type Header */}
                     <tr className="bg-surface-subtle/50">
@@ -125,7 +125,7 @@ export function AdminRoles() {
                       </td>
                     </tr>
                     {/* Permissions */}
-                    {group.permissions.map((permission) => (
+                    {group.permissions.map((permission: PermissionResponse) => (
                       <tr key={permission.permission_id} className="border-b border-border hover:bg-surface-subtle/30">
                         <td className="px-4 py-2 sticky left-0 bg-background z-10">
                           <div>
@@ -133,7 +133,7 @@ export function AdminRoles() {
                             <p className="text-xs text-neutral-muted">{permission.permission_id}</p>
                           </div>
                         </td>
-                        {roles?.map((role) => (
+                        {roles?.map((role: RoleWithPermissions) => (
                           <td key={role.role_id} className="text-center px-4 py-2">
                             {role.permissions.includes(permission.permission_id) ? (
                               <Check className="h-4 w-4 text-green-500 mx-auto" />

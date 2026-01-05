@@ -231,7 +231,7 @@ function DocumentsSection() {
             </div>
           ) : (
             <div className="space-y-2">
-              {documents.map((doc) => (
+              {documents.map((doc: RAGDocument) => (
                 <motion.div
                   key={doc.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -428,7 +428,7 @@ function RulesSection() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Active Rules ({rules.filter(r => r.is_active).length})</CardTitle>
+            <CardTitle className="text-base">Active Rules ({rules.filter((r: CustomHRRule) => r.is_active).length})</CardTitle>
             <Button variant="outline" size="icon" onClick={() => refetch()}>
               <RefreshCw className="w-4 h-4" />
             </Button>
@@ -447,7 +447,7 @@ function RulesSection() {
             </div>
           ) : (
             <div className="space-y-3">
-              {rules.map((rule) => (
+              {rules.map((rule: CustomHRRule) => (
                 <motion.div
                   key={rule.id}
                   initial={{ opacity: 0, y: 10 }}

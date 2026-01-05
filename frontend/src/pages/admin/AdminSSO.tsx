@@ -101,7 +101,7 @@ export function AdminSSO() {
 
   const testMutation = useMutation({
     mutationFn: () => adminService.testSSOConnection(),
-    onSuccess: (result) => {
+    onSuccess: (result: SSOTestResult) => {
       setTestResult(result);
       queryClient.invalidateQueries({ queryKey: ['sso-config'] });
       if (result.success) {

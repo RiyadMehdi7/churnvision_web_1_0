@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { adminService } from '../../services/adminService';
+import { adminService, AuditLogResponse } from '../../services/adminService';
 import { Search, RefreshCw, Filter } from 'lucide-react';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Button } from '../../components/ui/button';
@@ -50,11 +50,11 @@ export function AdminAuditLogs() {
 
   // Extract unique actions from data for filter
   const uniqueActions = data?.logs
-    ? [...new Set(data.logs.map(log => log.action))]
+    ? [...new Set(data.logs.map((log: AuditLogResponse) => log.action))]
     : [];
 
   const uniqueResourceTypes = data?.logs
-    ? [...new Set(data.logs.map(log => log.resource_type).filter(Boolean))]
+    ? [...new Set(data.logs.map((log: AuditLogResponse) => log.resource_type).filter(Boolean))]
     : [];
 
   return (
@@ -134,7 +134,7 @@ export function AdminAuditLogs() {
                   </td>
                 </tr>
               ) : (
-                data?.logs.map((log) => {
+                data?.logs.map((log: AuditLogResponse) => {
                   const { date, time } = formatTimestamp(log.timestamp);
                   return (
                     <tr key={log.id} className="border-b border-border hover:bg-surface-subtle/50">

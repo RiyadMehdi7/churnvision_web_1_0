@@ -2,6 +2,44 @@ This is the definitive **Project Blueprint** for ChurnVision Enterprise.
 
 I have designed this repository structure to handle the **Hybrid Requirement**: Python for the heavy ML/AI lifting, and modern React for the UI, all wrapped in a secure Docker environment.
 
+---
+description: Living documentation for ChurnVision Enterprise that evolves with the project
+globs: "**/*"
+alwaysApply: true
+---
+
+## 📝 Living Document Policy
+
+**IMPORTANT FOR CLAUDE AI**: This document must be continuously updated whenever:
+- ✏️ A new pattern or best practice is discovered
+- 🐛 A common error or pitfall is encountered and solved
+- 💡 A solution to a tricky problem is found
+- 🏗️ Project structure changes (new directories, services, endpoints)
+- 📦 Technology stack updates (version changes, new dependencies)
+- ⚡ Performance optimizations are implemented
+- 🔧 Configuration changes that affect development workflow
+
+**Update Protocol for Claude**:
+1. **When solving an error**: Add it to "Common Errors & Solutions" with date
+2. **When discovering anti-patterns**: Add to "Anti-Patterns" section with example
+3. **When implementing best practices**: Add to "Best Practices" section with code
+4. **When adding features**: Update "API Endpoints Reference" and "Advanced Features"
+5. **When changing ports/config**: Update "Architecture & Ports" immediately
+6. **Format**: Use clear headings, code blocks, and emojis for visual scanning
+7. **Length**: Keep entries concise (3-5 lines description + code example)
+8. **Update the "Last Updated" date** at the bottom when making changes
+
+**Example Update**:
+```markdown
+#### Error: `CORS policy blocked request from localhost:3002`
+**Problem**: Frontend port not in ALLOWED_ORIGINS.
+**Solution**: Add to `.env`:
+```bash
+ALLOWED_ORIGINS=http://localhost:3002,http://127.0.0.1:3002
+```
+**Date**: 2026-01-05
+```
+
 ### The Tech Stack Strategy
 
 1.  **Backend (Python + FastAPI):** We use **`uv`** (the new standard, 100x faster than pip) for package management. We use **FastAPI** because it generates OpenAPI docs automatically (crucial for enterprise clients).
@@ -568,3 +606,401 @@ This guide reflects the **current state** of the ChurnVision Enterprise platform
 - Ollama memory management (max 1 model loaded, 5-minute keep-alive)
 - Docker resource limits to prevent OOM situations
 - Prometheus metrics for performance monitoring
+
+---
+
+## 🚨 Common Errors & Solutions
+
+This section documents frequently encountered issues and their solutions. **Claude should add new entries here whenever a significant error is solved.**
+
+### Backend Issues
+
+#### Error: `ModuleNotFoundError: No module named 'app'`
+**Problem**: Running backend code outside the proper context.
+**Solution**: Always run from the backend directory with `uv run python -m app.main` or use Docker Compose.
+
+#### Error: `AsyncPG connection error`
+**Problem**: Database not ready when backend starts.
+**Solution**: Docker Compose health checks are configured. If running manually, wait for `docker-compose logs db` to show "database system is ready to accept connections".
+
+#### Error: `chromadb.errors.InvalidDimensionException`
+**Problem**: Embedding dimension mismatch between stored vectors and current model.
+**Solution**: Delete and recreate ChromaDB collection or ensure consistent embedding model:
+```python
+# backend/app/services/rag_service.py
+# Always use the same model: sentence-transformers/all-MiniLM-L6-v2
+```
+
+#### Error: `RuntimeError: Cannot re-initialize CUDA in forked subprocess`
+**Problem**: PyTorch CUDA with multiprocessing.
+**Solution**: Set environment variable:
+```bash
+export PYTORCH_ENABLE_MPS_FALLBACK=1  # For Mac
+export CUDA_VISIBLE_DEVICES=""  # Force CPU mode if needed
+```
+
+### Frontend Issues
+
+#### Error: `Module not found: Can't resolve '@/components/...'`
+**Problem**: Path alias not configured in test environment.
+**Solution**: Ensure `vite.config.ts` and `tsconfig.json` both define the `@` alias:
+```typescript
+// vite.config.ts
+resolve: {
+  alias: {
+    '@': path.resolve(__dirname, './src'),
+  },
+}
+```
+
+#### Error: TypeScript error `Property 'X' does not exist on type 'never'`
+**Problem**: Type inference failure in TanStack Query.
+**Solution**: Explicitly type the query result:
+```typescript
+const { data } = useQuery<EmployeeResponse>({
+  queryKey: ['employee', id],
+  queryFn: () => api.get(`/employees/${id}`),
+});
+```
+
+#### Error: `Hydration mismatch` in React
+**Problem**: Server/client rendering inconsistency or using Date.now() during render.
+**Solution**: Use `useEffect` for client-only code:
+```typescript
+const [mounted, setMounted] = useState(false);
+useEffect(() => setMounted(true), []);
+if (!mounted) return null;
+```
+
+### Docker / Infrastructure Issues
+
+#### Error: `Port already in use`
+**Problem**: Previous containers not fully stopped or local service conflict.
+**Solution**:
+```bash
+# Check what's using the port
+lsof -i :8001
+# Stop all containers and clean up
+docker-compose down
+# Or kill specific process
+kill -9 <PID>
+```
+
+#### Error: `Ollama model not found`
+**Problem**: Model not pulled inside the Ollama container.
+**Solution**:
+```bash
+docker-compose exec ollama ollama pull gemma3:4b
+# Or in docker-compose.yml, add init container
+```
+
+#### Error: `Backend shows 'Killed' in logs`
+**Problem**: Out of memory.
+**Solution**: Check Docker Desktop resources (increase to 8GB+) or reduce model size:
+```yaml
+# docker-compose.yml - reduce limits temporarily
+deploy:
+  resources:
+    limits:
+      memory: 2G  # Increase this
+```
+
+### Database Issues
+
+#### Error: `Alembic revision conflicts`
+**Problem**: Multiple migration branches.
+**Solution**:
+```bash
+cd backend
+uv run alembic heads  # Check for multiple heads
+uv run alembic merge <rev1> <rev2> -m "merge migrations"
+```
+
+#### Error: `relation "table_name" does not exist`
+**Problem**: Migrations not applied.
+**Solution**:
+```bash
+# Apply all migrations
+make migrate
+# Or manually
+cd backend && uv run alembic upgrade head
+```
+
+---
+
+## ✅ Best Practices (How To Do)
+
+### Backend Development
+
+#### ✅ DO: Use Service Layer Pattern
+```python
+# Good: Separation of concerns
+# backend/app/api/v1/employees.py
+@router.get("/{employee_id}")
+async def get_employee(
+    employee_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    service = EmployeeService(db)
+    return await service.get_employee(employee_id)
+
+# backend/app/services/employee_service.py
+class EmployeeService:
+    async def get_employee(self, employee_id: str):
+        # Business logic here
+        pass
+```
+
+#### ✅ DO: Use Dependency Injection for Database Sessions
+```python
+# Good: Proper async session management
+from app.api.deps import get_db
+
+@router.post("/")
+async def create_item(
+    item: ItemCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    # db session automatically managed
+    pass
+```
+
+#### ✅ DO: Cache Expensive ML Operations
+```python
+# Good: Use Redis for caching
+from app.core.cache import cache_result
+
+@cache_result(ttl=300)  # 5 minutes
+async def predict_churn(employee_id: str):
+    # Expensive ML inference
+    return prediction
+```
+
+#### ✅ DO: Use Background Tasks for Long Operations
+```python
+# Good: Don't block the request
+from fastapi import BackgroundTasks
+
+@router.post("/train")
+async def train_model(background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_training_job)
+    return {"status": "training started"}
+```
+
+### Frontend Development
+
+#### ✅ DO: Use React Query for Server State
+```typescript
+// Good: Let React Query handle caching, refetching
+const { data, isLoading, error } = useQuery({
+  queryKey: ['employees', filters],
+  queryFn: () => fetchEmployees(filters),
+  staleTime: 5 * 60 * 1000, // 5 minutes
+});
+```
+
+#### ✅ DO: Colocate Related Code
+```typescript
+// Good: Feature-based structure
+src/features/employees/
+  ├── components/
+  │   ├── EmployeeList.tsx
+  │   └── EmployeeCard.tsx
+  ├── hooks/
+  │   └── useEmployees.ts
+  ├── api/
+  │   └── employeeApi.ts
+  └── types/
+      └── employee.ts
+```
+
+#### ✅ DO: Handle Loading and Error States
+```typescript
+// Good: Complete user experience
+if (isLoading) return <Skeleton />;
+if (error) return <ErrorMessage error={error} />;
+if (!data) return <EmptyState />;
+
+return <DataTable data={data} />;
+```
+
+#### ✅ DO: Use Form Validation with Zod
+```typescript
+// Good: Type-safe validation
+import { z } from 'zod';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+
+const schema = z.object({
+  name: z.string().min(1, 'Name required'),
+  email: z.string().email('Invalid email'),
+});
+
+const form = useForm({
+  resolver: zodResolver(schema),
+});
+```
+
+---
+
+## ❌ Anti-Patterns (How NOT To Do)
+
+### Backend Anti-Patterns
+
+#### ❌ DON'T: Put Business Logic in Route Handlers
+```python
+# Bad: Logic mixed with routing
+@router.post("/predict")
+async def predict(data: dict, db: AsyncSession = Depends(get_db)):
+    # Don't do this - move to service layer
+    model = load_model()
+    features = transform_data(data)
+    prediction = model.predict(features)
+    db_record = Employee(...)
+    db.add(db_record)
+    await db.commit()
+    return prediction
+```
+
+#### ❌ DON'T: Use Synchronous DB Calls
+```python
+# Bad: Blocking the event loop
+def get_employee(db: Session, employee_id: str):
+    return db.query(Employee).filter_by(id=employee_id).first()
+
+# Good: Async all the way
+async def get_employee(db: AsyncSession, employee_id: str):
+    result = await db.execute(
+        select(Employee).where(Employee.id == employee_id)
+    )
+    return result.scalar_one_or_none()
+```
+
+#### ❌ DON'T: Ignore Type Hints
+```python
+# Bad: No type safety
+def process_data(data):
+    return data.get("value")
+
+# Good: Clear types
+def process_data(data: dict[str, Any]) -> Optional[float]:
+    return data.get("value")
+```
+
+### Frontend Anti-Patterns
+
+#### ❌ DON'T: Use useEffect for Data Fetching
+```typescript
+// Bad: Manual data fetching
+useEffect(() => {
+  setLoading(true);
+  fetch('/api/employees')
+    .then(r => r.json())
+    .then(data => setEmployees(data))
+    .finally(() => setLoading(false));
+}, []);
+
+// Good: Use React Query
+const { data: employees } = useQuery({
+  queryKey: ['employees'],
+  queryFn: fetchEmployees,
+});
+```
+
+#### ❌ DON'T: Mutate State Directly
+```typescript
+// Bad: Direct mutation
+const handleClick = () => {
+  employees.push(newEmployee);  // Don't mutate!
+  setEmployees(employees);
+};
+
+// Good: Immutable update
+const handleClick = () => {
+  setEmployees([...employees, newEmployee]);
+};
+```
+
+#### ❌ DON'T: Prop Drill Through Many Levels
+```typescript
+// Bad: Passing through 5 components
+<Parent data={data}>
+  <Child data={data}>
+    <GrandChild data={data}>
+      <GreatGrandChild data={data} />
+
+// Good: Use Context or Zustand
+const useAppStore = create((set) => ({
+  data: null,
+  setData: (data) => set({ data }),
+}));
+```
+
+### General Anti-Patterns
+
+#### ❌ DON'T: Commit Secrets or API Keys
+```bash
+# Bad: Secrets in code
+OPENAI_API_KEY = "sk-proj-abc123..."
+
+# Good: Use environment variables
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+```
+
+#### ❌ DON'T: Skip Error Handling
+```python
+# Bad: Silent failures
+result = risky_operation()
+
+# Good: Explicit error handling
+try:
+    result = risky_operation()
+except SpecificError as e:
+    logger.error(f"Operation failed: {e}")
+    raise HTTPException(status_code=500, detail="Operation failed")
+```
+
+#### ❌ DON'T: Use `any` Type in TypeScript
+```typescript
+// Bad: Defeats the purpose of TypeScript
+const processData = (data: any) => { ... }
+
+// Good: Proper typing
+interface EmployeeData {
+  id: string;
+  name: string;
+  risk_score: number;
+}
+const processData = (data: EmployeeData) => { ... }
+```
+
+---
+
+## 📊 Performance Patterns
+
+### When to Cache
+- ✅ ML model predictions (5-minute TTL)
+- ✅ RAG query results (10-minute TTL)
+- ✅ Employee list with filters (1-minute TTL)
+- ❌ Real-time alerts (no cache)
+- ❌ User authentication status (no cache)
+
+### When to Use Background Tasks
+- ✅ Model training (can take 5-30 minutes)
+- ✅ Batch predictions for all employees
+- ✅ Large file processing (CSV uploads with 10k+ rows)
+- ✅ Email notifications
+- ❌ Single employee prediction (fast enough synchronously)
+- ❌ Simple CRUD operations
+
+### When to Optimize Queries
+- ✅ N+1 query problems (use `selectinload` or `joinedload`)
+- ✅ Full table scans on large tables (add indexes)
+- ✅ Aggregations on millions of rows (use materialized views)
+- ❌ Queries returning < 100 rows
+- ❌ Rarely used admin endpoints
+
+---
+
+**Last Updated**: 2026-01-05
+**Next Review**: When significant architectural changes occur or after 10+ new error resolutions

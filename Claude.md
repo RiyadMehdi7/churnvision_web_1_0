@@ -183,11 +183,15 @@ Location: `frontend/`
 
 ### Tech Stack
 - **Framework**: React 18+
-- **Language**: TypeScript (Strict)
-- **State/Fetch**: TanStack Query (React Query)
-- **Routing**: TanStack Router
-- **UI Library**: Shadcn/UI + Tailwind CSS
-- **Charts**: Recharts (for the Risk Heatmap)
+- **Language**: TypeScript (Strict mode)
+- **Build Tool**: Vite 6
+- **Runtime**: Bun (development)
+- **State Management**: Zustand + TanStack Query (React Query)
+- **Routing**: React Router v7
+- **UI Library**: Shadcn/UI + Tailwind CSS + Radix UI
+- **Charts**: Recharts for visualizations
+- **Forms**: React Hook Form + Zod validation
+- **Testing**: Vitest + React Testing Library + Playwright (E2E)
 
 ### Data Fetching Pattern
 

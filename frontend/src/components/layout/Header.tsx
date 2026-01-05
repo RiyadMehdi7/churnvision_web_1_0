@@ -62,7 +62,7 @@ export function Header(): React.ReactElement {
                     ) : 'text-neutral-subtle cursor-not-allowed'
                   )}
                   aria-current={isActive ? 'page' : undefined}
-                  onClick={!hasItemAccess ? (e) => e.preventDefault() : undefined}
+                  onClick={!hasItemAccess ? (e: React.MouseEvent) => e.preventDefault() : undefined}
                 >
                   <item.icon className="h-4 w-4" aria-hidden="true" />
                   <span>{item.name}</span>

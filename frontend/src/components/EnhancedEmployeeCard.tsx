@@ -106,7 +106,7 @@ export const EnhancedEmployeeCard: React.FC<EnhancedEmployeeCardProps> = ({
         <motion.button
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.95 }}
-          onClick={(e) => {
+          onClick={(e: React.MouseEvent) => {
             e.stopPropagation();
             onReasoningClick(employee);
           }}

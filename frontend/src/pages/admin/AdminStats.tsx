@@ -82,14 +82,14 @@ export function AdminStats() {
         <div className="bg-background rounded-lg border border-border p-4">
           <h3 className="text-lg font-semibold text-foreground mb-4">Users by Role</h3>
           <div className="space-y-3">
-            {Object.entries(stats.users_by_role).map(([role, count]: [string, number]) => (
+            {Object.entries(stats.users_by_role).map(([role, count]) => (
               <div key={role} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Shield className="h-4 w-4 text-neutral-muted" />
                   <span className="text-foreground capitalize">{role.replace('_', ' ')}</span>
                 </div>
                 <span className="text-sm font-medium text-neutral-muted">
-                  {count} {count === 1 ? 'user' : 'users'}
+                  {count as number} {(count as number) === 1 ? 'user' : 'users'}
                 </span>
               </div>
             ))}

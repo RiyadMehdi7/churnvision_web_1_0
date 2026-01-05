@@ -103,7 +103,7 @@ export function AdminUsers() {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         last_login_at: null,
-        role: roles?.find(r => r.role_id === newUser.role_id) || null,
+        role: roles?.find((r: RoleWithPermissions) => r.role_id === newUser.role_id) || null,
         _optimistic: true,
       };
 
@@ -125,7 +125,7 @@ export function AdminUsers() {
       setFormData({ username: '', email: '', full_name: '', password: '', role_id: 'analyst' });
       toast({ title: 'User created successfully' });
     },
-    onError: (error: any, _variables, context) => {
+    onError: (error: any, _variables: any, context: any) => {
       // Rollback on error
       if (context?.previousData) {
         queryClient.setQueryData(getUsersQueryKey(), context.previousData);
@@ -137,7 +137,7 @@ export function AdminUsers() {
   const updateUserMutation = useMutation({
     mutationFn: ({ userId, data }: { userId: string; data: Parameters<typeof adminService.updateUser>[1] }) =>
       adminService.updateUser(userId, data),
-    onMutate: async ({ userId, data }) => {
+    onMutate: async ({ userId, data }: { userId: string; data: any }) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['admin-users'] });
 
@@ -154,7 +154,7 @@ export function AdminUsers() {
               ? {
                   ...user,
                   ...data,
-                  role: data.role_id ? roles?.find(r => r.role_id === data.role_id) || user.role : user.role,
+                  role: data.role_id ? roles?.find((r: RoleWithPermissions) => r.role_id === data.role_id) || user.role : user.role,
                   _optimistic: true,
                 }
               : user
@@ -170,7 +170,7 @@ export function AdminUsers() {
       setSelectedUser(null);
       toast({ title: 'User updated successfully' });
     },
-    onError: (error: Error, _variables, context) => {
+    onError: (error: Error, _variables: any, context: any) => {
       // Rollback on error
       if (context?.previousData) {
         queryClient.setQueryData(getUsersQueryKey(), context.previousData);
@@ -208,7 +208,7 @@ export function AdminUsers() {
       queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
       toast({ title: 'User deactivated successfully' });
     },
-    onError: (error: Error, _variables, context) => {
+    onError: (error: Error, _variables: any, context: any) => {
       // Rollback on error
       if (context?.previousData) {
         queryClient.setQueryData(getUsersQueryKey(), context.previousData);
@@ -294,7 +294,7 @@ export function AdminUsers() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Roles</SelectItem>
-              {roles?.map((role) => (
+              {roles?.map((role: RoleWithPermissions) => (
                 <SelectItem key={role.role_id} value={role.role_id}>
                   {role.role_name}
                 </SelectItem>
@@ -510,7 +510,7 @@ export function AdminUsers() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {roles?.map((role) => (
+                  {roles?.map((role: RoleWithPermissions) => (
                     <SelectItem key={role.role_id} value={role.role_id}>
                       {role.role_name}
                     </SelectItem>
@@ -564,7 +564,7 @@ export function AdminUsers() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {roles?.map((role) => (
+                  {roles?.map((role: RoleWithPermissions) => (
                     <SelectItem key={role.role_id} value={role.role_id}>
                       {role.role_name}
                     </SelectItem>

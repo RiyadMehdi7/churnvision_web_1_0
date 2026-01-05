@@ -7,8 +7,11 @@ COPY frontend/ ./
 ARG VITE_API_URL=
 ENV VITE_API_URL=${VITE_API_URL}
 
-# Remove existing lockfile and regenerate to fix Tailwind CSS module resolution
-RUN rm -f bun.lock && bun install
+# Run bun install twice to fix Tailwind CSS module resolution issue
+# First install may have incomplete module linking
+RUN bun install
+RUN bun install
+
 RUN bun run build
 
 FROM nginx:alpine

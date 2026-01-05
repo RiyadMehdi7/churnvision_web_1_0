@@ -113,6 +113,50 @@ class Settings(BaseSettings):
     LICENSE_CACHE_TTL_SECONDS: int = 60
     INSTALLATION_ID_PATH: str = "/app/churnvision_data/installation.id"
 
+    # Admin Panel Integration (External License Management)
+    ADMIN_API_URL: Optional[str] = Field(
+        default=None,
+        description="Base URL for external Admin Panel API (e.g., https://admin.company.com/api/v1)"
+    )
+    ADMIN_API_KEY: Optional[str] = Field(
+        default=None,
+        description="API key for Admin Panel authentication (X-API-Key header)"
+    )
+    TENANT_SLUG: Optional[str] = Field(
+        default=None,
+        description="Tenant identifier for multi-tenant Admin Panel"
+    )
+
+    # License Validation Mode
+    LICENSE_VALIDATION_MODE: str = Field(
+        default="local",
+        description="License validation mode: 'local' (JWT only), 'external' (Admin Panel only), 'hybrid' (Admin Panel with local fallback)"
+    )
+
+    # Offline Grace Period
+    LICENSE_OFFLINE_GRACE_DAYS: int = Field(
+        default=30,
+        description="Days allowed for offline operation before degradation (hybrid/external mode)"
+    )
+    LICENSE_REVOCATION_GRACE_HOURS: int = Field(
+        default=48,
+        description="Grace period hours after license revocation before lockout"
+    )
+
+    # Sync and Telemetry
+    LICENSE_SYNC_INTERVAL_HOURS: int = Field(
+        default=24,
+        description="Hours between Admin Panel license validation syncs"
+    )
+    TELEMETRY_ENABLED: bool = Field(
+        default=True,
+        description="Enable telemetry reporting to Admin Panel (health, usage metrics)"
+    )
+    TELEMETRY_INTERVAL_MINUTES: int = Field(
+        default=60,
+        description="Minutes between telemetry pings to Admin Panel"
+    )
+
     # Integrity verification
     INTEGRITY_MANIFEST_PATH: str = "/etc/churnvision/integrity.json"
     INTEGRITY_SIGNATURE_PATH: str = "/etc/churnvision/integrity.sig"
@@ -277,6 +321,28 @@ class Settings(BaseSettings):
         # Require asymmetric license validation in production to prevent key reuse
         if is_prod and signing_alg != "RS256":
             errors.append("LICENSE_SIGNING_ALG must be RS256 in production.")
+
+        # Validate Admin Panel config for external/hybrid license modes
+        if is_prod and self.LICENSE_VALIDATION_MODE.lower() in ("external", "hybrid"):
+            if not self.ADMIN_API_URL:
+                errors.append(
+                    "ADMIN_API_URL is required for external/hybrid license validation mode."
+                )
+            if not self.ADMIN_API_KEY:
+                errors.append(
+                    "ADMIN_API_KEY is required for external/hybrid license validation mode."
+                )
+            if not self.TENANT_SLUG:
+                errors.append(
+                    "TENANT_SLUG is required for external/hybrid license validation mode."
+                )
+
+        # Validate LICENSE_VALIDATION_MODE value
+        valid_modes = ("local", "external", "hybrid")
+        if self.LICENSE_VALIDATION_MODE.lower() not in valid_modes:
+            errors.append(
+                f"LICENSE_VALIDATION_MODE must be one of: {', '.join(valid_modes)}"
+            )
 
         # Require encryption key for PII in production
         if is_prod and not self.ENCRYPTION_KEY:

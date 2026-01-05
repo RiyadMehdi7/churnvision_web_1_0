@@ -29,6 +29,7 @@ import { DatabaseSyncFlow } from '../components/DatabaseSyncFlow';
 import { StepIndicator, UPLOAD_WORKFLOW_STEPS, type Step } from '../components/StepIndicator';
 import { ContextualLoadingSpinner } from '../components/LoadingSpinner';
 import { authService } from '@/services/authService';
+import { DataQualityReport, type DataQualityData } from '../components/DataQualityReport';
 
 // Define accepted file types for CSV and Excel
 const ACCEPTED_FILE_TYPES = [
@@ -509,6 +510,9 @@ export function DataManagement(): React.ReactElement {
     const [isProjectListLoading, setIsProjectListLoading] = useState(true); // Separate loading for project list fetch
     const [projectError, setProjectError] = useState<string | null>(null);
     const [newProjectName, setNewProjectName] = useState('');
+    
+    // Data quality report state (from upload or quality check)
+    const [dataQualityReport, setDataQualityReport] = useState<DataQualityData | null>(null);
     const [isCreatingProject, setIsCreatingProject] = useState(false);
     // --- States for Project Import/Export Modal ---
     const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
@@ -525,7 +529,12 @@ export function DataManagement(): React.ReactElement {
     // --- END NEW States ---
 
     // Main tab state for the interface
-    const [activeMainTab, setActiveMainTab] = useState<'files' | 'database' | 'integrations' | 'mlmodels'>('files');
+    const [activeMainTab, setActiveMainTab] = useState<'files' | 'database' | 'integrations' | 'mlmodels' | 'quality'>('files');
+    
+    // Data Quality state
+    const [activeDataQuality, setActiveDataQuality] = useState<DataQualityData | null>(null);
+    const [isQualityLoading, setIsQualityLoading] = useState(false);
+    const [qualityError, setQualityError] = useState<string>('');
 
     // ML Models state
     const [modelMetrics, setModelMetrics] = useState<any[]>([]);
@@ -586,6 +595,31 @@ export function DataManagement(): React.ReactElement {
             fetchModelMetrics();
         }
     }, [activeMainTab, fetchModelMetrics]);
+    
+    // Fetch data quality for active dataset
+    const fetchDataQuality = useCallback(async () => {
+        if (!activeProject) return;
+        setIsQualityLoading(true);
+        setQualityError('');
+        try {
+            const response = await api.get('/data-management/datasets/active/quality');
+            setActiveDataQuality(response.data);
+        } catch (error: any) {
+            logger.error('Error fetching data quality:', error, 'DataManagement');
+            const errorMsg = error.response?.data?.detail || error.message || 'Failed to load data quality';
+            setQualityError(errorMsg);
+            setActiveDataQuality(null);
+        } finally {
+            setIsQualityLoading(false);
+        }
+    }, [activeProject]);
+    
+    // Load quality when Data Quality tab is active
+    useEffect(() => {
+        if (activeMainTab === 'quality') {
+            fetchDataQuality();
+        }
+    }, [activeMainTab, fetchDataQuality]);
 
     // MetricPill component for displaying model metrics
     const MetricPill: React.FC<{ label: string; value: number | string }> = ({ label, value }) => {
@@ -1296,6 +1330,7 @@ export function DataManagement(): React.ReactElement {
         setUploadProgress(0);
         setProcessingStep('uploading');
         setGeneralError(''); // Clear general errors before starting
+        setDataQualityReport(null); // Clear previous quality report
 
         const currentDatasetName = selectedFile.name;
         const backendMappings = {
@@ -1447,6 +1482,12 @@ export function DataManagement(): React.ReactElement {
             setProcessingStep('saving');
             setUploadMessage('Data saved.');
             setUploadProgress(100);
+
+            // Capture data quality report if provided by backend
+            if (result.dataQuality) {
+                setDataQualityReport(result.dataQuality as DataQualityData);
+                logger.info("Data quality report received", { score: result.dataQuality.ml_readiness_score }, 'DataManagement');
+            }
 
             const needsTraining = (result as any).needsTraining;
             await fetchDatasets(); // Refresh dataset list regardless of training status
@@ -2956,6 +2997,19 @@ export function DataManagement(): React.ReactElement {
                                     Integrations
                                 </div>
                             </button>
+                            <button
+                                onClick={() => setActiveMainTab('quality')}
+                                title="Data Quality - ML Readiness Assessment"
+                                className={`px-4 py-2 text-sm font-medium border-b-2 rounded-t-lg cursor-pointer transition-all ${activeMainTab === 'quality'
+                                    ? 'border-orange-500 text-orange-600 dark:text-orange-400 bg-orange-50/50 dark:bg-orange-900/20'
+                                    : 'border-transparent text-gray-500 dark:text-gray-400 bg-gray-50/30 dark:bg-gray-700/10 hover:bg-gray-100 dark:hover:bg-gray-600/30'
+                                    }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <AlertCircle className="w-4 h-4" />
+                                    Data Quality
+                                </div>
+                            </button>
                         </div>
 
                         {/* Tab Content */}
@@ -3296,6 +3350,16 @@ export function DataManagement(): React.ReactElement {
                                                 message={uploadMessage}
                                                 type="upload"
                                             />
+                                            
+                                            {/* Data Quality Report - shown after successful upload */}
+                                            {dataQualityReport && uploadStatus === 'success' && (
+                                                <div className="mt-6">
+                                                    <DataQualityReport 
+                                                        data={dataQualityReport}
+                                                        onDismiss={() => setDataQualityReport(null)}
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                     </motion.section>
 
@@ -4174,6 +4238,86 @@ export function DataManagement(): React.ReactElement {
                                             <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">Connect a system above to start syncing data automatically</p>
                                         </div>
                                     </div>
+                                </motion.div>
+                            )}
+
+                            {/* Data Quality Tab */}
+                            {activeMainTab === 'quality' && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.3 }}
+                                    className="space-y-6"
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-orange-100 dark:bg-orange-900/40 rounded-lg">
+                                                <AlertCircle className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">ML Readiness Assessment</h3>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400">Analyze your data quality for churn prediction</p>
+                                            </div>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={fetchDataQuality}
+                                            disabled={isQualityLoading}
+                                        >
+                                            <RefreshCw className={`w-4 h-4 mr-2 ${isQualityLoading ? 'animate-spin' : ''}`} />
+                                            Refresh
+                                        </Button>
+                                    </div>
+
+                                    {/* Loading State */}
+                                    {isQualityLoading && (
+                                        <div className="flex items-center justify-center py-12">
+                                            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+                                            <span className="ml-3 text-gray-600 dark:text-gray-400">Analyzing data quality...</span>
+                                        </div>
+                                    )}
+
+                                    {/* Error State */}
+                                    {qualityError && !isQualityLoading && (
+                                        <div className="p-6 text-center bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                                            <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-2" />
+                                            <p className="text-red-700 dark:text-red-400 font-medium">Unable to assess data quality</p>
+                                            <p className="text-sm text-red-600 dark:text-red-500 mt-1">{qualityError}</p>
+                                            <Button 
+                                                variant="outline" 
+                                                size="sm" 
+                                                className="mt-4"
+                                                onClick={() => setActiveMainTab('files')}
+                                            >
+                                                <CloudUploadIcon className="w-4 h-4 mr-2" />
+                                                Upload Dataset
+                                            </Button>
+                                        </div>
+                                    )}
+
+                                    {/* Quality Report */}
+                                    {activeDataQuality && !isQualityLoading && !qualityError && (
+                                        <DataQualityReport data={activeDataQuality} />
+                                    )}
+
+                                    {/* No Data State */}
+                                    {!activeDataQuality && !isQualityLoading && !qualityError && (
+                                        <div className="p-6 text-center bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-dashed border-gray-300 dark:border-gray-600">
+                                            <Database className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                                            <p className="text-gray-600 dark:text-gray-400">No active dataset found</p>
+                                            <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">Upload a dataset to see data quality analysis</p>
+                                            <Button 
+                                                variant="outline" 
+                                                size="sm" 
+                                                className="mt-4"
+                                                onClick={() => setActiveMainTab('files')}
+                                            >
+                                                <CloudUploadIcon className="w-4 h-4 mr-2" />
+                                                Upload Dataset
+                                            </Button>
+                                        </div>
+                                    )}
                                 </motion.div>
                             )}
                         </div>

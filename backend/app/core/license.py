@@ -3,14 +3,20 @@ License Key Validation System for ChurnVision Enterprise
 
 This module handles on-premise license validation using JWT-signed keys.
 Includes hardware fingerprinting to prevent license sharing.
+
+Supports three validation modes:
+- local: JWT validation only (default, fully offline)
+- external: Admin Panel validation only (requires connectivity)
+- hybrid: Admin Panel with local JWT fallback (recommended for enterprise)
 """
 
 import hmac
 import json
+import logging
 import os
 import hashlib
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple, List
 from pathlib import Path
 
 import jwt
@@ -20,6 +26,8 @@ from pydantic import BaseModel
 from app.core.config import settings
 from app.core.hardware_fingerprint import HardwareFingerprint
 from app.core.installation import get_installation_id
+
+logger = logging.getLogger("churnvision.license")
 
 class LicenseInfo(BaseModel):
     """License information model"""
@@ -47,6 +55,13 @@ class LicenseValidator:
     _cached_info: Optional[LicenseInfo] = None
     _cached_at: Optional[datetime] = None
     _cached_license_hash: Optional[str] = None
+
+    # Hybrid mode tracking
+    _last_online_validation: Optional[datetime] = None
+    _offline_since: Optional[datetime] = None
+    _revoked_at: Optional[datetime] = None
+    _revocation_grace_ends: Optional[datetime] = None
+    _admin_panel_available: bool = True
 
     # License file paths
     PROD_LICENSE_PATH = Path("/etc/churnvision/license.key")
@@ -514,6 +529,257 @@ class LicenseValidator:
                 "error": e.detail
             }
 
+    # ==================== HYBRID VALIDATION METHODS ====================
+
+    @classmethod
+    async def validate_with_admin_panel(cls, license_key: str) -> Tuple[bool, Optional[LicenseInfo], Optional[str]]:
+        """
+        Validate license against external Admin Panel.
+
+        Args:
+            license_key: The license key to validate
+
+        Returns:
+            Tuple of (success, license_info, error_message)
+        """
+        from app.services.admin_panel_client import get_admin_panel_client
+
+        client = get_admin_panel_client()
+        result = await client.validate_license(license_key)
+
+        if result.valid:
+            # Successfully validated with Admin Panel
+            cls._last_online_validation = datetime.utcnow()
+            cls._offline_since = None
+            cls._admin_panel_available = True
+
+            # Clear revocation if previously set
+            if not result.revoked:
+                cls._revoked_at = None
+                cls._revocation_grace_ends = None
+
+            license_info = LicenseInfo(
+                company_name=result.company_name or "Unknown",
+                license_type=result.license_tier or "starter",
+                max_employees=result.max_employees or 100,
+                issued_at=datetime.utcnow(),  # Approximation since Admin Panel may not provide
+                expires_at=result.expires_at or (datetime.utcnow() + timedelta(days=365)),
+                features=result.features or [],
+                license_id=None,
+                installation_id=get_installation_id(),
+            )
+
+            logger.info(f"License validated via Admin Panel: tier={result.license_tier}")
+            return True, license_info, None
+
+        # Handle revocation
+        if result.revoked:
+            cls._revoked_at = datetime.utcnow()
+            cls._revocation_grace_ends = datetime.utcnow() + timedelta(
+                hours=settings.LICENSE_REVOCATION_GRACE_HOURS
+            )
+            logger.warning(f"License revoked by Admin Panel: {result.revocation_reason}")
+            return False, None, result.revocation_reason or "License revoked"
+
+        # Handle other failures
+        if result.error and "timeout" in result.error.lower():
+            # Network issue - mark as offline
+            if cls._offline_since is None:
+                cls._offline_since = datetime.utcnow()
+            cls._admin_panel_available = False
+            logger.warning(f"Admin Panel unreachable: {result.error}")
+        else:
+            logger.warning(f"Admin Panel validation failed: {result.error}")
+
+        return False, None, result.error
+
+    @classmethod
+    async def validate_license_hybrid(cls) -> LicenseInfo:
+        """
+        Hybrid license validation: Admin Panel first, local JWT fallback.
+
+        Flow:
+        1. Check for active revocation with grace period
+        2. Try Admin Panel validation (external/hybrid mode)
+        3. If offline, use cached validation with offline grace period
+        4. Fallback to local JWT (hybrid mode only)
+
+        Returns:
+            LicenseInfo object if valid
+
+        Raises:
+            HTTPException: If license is invalid, expired, or revoked
+        """
+        license_key = cls.load_license()
+        mode = settings.LICENSE_VALIDATION_MODE.lower()
+
+        # Dev mode shortcut (but log warning)
+        if cls._is_dev_mode():
+            logger.warning("Dev mode license - all checks bypassed. DO NOT use in production.")
+            return cls._dev_license()
+
+        if not license_key:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No license key found. Please install a valid license."
+            )
+
+        # Check for active revocation (past grace period)
+        if cls._revoked_at and cls._revocation_grace_ends:
+            if datetime.utcnow() > cls._revocation_grace_ends:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="License has been revoked. Please contact support."
+                )
+            else:
+                # In grace period - warn but allow
+                remaining = (cls._revocation_grace_ends - datetime.utcnow()).total_seconds() / 3600
+                logger.warning(f"License revoked - {remaining:.1f} hours remaining in grace period")
+
+        # External or Hybrid mode: try Admin Panel first
+        if mode in ("external", "hybrid"):
+            success, info, error = await cls.validate_with_admin_panel(license_key)
+
+            if success and info:
+                # Cache the result for offline operation
+                await cls._cache_license_state_async(info)
+                return info
+
+            # Admin Panel validation failed
+            if mode == "external":
+                # External-only mode: check offline grace period
+                return await cls._enforce_offline_grace_async(error)
+
+            # Hybrid mode: fallback to local JWT
+            logger.warning(f"Admin Panel validation failed ({error}), falling back to local JWT")
+
+        # Local validation (or hybrid fallback)
+        return cls.decode_license(license_key)
+
+    @classmethod
+    async def _enforce_offline_grace_async(cls, error: Optional[str]) -> LicenseInfo:
+        """
+        Enforce offline grace period when Admin Panel is unreachable.
+
+        Checks cached license state and allows operation within grace period.
+        """
+        from app.db.session import AsyncSessionLocal
+        from app.models.license_sync import LicenseState
+        from sqlalchemy import select
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(LicenseState).where(LicenseState.is_active == True).limit(1)
+            )
+            cached = result.scalar_one_or_none()
+
+            if cached:
+                # Check if within offline grace period
+                grace_end = cached.last_online_validation + timedelta(
+                    days=settings.LICENSE_OFFLINE_GRACE_DAYS
+                )
+
+                if datetime.utcnow() < grace_end:
+                    days_remaining = (grace_end - datetime.utcnow()).days
+                    logger.warning(
+                        f"Running in offline mode. {days_remaining} days until grace period expires."
+                    )
+
+                    return LicenseInfo(
+                        company_name=cached.company_name or "Unknown",
+                        license_type=cached.license_tier,
+                        max_employees=cached.max_employees or 100,
+                        issued_at=cached.last_online_validation,
+                        expires_at=cached.expires_at,
+                        features=cached.features or [],
+                        license_id=cached.license_id,
+                        installation_id=get_installation_id(),
+                    )
+                else:
+                    logger.error("Offline grace period has expired")
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"License validation failed: {error}. Offline grace period expired."
+        )
+
+    @classmethod
+    async def _cache_license_state_async(cls, info: LicenseInfo) -> None:
+        """
+        Cache validated license state for offline operation.
+
+        Persists license info to database for use when Admin Panel is unreachable.
+        """
+        from app.db.session import AsyncSessionLocal
+        from app.models.license_sync import LicenseState
+        from sqlalchemy import select
+
+        async with AsyncSessionLocal() as db:
+            # Upsert license state
+            license_id = info.license_id or "default"
+            result = await db.execute(
+                select(LicenseState).where(LicenseState.license_id == license_id)
+            )
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                existing.license_tier = info.license_type
+                existing.company_name = info.company_name
+                existing.max_employees = info.max_employees
+                existing.features = info.features
+                existing.expires_at = info.expires_at
+                existing.last_online_validation = datetime.utcnow()
+                existing.last_validation_status = "valid"
+                existing.is_active = True
+            else:
+                state = LicenseState(
+                    license_id=license_id,
+                    license_tier=info.license_type,
+                    company_name=info.company_name,
+                    max_employees=info.max_employees,
+                    features=info.features,
+                    expires_at=info.expires_at,
+                    last_online_validation=datetime.utcnow(),
+                    last_validation_status="valid",
+                    is_active=True,
+                )
+                db.add(state)
+
+            await db.commit()
+            logger.debug(f"Cached license state for offline operation: {license_id}")
+
+    @classmethod
+    def _dev_license(cls) -> LicenseInfo:
+        """Return development license with warning."""
+        return LicenseInfo(
+            company_name="Development Admin",
+            license_type="enterprise",
+            max_employees=999999,
+            issued_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(days=365),
+            features=["all"]
+        )
+
+    @classmethod
+    def get_validation_mode(cls) -> str:
+        """Get current license validation mode."""
+        return settings.LICENSE_VALIDATION_MODE.lower()
+
+    @classmethod
+    def get_hybrid_status(cls) -> Dict[str, Any]:
+        """Get current hybrid validation status for debugging/monitoring."""
+        return {
+            "validation_mode": cls.get_validation_mode(),
+            "admin_panel_configured": bool(settings.ADMIN_API_URL),
+            "admin_panel_available": cls._admin_panel_available,
+            "last_online_validation": cls._last_online_validation.isoformat() if cls._last_online_validation else None,
+            "offline_since": cls._offline_since.isoformat() if cls._offline_since else None,
+            "revoked_at": cls._revoked_at.isoformat() if cls._revoked_at else None,
+            "revocation_grace_ends": cls._revocation_grace_ends.isoformat() if cls._revocation_grace_ends else None,
+            "offline_grace_days": settings.LICENSE_OFFLINE_GRACE_DAYS,
+            "revocation_grace_hours": settings.LICENSE_REVOCATION_GRACE_HOURS,
+        }
+
 
 # Convenience function for dependency injection
 def get_current_license() -> LicenseInfo:
@@ -535,6 +801,47 @@ def require_license_tier(required_tier: str):
     tier_order = {"starter": 0, "pro": 1, "enterprise": 2}
 
     async def dependency(license_info: LicenseInfo = Depends(get_current_license)) -> LicenseInfo:
+        tier = license_info.license_type.lower()
+        if tier_order.get(tier, 0) < tier_order.get(required_tier, 0):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"{required_tier.title()} license required for this feature"
+            )
+        return license_info
+
+    return dependency
+
+
+async def get_current_license_hybrid() -> LicenseInfo:
+    """
+    Async FastAPI dependency for hybrid license validation.
+
+    Uses Admin Panel validation in external/hybrid modes,
+    with local JWT fallback in hybrid mode.
+
+    Usage:
+        @router.get("/protected")
+        async def protected_endpoint(
+            license: LicenseInfo = Depends(get_current_license_hybrid)
+        ):
+            return {"message": f"Welcome {license.company_name}"}
+    """
+    mode = settings.LICENSE_VALIDATION_MODE.lower()
+
+    if mode in ("external", "hybrid"):
+        return await LicenseValidator.validate_license_hybrid()
+    else:
+        # Local mode - use sync validation
+        return LicenseValidator.validate_license()
+
+
+def require_license_tier_hybrid(required_tier: str):
+    """
+    Async dependency that enforces a minimum license tier with hybrid validation.
+    """
+    tier_order = {"starter": 0, "pro": 1, "enterprise": 2}
+
+    async def dependency(license_info: LicenseInfo = Depends(get_current_license_hybrid)) -> LicenseInfo:
         tier = license_info.license_type.lower()
         if tier_order.get(tier, 0) < tier_order.get(required_tier, 0):
             raise HTTPException(

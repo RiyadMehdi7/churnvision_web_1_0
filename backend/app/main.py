@@ -218,6 +218,22 @@ app.add_middleware(RequestTrackingMiddleware)
 # Request logging middleware with timing and request IDs
 app.add_middleware(RequestLoggingMiddleware)
 
+# License validation middleware (validates on every request)
+# Import and register conditionally to avoid startup issues
+from app.core.license_middleware import (
+    LicenseValidationMiddleware,
+    set_license_middleware,
+)
+
+_license_middleware = LicenseValidationMiddleware(
+    app=None,  # Will be set by Starlette
+    cache_ttl_seconds=settings.LICENSE_CACHE_TTL_SECONDS,
+)
+app.add_middleware(
+    LicenseValidationMiddleware,
+    cache_ttl_seconds=settings.LICENSE_CACHE_TTL_SECONDS,
+)
+
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
@@ -371,6 +387,28 @@ async def startup_event():
         logger.error(f"License validation failed: {e}")
         if settings.ENVIRONMENT.lower() == "production":
             raise SystemExit("Invalid or missing license")
+
+    # Start license sync service if Admin Panel is configured (hybrid/external mode)
+    if settings.LICENSE_VALIDATION_MODE.lower() in ("external", "hybrid") and settings.ADMIN_API_URL:
+        try:
+            from app.services.license_sync_service import (
+                start_license_sync_service,
+                stop_license_sync_service,
+            )
+            await start_license_sync_service()
+            logger.info(
+                f"License sync service started (mode: {settings.LICENSE_VALIDATION_MODE}, "
+                f"sync interval: {settings.LICENSE_SYNC_INTERVAL_HOURS}h)"
+            )
+
+            # Register cleanup on shutdown
+            shutdown_manager = get_shutdown_manager()
+            shutdown_manager.add_shutdown_callback(stop_license_sync_service)
+        except Exception as e:
+            logger.error(f"Failed to start license sync service: {e}")
+            # Don't fail startup - sync service is optional enhancement
+    else:
+        logger.info(f"License validation mode: {settings.LICENSE_VALIDATION_MODE} (sync service not started)")
 
     # Start data retention cleanup service (runs daily in production, 6h in dev)
     retention_service = get_retention_service()

@@ -3,7 +3,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 import pandas as pd
 
@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.core.security_utils import sanitize_filename, sanitize_error_message
+from app.services.data_quality_service import assess_data_quality, DataQualityReport
 
 logger = logging.getLogger(__name__)
 from app.models.user import User
@@ -28,6 +29,7 @@ from app.schemas.data_management import (
     CreateProjectRequest,
     SetActiveProjectRequest,
     OperationResult,
+    DataQualityResponse,
 )
 from app.services.project_service import (
     ensure_default_project,
@@ -119,7 +121,9 @@ async def set_active_project(
     """Set the active project using its dbPath."""
     project = await find_project_by_db_path(db, request.dbPath)
     if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+        )
 
     await set_active_project_service(db, project)
     return OperationResult(success=True)
@@ -133,7 +137,9 @@ async def delete_project(
 ):
     """Delete a project and its datasets."""
     normalized_path = f"/{path.lstrip('/')}"
-    project = await db.scalar(select(ProjectModel).where(ProjectModel.path == normalized_path))
+    project = await db.scalar(
+        select(ProjectModel).where(ProjectModel.path == normalized_path)
+    )
     if not project:
         return OperationResult(success=False, error="Project not found")
 
@@ -156,10 +162,69 @@ async def list_datasets(
     """List datasets scoped to the active project only."""
     active_project = await get_active_project(db)
     result = await db.execute(
-        select(DatasetModel).where(DatasetModel.project_id == active_project.id).order_by(DatasetModel.upload_date.desc())
+        select(DatasetModel)
+        .where(DatasetModel.project_id == active_project.id)
+        .order_by(DatasetModel.upload_date.desc())
     )
     datasets = result.scalars().all()
     return [_dataset_to_schema(d) for d in datasets]
+
+
+@router.get("/datasets/active/quality", response_model=DataQualityResponse)
+async def get_active_dataset_quality(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get data quality assessment for the currently active dataset.
+
+    Returns ML readiness score, issues, and recommendations.
+    Use this for the Data Quality tab in the UI.
+    """
+    active_project = await get_active_project(db)
+
+    # Find the active dataset for this project
+    dataset = await db.scalar(
+        select(DatasetModel).where(
+            DatasetModel.project_id == active_project.id,
+            DatasetModel.is_active == 1,
+        )
+    )
+
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active dataset found. Please upload a dataset first.",
+        )
+
+    if not dataset.file_path or not Path(dataset.file_path).exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset file not found on disk.",
+        )
+
+    try:
+        # Read FULL dataset for accurate assessment
+        file_path = Path(dataset.file_path)
+        if file_path.suffix.lower() in [".csv", ".txt"]:
+            df = pd.read_csv(file_path)
+        elif file_path.suffix.lower() in [".xlsx", ".xls"]:
+            df = pd.read_excel(file_path)
+        else:
+            df = pd.read_csv(file_path)
+
+        logger.info(
+            f"Quality check for active dataset {dataset.dataset_id}: {len(df)} rows"
+        )
+        report = assess_data_quality(df, source="upload")
+        return DataQualityResponse(**report.to_dict())
+
+    except Exception as e:
+        logger.error(f"Data quality assessment failed for active dataset: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to assess data quality: {str(e)}",
+        )
 
 
 @router.delete("/datasets/{dataset_id}", response_model=OperationResult)
@@ -177,7 +242,10 @@ async def delete_dataset(
         )
     )
     if not dataset:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found for active project")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset not found for active project",
+        )
 
     # Remove underlying file best-effort
     if dataset.file_path:
@@ -216,7 +284,10 @@ async def get_dataset_preview(
         )
     )
     if not dataset:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found for active project")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset not found for active project",
+        )
 
     # Fetch HR data rows for this dataset
     result = await db.execute(
@@ -240,7 +311,9 @@ async def get_dataset_preview(
             "tenure": float(row.tenure) if row.tenure else None,
             "employee_cost": float(row.employee_cost) if row.employee_cost else None,
             "report_date": row.report_date.isoformat() if row.report_date else None,
-            "termination_date": row.termination_date.isoformat() if row.termination_date else None,
+            "termination_date": row.termination_date.isoformat()
+            if row.termination_date
+            else None,
         }
         # Include additional_data fields if present
         if row.additional_data:
@@ -272,7 +345,10 @@ async def activate_dataset(
         )
     )
     if not dataset:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found for active project")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset not found for active project",
+        )
 
     await db.execute(
         update(DatasetModel)
@@ -353,7 +429,10 @@ async def import_from_db(
     db: AsyncSession = Depends(get_db),
 ):
     """Import data from DB (placeholder)"""
-    return OperationResult(success=True, message=f"Imported data from {request.tableName} to {request.datasetName}")
+    return OperationResult(
+        success=True,
+        message=f"Imported data from {request.tableName} to {request.datasetName}",
+    )
 
 
 @router.post("/projects/export", response_model=OperationResult)
@@ -400,7 +479,9 @@ async def upload_file(
         if projectName:
             project = await find_project_by_name(db, projectName)
             if not project:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+                )
         if not project:
             project = await get_active_project(db)
 
@@ -440,6 +521,25 @@ async def upload_file(
             .values(is_active=0)
         )
 
+        # Run data quality assessment on FULL dataset
+        quality_report: Optional[Dict[str, Any]] = None
+        try:
+            # Read full file for accurate assessment (use row_count if available to log)
+            df_for_quality = pd.read_csv(dest)
+            logger.info(
+                f"Data quality assessment: reading {len(df_for_quality)} rows "
+                f"(file row_count={row_count})"
+            )
+            report = assess_data_quality(df_for_quality, source="upload")
+            quality_report = report.to_dict()
+            logger.info(
+                f"Data quality assessment complete: score={report.ml_readiness_score}, "
+                f"can_train={report.can_train_model}, issues={len(report.critical_issues)}"
+            )
+        except Exception as e:
+            logger.warning(f"Data quality assessment failed: {e}")
+            quality_report = None
+
         dataset = DatasetModel(
             dataset_id=dataset_id,
             name=datasetName or file.filename,
@@ -450,7 +550,8 @@ async def upload_file(
             is_active=1,
             is_snapshot=0,
             snapshot_group=None,
-            description=f"Uploaded {file.filename}" + (f" for project {project.name}" if projectName else ""),
+            description=f"Uploaded {file.filename}"
+            + (f" for project {project.name}" if projectName else ""),
             project_id=project.id,
             file_path=str(dest),
             column_mapping=parsed_mapping,
@@ -462,6 +563,7 @@ async def upload_file(
             success=True,
             message="File uploaded successfully",
             filePath=str(dest),
+            dataQuality=quality_report,
         )
     except HTTPException:
         raise
@@ -472,4 +574,92 @@ async def upload_file(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=sanitize_error_message(exc, "file upload"),
+        )
+
+
+@router.get("/datasets/{dataset_id}/quality", response_model=DataQualityResponse)
+async def get_dataset_quality(
+    dataset_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get data quality assessment for a dataset.
+
+    Returns ML readiness score, issues, and recommendations.
+    """
+    active_project = await get_active_project(db)
+
+    dataset = await db.scalar(
+        select(DatasetModel).where(
+            DatasetModel.dataset_id == dataset_id,
+            DatasetModel.project_id == active_project.id,
+        )
+    )
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset not found for active project",
+        )
+
+    if not dataset.file_path or not Path(dataset.file_path).exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Dataset file not found"
+        )
+
+    try:
+        # Read FULL dataset for accurate assessment
+        file_path = Path(dataset.file_path)
+        if file_path.suffix.lower() in [".csv", ".txt"]:
+            df = pd.read_csv(file_path)
+        elif file_path.suffix.lower() in [".xlsx", ".xls"]:
+            df = pd.read_excel(file_path)
+        else:
+            df = pd.read_csv(file_path)
+
+        logger.info(f"Quality check for dataset {dataset_id}: {len(df)} rows")
+        report = assess_data_quality(df, source="upload")
+        return DataQualityResponse(**report.to_dict())
+
+    except Exception as e:
+        logger.error(f"Data quality assessment failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to assess data quality: {str(e)}",
+        )
+
+
+@router.post("/quality/analyze", response_model=DataQualityResponse)
+async def analyze_data_quality(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Analyze data quality for an uploaded file without saving it.
+
+    Use this endpoint to preview data quality before committing to upload.
+    """
+    try:
+        content = await file.read()
+
+        # Determine file type and read FULL file
+        filename = file.filename or "data.csv"
+        if filename.lower().endswith((".xlsx", ".xls")):
+            import io
+
+            df = pd.read_excel(io.BytesIO(content))
+        else:
+            import io
+
+            df = pd.read_csv(io.StringIO(content.decode("utf-8", errors="ignore")))
+
+        logger.info(f"Quality analysis preview: {len(df)} rows from {filename}")
+        report = assess_data_quality(df, source="upload")
+        return DataQualityResponse(**report.to_dict())
+
+    except Exception as e:
+        logger.error(f"Data quality analysis failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to analyze file: {str(e)}",
         )

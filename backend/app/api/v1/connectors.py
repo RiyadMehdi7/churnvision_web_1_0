@@ -24,6 +24,9 @@ from app.connectors.base import (
     AVAILABLE_CONNECTORS,
     SyncStatus,
 )
+from app.services.data_quality_service import assess_data_quality
+import pandas as pd
+
 # Import connectors to ensure they register themselves
 from app.connectors import bamboohr  # noqa: F401
 
@@ -35,8 +38,10 @@ router = APIRouter()
 # Pydantic Schemas
 # =============================================================================
 
+
 class ConnectorInfo(BaseModel):
     """Available connector information"""
+
     connector_type: str
     display_name: str
     category: str
@@ -48,6 +53,7 @@ class ConnectorInfo(BaseModel):
 
 class ConnectorListResponse(BaseModel):
     """Response for listing available connectors"""
+
     connectors: List[ConnectorInfo]
     total: int
     categories: List[str]
@@ -55,6 +61,7 @@ class ConnectorListResponse(BaseModel):
 
 class OAuthInitiateRequest(BaseModel):
     """Request to initiate OAuth flow"""
+
     connector_type: str
     redirect_uri: str
     tenant_id: Optional[str] = None
@@ -63,12 +70,14 @@ class OAuthInitiateRequest(BaseModel):
 
 class OAuthInitiateResponse(BaseModel):
     """Response with OAuth authorization URL"""
+
     authorization_url: str
     state: str
 
 
 class OAuthCallbackRequest(BaseModel):
     """OAuth callback data"""
+
     code: str
     state: str
     connector_type: str
@@ -76,6 +85,7 @@ class OAuthCallbackRequest(BaseModel):
 
 class APIKeyConnectionRequest(BaseModel):
     """Request to create API key-based connection"""
+
     connector_type: str
     connection_name: str
     api_key: str
@@ -86,6 +96,7 @@ class APIKeyConnectionRequest(BaseModel):
 
 class ConnectionResponse(BaseModel):
     """Connection details response"""
+
     connection_id: str
     name: str
     connector_type: str
@@ -98,6 +109,7 @@ class ConnectionResponse(BaseModel):
 
 class ConnectionTestResponse(BaseModel):
     """Connection test result"""
+
     success: bool
     message: str
     latency_ms: Optional[float]
@@ -107,12 +119,14 @@ class ConnectionTestResponse(BaseModel):
 
 class SyncRequest(BaseModel):
     """Request to trigger sync"""
+
     incremental: bool = False
     dataset_name: Optional[str] = None
 
 
 class SyncStatusResponse(BaseModel):
     """Sync status response"""
+
     connection_id: str
     status: str
     records_fetched: int
@@ -127,6 +141,7 @@ class SyncStatusResponse(BaseModel):
 
 class FieldMappingConfig(BaseModel):
     """Field mapping configuration"""
+
     source_field: str
     target_field: str
     transform: Optional[str] = None
@@ -136,6 +151,7 @@ class FieldMappingConfig(BaseModel):
 
 class ConnectionUpdateRequest(BaseModel):
     """Request to update connection settings"""
+
     name: Optional[str] = None
     sync_frequency_minutes: Optional[int] = None
     field_mappings: Optional[List[FieldMappingConfig]] = None
@@ -146,15 +162,13 @@ class ConnectionUpdateRequest(BaseModel):
 # Utility Functions
 # =============================================================================
 
+
 def generate_state_token() -> str:
     """Generate secure state token for OAuth"""
     return secrets.token_urlsafe(32)
 
 
-async def get_connection_or_404(
-    db: AsyncSession,
-    connection_id: str
-) -> Connection:
+async def get_connection_or_404(db: AsyncSession, connection_id: str) -> Connection:
     """Get connection by ID or raise 404"""
     result = await db.execute(
         select(Connection).where(Connection.connection_id == connection_id)
@@ -163,7 +177,7 @@ async def get_connection_or_404(
     if not connection:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Connection {connection_id} not found"
+            detail=f"Connection {connection_id} not found",
         )
     return connection
 
@@ -172,10 +186,13 @@ async def get_connection_or_404(
 # Endpoints
 # =============================================================================
 
+
 @router.get("/available", response_model=ConnectorListResponse)
 async def list_available_connectors(
     category: Optional[str] = Query(None, description="Filter by category"),
-    status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
+    status_filter: Optional[str] = Query(
+        None, alias="status", description="Filter by status"
+    ),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -199,7 +216,7 @@ async def list_available_connectors(
     return ConnectorListResponse(
         connectors=[ConnectorInfo(**c) for c in connectors],
         total=len(connectors),
-        categories=categories
+        categories=categories,
     )
 
 
@@ -229,7 +246,7 @@ async def list_registered_connectors(
                 "required_scopes": cap.required_scopes,
             }
             for cap in capabilities
-        ]
+        ],
     }
 
 
@@ -278,26 +295,30 @@ async def initiate_oauth_flow(
     """
     # Find connector info
     connector_info = next(
-        (c for c in AVAILABLE_CONNECTORS if c["connector_type"] == request.connector_type),
-        None
+        (
+            c
+            for c in AVAILABLE_CONNECTORS
+            if c["connector_type"] == request.connector_type
+        ),
+        None,
     )
 
     if not connector_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Connector type '{request.connector_type}' not found"
+            detail=f"Connector type '{request.connector_type}' not found",
         )
 
     if connector_info["auth_type"] != "oauth2":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Connector '{request.connector_type}' does not use OAuth2"
+            detail=f"Connector '{request.connector_type}' does not use OAuth2",
         )
 
     if connector_info["status"] != "available":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Connector '{request.connector_type}' is not yet available (status: {connector_info['status']})"
+            detail=f"Connector '{request.connector_type}' is not yet available (status: {connector_info['status']})",
         )
 
     # Generate state token
@@ -316,7 +337,7 @@ async def initiate_oauth_flow(
     if not base_url:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=f"OAuth flow not yet implemented for '{request.connector_type}'"
+            detail=f"OAuth flow not yet implemented for '{request.connector_type}'",
         )
 
     # Store state for callback verification (in production, use Redis/DB)
@@ -331,12 +352,11 @@ async def initiate_oauth_flow(
         f"&scope=employees:read"
     )
 
-    logger.info(f"OAuth flow initiated for {request.connector_type} by user {current_user.id}")
-
-    return OAuthInitiateResponse(
-        authorization_url=authorization_url,
-        state=state
+    logger.info(
+        f"OAuth flow initiated for {request.connector_type} by user {current_user.id}"
     )
+
+    return OAuthInitiateResponse(authorization_url=authorization_url, state=state)
 
 
 @router.post("/oauth/callback")
@@ -360,7 +380,7 @@ async def handle_oauth_callback(
     return {
         "success": True,
         "message": "OAuth flow completed - connection created",
-        "note": "Full OAuth implementation pending - use API key connection for now"
+        "note": "Full OAuth implementation pending - use API key connection for now",
     }
 
 
@@ -377,20 +397,24 @@ async def create_api_key_connection(
     """
     # Verify connector type exists and uses API key
     connector_info = next(
-        (c for c in AVAILABLE_CONNECTORS if c["connector_type"] == request.connector_type),
-        None
+        (
+            c
+            for c in AVAILABLE_CONNECTORS
+            if c["connector_type"] == request.connector_type
+        ),
+        None,
     )
 
     if not connector_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Connector type '{request.connector_type}' not found"
+            detail=f"Connector type '{request.connector_type}' not found",
         )
 
     if connector_info["auth_type"] not in ["api_key", "token"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Connector '{request.connector_type}' does not use API key authentication"
+            detail=f"Connector '{request.connector_type}' does not use API key authentication",
         )
 
     # Check if connector is implemented
@@ -398,6 +422,7 @@ async def create_api_key_connection(
 
     # Generate connection ID
     import uuid
+
     connection_id = f"conn_{uuid.uuid4().hex[:12]}"
 
     # Create credentials for testing
@@ -407,7 +432,7 @@ async def create_api_key_connection(
         api_key=request.api_key,
         api_endpoint=request.api_endpoint,
         tenant_id=request.tenant_id,
-        extra=request.extra_config or {}
+        extra=request.extra_config or {},
     )
 
     # Test connection if connector is implemented
@@ -418,7 +443,7 @@ async def create_api_key_connection(
         if not test_result.success:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Connection test failed: {test_result.message}"
+                detail=f"Connection test failed: {test_result.message}",
             )
 
     # Create connection record
@@ -441,7 +466,9 @@ async def create_api_key_connection(
     await db.commit()
     await db.refresh(connection)
 
-    logger.info(f"API key connection created: {connection_id} for {request.connector_type}")
+    logger.info(
+        f"API key connection created: {connection_id} for {request.connector_type}"
+    )
 
     return ConnectionResponse(
         connection_id=connection.connection_id,
@@ -496,7 +523,7 @@ async def update_connection(
     if request.field_mappings is not None:
         update_data["connector_config"] = {
             **(connection.connector_config or {}),
-            "field_mappings": [fm.model_dump() for fm in request.field_mappings]
+            "field_mappings": [fm.model_dump() for fm in request.field_mappings],
         }
 
     if update_data:
@@ -539,14 +566,14 @@ async def test_connection(
     if not connection.connector_type:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Connection does not have a connector type configured"
+            detail="Connection does not have a connector type configured",
         )
 
     connector_class = ConnectorRegistry.get(connection.connector_type)
     if not connector_class:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Connector type '{connection.connector_type}' is not implemented"
+            detail=f"Connector type '{connection.connector_type}' is not implemented",
         )
 
     # Build credentials from connection
@@ -558,7 +585,7 @@ async def test_connection(
         refresh_token=connection.oauth_refresh_token_encrypted,  # Would be decrypted
         api_endpoint=connection.api_endpoint,
         tenant_id=connection.tenant_id,
-        extra=connection.connector_config or {}
+        extra=connection.connector_config or {},
     )
 
     # Test connection
@@ -570,7 +597,7 @@ async def test_connection(
         message=result.message,
         latency_ms=result.latency_ms,
         permissions=result.permissions,
-        errors=result.errors
+        errors=result.errors,
     )
 
 
@@ -592,14 +619,14 @@ async def trigger_sync(
     if not connection.connector_type:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Connection does not have a connector type configured"
+            detail="Connection does not have a connector type configured",
         )
 
     connector_class = ConnectorRegistry.get(connection.connector_type)
     if not connector_class:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Connector type '{connection.connector_type}' is not implemented"
+            detail=f"Connector type '{connection.connector_type}' is not implemented",
         )
 
     # Update status to in_progress
@@ -624,11 +651,13 @@ async def trigger_sync(
         started_at=datetime.utcnow(),
         completed_at=None,
         duration_seconds=0,
-        errors=[]
+        errors=[],
     )
 
 
-@router.get("/connections/{connection_id}/sync/status", response_model=SyncStatusResponse)
+@router.get(
+    "/connections/{connection_id}/sync/status", response_model=SyncStatusResponse
+)
 async def get_sync_status(
     connection_id: str,
     db: AsyncSession = Depends(get_db),
@@ -647,7 +676,7 @@ async def get_sync_status(
         started_at=connection.last_sync_at,
         completed_at=connection.last_sync_at,
         duration_seconds=0,
-        errors=[connection.last_sync_error] if connection.last_sync_error else []
+        errors=[connection.last_sync_error] if connection.last_sync_error else [],
     )
 
 
@@ -667,14 +696,14 @@ async def get_connector_schema(
     if not connection.connector_type:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Connection does not have a connector type configured"
+            detail="Connection does not have a connector type configured",
         )
 
     connector_class = ConnectorRegistry.get(connection.connector_type)
     if not connector_class:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Connector type '{connection.connector_type}' is not implemented"
+            detail=f"Connector type '{connection.connector_type}' is not implemented",
         )
 
     # Build credentials and get schema
@@ -684,7 +713,7 @@ async def get_connector_schema(
         api_key=connection.api_key_encrypted,
         api_endpoint=connection.api_endpoint,
         tenant_id=connection.tenant_id,
-        extra=connection.connector_config or {}
+        extra=connection.connector_config or {},
     )
 
     connector = connector_class(credentials)
@@ -701,7 +730,7 @@ async def get_connector_schema(
                 "required": fm.required,
             }
             for fm in connector.get_default_field_mapping()
-        ]
+        ],
     }
 
 
@@ -722,14 +751,14 @@ async def preview_sync_data(
     if not connection.connector_type:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Connection does not have a connector type configured"
+            detail="Connection does not have a connector type configured",
         )
 
     connector_class = ConnectorRegistry.get(connection.connector_type)
     if not connector_class:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Connector type '{connection.connector_type}' is not implemented"
+            detail=f"Connector type '{connection.connector_type}' is not implemented",
         )
 
     # Build credentials
@@ -739,7 +768,7 @@ async def preview_sync_data(
         api_key=connection.api_key_encrypted,
         api_endpoint=connection.api_endpoint,
         tenant_id=connection.tenant_id,
-        extra=connection.connector_config or {}
+        extra=connection.connector_config or {},
     )
 
     # Fetch preview data
@@ -749,13 +778,24 @@ async def preview_sync_data(
         employees = await connector.fetch_employees()
         preview = employees[:limit]
 
+        # Run data quality assessment on the fetched data
+        quality_report = None
+        if employees:
+            try:
+                df = pd.DataFrame(employees)
+                report = assess_data_quality(df, source="database")
+                quality_report = report.to_dict()
+            except Exception as qe:
+                logger.warning(f"Data quality assessment failed: {qe}")
+
         return {
             "total_available": len(employees),
             "preview_count": len(preview),
-            "records": preview
+            "records": preview,
+            "data_quality": quality_report,
         }
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch preview data: {str(e)}"
+            detail=f"Failed to fetch preview data: {str(e)}",
         )

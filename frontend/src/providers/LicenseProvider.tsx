@@ -8,7 +8,6 @@ import React, {
     ReactNode,
 } from 'react';
 import api from '@/services/apiService';
-// import type { LicenseState } from '../types/electron';
 
 interface LicenseState {
     status: string;
@@ -25,12 +24,8 @@ const FEATURE_ACCESS: Record<LicenseTier, string[]> = {
     enterprise: ['home', 'data-management', 'settings', 'ai-assistant', 'playground', 'knowledge-base', 'gdpr']
 };
 
-// Dev override: always grant enterprise in development to unlock all pages
-const DEV_MODE =
-    (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.MODE === 'development') ||
-    process.env.NODE_ENV === 'development';
-
 // --- Context Setup ---
+// SECURITY: setLicenseTier removed from public interface to prevent privilege escalation
 interface LicenseContextType {
     licenseStatus: string;
     licenseData: any | null;
@@ -43,7 +38,7 @@ interface LicenseContextType {
     refreshStatus: () => Promise<void>;
     licenseTier: LicenseTier;
     hasAccess: (feature: string) => boolean;
-    setLicenseTier: (tier: LicenseTier) => void;
+    // SECURITY: setLicenseTier intentionally NOT exposed - tier is server-authoritative
 }
 
 const LicenseContext = createContext<LicenseContextType | undefined>(undefined);
@@ -58,18 +53,27 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
     const [error, setError] = useState<string | null>(null);
     const [installationId, setInstallationId] = useState<string | null>(null);
 
-    // License tier state
+    // License tier state - ONLY set from server response
     const [licenseTier, setLicenseTierState] = useState<LicenseTier>('starter');
 
-    // Function to detect license tier from license data
+    // Function to detect license tier from license data (server response only)
     const detectLicenseTier = useCallback((licenseData: any): LicenseTier => {
+        // SECURITY: Only trust tier from server response, never localStorage
         if (!licenseData) return 'starter';
 
-        // Check for tier in license data
+        // Check for tier in license data (server-provided)
         if (licenseData.tier) {
             const tier = licenseData.tier.toLowerCase();
             if (['starter', 'pro', 'enterprise'].includes(tier)) {
                 return tier as LicenseTier;
+            }
+        }
+
+        // Check for license_type field (from backend LicenseInfo)
+        if (licenseData.license_type) {
+            const licenseType = licenseData.license_type.toLowerCase();
+            if (['starter', 'pro', 'enterprise'].includes(licenseType)) {
+                return licenseType as LicenseTier;
             }
         }
 
@@ -89,35 +93,18 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
             return 'starter';
         }
 
+        // Default to starter (most restrictive)
         return 'starter';
     }, []);
 
-    // Update license tier when license data changes
+    // Update license tier when license data changes (from server only)
     useEffect(() => {
         const newTier = detectLicenseTier(currentLicenseState.data);
         setLicenseTierState(newTier);
-
-        // Also store in localStorage for persistence
-        localStorage.setItem('licenseTier', newTier);
+        // SECURITY: Do NOT persist to localStorage - tier must always come from server
     }, [currentLicenseState.data, detectLicenseTier]);
 
-    // Load cached license tier on mount
-    useEffect(() => {
-        const cachedTier = localStorage.getItem('licenseTier') as LicenseTier;
-        if (DEV_MODE) {
-            setLicenseTierState('enterprise');
-            localStorage.setItem('licenseTier', 'enterprise');
-            return;
-        }
-        if (cachedTier && ['starter', 'pro', 'enterprise'].includes(cachedTier)) {
-            setLicenseTierState(cachedTier);
-        }
-    }, []);
-
-    const setLicenseTier = useCallback((tier: LicenseTier) => {
-        setLicenseTierState(tier);
-        localStorage.setItem('licenseTier', tier);
-    }, []);
+    // SECURITY: No localStorage tier loading - always start at 'starter' until server confirms
 
     const hasAccess = useCallback((feature: string): boolean => {
         return FEATURE_ACCESS[licenseTier].includes(feature);
@@ -128,18 +115,7 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
         let isMounted = true;
 
         const fetchInitialData = async () => {
-            // Short-circuit in dev: grant enterprise tier and active status
-            if (DEV_MODE) {
-                setCurrentLicenseState({
-                    status: 'ACTIVE',
-                    data: { tier: 'enterprise', expires_at: null, is_licensed: true }
-                });
-                setLicenseTierState('enterprise');
-                localStorage.setItem('licenseTier', 'enterprise');
-                setIsLoading(false);
-                return;
-            }
-
+            // SECURITY: No DEV_MODE bypass - always validate with server
             if (!isMounted) return;
             setIsLoading(true);
             setError(null);
@@ -151,21 +127,19 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
                     const id = idResponse.data.installation_id;
                     setInstallationId(id);
 
-                    // Store in localStorage for persistence
-                    localStorage.setItem('installationId', id);
-
                     // Fetch license status using the installation ID
                     const statusResponse = await api.get('/license/status', {
                         params: { installation_id: id }
                     });
 
                     if (isMounted && statusResponse.data) {
-                        const { status, tier, expires_at, grace_period_ends, is_licensed } = statusResponse.data;
+                        const { status, tier, license_type, expires_at, grace_period_ends, is_licensed } = statusResponse.data;
 
                         setCurrentLicenseState({
                             status: status || 'UNLICENSED',
                             data: {
-                                tier,
+                                tier: tier || license_type,
+                                license_type,
                                 expires_at,
                                 is_licensed
                             }
@@ -177,6 +151,7 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
                     console.error('Error fetching license data:', err);
                     setError(err.response?.data?.detail || err.message || 'Could not load license information.');
                     setCurrentLicenseState({ status: 'ERROR', data: null });
+                    // SECURITY: On error, tier remains at 'starter' (most restrictive)
                 }
             } finally {
                 if (isMounted) {
@@ -200,7 +175,7 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
             });
             setError(null);
 
-            // Refresh status from backend to confirm
+            // Refresh status from backend to confirm (server-authoritative)
             refreshStatus();
         };
 
@@ -267,12 +242,13 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
             });
 
             if (statusResponse.data) {
-                const { status, tier, expires_at, grace_period_ends, is_licensed } = statusResponse.data;
+                const { status, tier, license_type, expires_at, grace_period_ends, is_licensed } = statusResponse.data;
 
                 setCurrentLicenseState({
                     status: status || 'UNLICENSED',
                     data: {
-                        tier,
+                        tier: tier || license_type,
+                        license_type,
                         expires_at,
                         is_licensed
                     }
@@ -297,6 +273,7 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
     }, [currentLicenseState.data]);
 
     // --- Context Value ---
+    // SECURITY: setLicenseTier NOT included - tier is server-authoritative only
     const value = useMemo<LicenseContextType>(
         () => ({
             licenseStatus: currentLicenseState.status,
@@ -310,7 +287,6 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
             refreshStatus,
             licenseTier,
             hasAccess,
-            setLicenseTier,
         }),
         [
             currentLicenseState,
@@ -323,7 +299,6 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
             refreshStatus,
             licenseTier,
             hasAccess,
-            setLicenseTier,
         ]
     );
 

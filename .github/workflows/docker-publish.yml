@@ -104,6 +104,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Clean up disk before combined build
+        run: |
+          docker system prune -af
+          docker builder prune -af
+
       # Combined image using multi-stage Dockerfile
       - name: Create combined Dockerfile
         run: |
@@ -234,5 +239,4 @@ jobs:
           build-args: |
             BUILD_SHA=${{ github.sha }}
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          no-cache: true

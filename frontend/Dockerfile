@@ -7,9 +7,6 @@ COPY frontend/ ./
 ARG VITE_API_URL=
 ENV VITE_API_URL=${VITE_API_URL}
 
-# Run bun install twice to fix Tailwind CSS module resolution issue
-# First install may have incomplete module linking
-RUN bun install
 RUN bun install
 
 RUN bun run build

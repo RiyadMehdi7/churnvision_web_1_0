@@ -7,7 +7,8 @@ COPY frontend/ ./
 ARG VITE_API_URL=
 ENV VITE_API_URL=${VITE_API_URL}
 
-RUN bun install
+# Clean any copied node_modules/lockfiles and do fresh install
+RUN rm -rf node_modules bun.lock bun.lockb package-lock.json && bun install
 
 RUN bun run build
 

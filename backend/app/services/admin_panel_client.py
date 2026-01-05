@@ -22,6 +22,7 @@ import httpx
 from app.core.config import settings
 from app.core.hardware_fingerprint import HardwareFingerprint
 from app.core.installation import get_installation_id
+from app.core.version import APP_VERSION
 
 logger = logging.getLogger("churnvision.admin_panel")
 
@@ -29,6 +30,7 @@ logger = logging.getLogger("churnvision.admin_panel")
 @dataclass
 class ValidationResult:
     """Result from license validation against Admin Panel."""
+
     valid: bool
     license_tier: Optional[str] = None
     company_name: Optional[str] = None
@@ -44,6 +46,7 @@ class ValidationResult:
 @dataclass
 class ConfigResult:
     """Result from tenant config fetch."""
+
     success: bool
     config: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
@@ -83,7 +86,7 @@ class AdminPanelClient:
                 headers={
                     "X-API-Key": self.api_key or "",
                     "Content-Type": "application/json",
-                    "User-Agent": f"ChurnVision/{settings.PROJECT_NAME}",
+                    "User-Agent": f"ChurnVision/{APP_VERSION}",
                 },
             )
         return self._client
@@ -138,14 +141,16 @@ class AdminPanelClient:
                 last_exception = e
                 if attempt < self.max_retries - 1:
                     # Exponential backoff: 2^attempt seconds (1, 2, 4, ...)
-                    wait_time = min(2 ** attempt, 10)
+                    wait_time = min(2**attempt, 10)
                     logger.warning(
                         f"Request failed (attempt {attempt + 1}/{self.max_retries}): {e}. "
                         f"Retrying in {wait_time}s..."
                     )
                     await asyncio.sleep(wait_time)
                 else:
-                    logger.error(f"Request failed after {self.max_retries} attempts: {e}")
+                    logger.error(
+                        f"Request failed after {self.max_retries} attempts: {e}"
+                    )
 
         if last_exception:
             raise last_exception
@@ -162,7 +167,7 @@ class AdminPanelClient:
         if not self.base_url or not self.api_key:
             return ValidationResult(
                 valid=False,
-                error="Admin Panel not configured (missing ADMIN_API_URL or ADMIN_API_KEY)"
+                error="Admin Panel not configured (missing ADMIN_API_URL or ADMIN_API_KEY)",
             )
 
         start_time = time.time()
@@ -182,14 +187,18 @@ class AdminPanelClient:
             )
 
             duration_ms = int((time.time() - start_time) * 1000)
-            logger.debug(f"License validation took {duration_ms}ms, status={response.status_code}")
+            logger.debug(
+                f"License validation took {duration_ms}ms, status={response.status_code}"
+            )
 
             if response.status_code == 200:
                 data = response.json()
                 expires_at = None
                 if data.get("expires_at"):
                     try:
-                        expires_at = datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00"))
+                        expires_at = datetime.fromisoformat(
+                            data["expires_at"].replace("Z", "+00:00")
+                        )
                     except (ValueError, AttributeError):
                         pass
 
@@ -207,9 +216,7 @@ class AdminPanelClient:
 
             elif response.status_code == 401:
                 return ValidationResult(
-                    valid=False,
-                    error="Invalid Admin Panel API key",
-                    response_code=401
+                    valid=False, error="Invalid Admin Panel API key", response_code=401
                 )
 
             elif response.status_code == 403:
@@ -226,9 +233,7 @@ class AdminPanelClient:
 
             elif response.status_code == 404:
                 return ValidationResult(
-                    valid=False,
-                    error="License not found",
-                    response_code=404
+                    valid=False, error="License not found", response_code=404
                 )
 
             else:
@@ -240,7 +245,9 @@ class AdminPanelClient:
 
         except httpx.TimeoutException:
             logger.warning("License validation timeout - Admin Panel unreachable")
-            return ValidationResult(valid=False, error="Validation timeout - Admin Panel unreachable")
+            return ValidationResult(
+                valid=False, error="Validation timeout - Admin Panel unreachable"
+            )
 
         except httpx.ConnectError as e:
             logger.warning(f"License validation connection error: {e}")
@@ -261,16 +268,14 @@ class AdminPanelClient:
 
         try:
             response = await self._request_with_retry(
-                "GET",
-                f"{self.base_url}/tenants/{self.tenant_slug}/configs/dict"
+                "GET", f"{self.base_url}/tenants/{self.tenant_slug}/configs/dict"
             )
 
             if response.status_code == 200:
                 return ConfigResult(success=True, config=response.json())
             else:
                 return ConfigResult(
-                    success=False,
-                    error=f"Config fetch failed: {response.status_code}"
+                    success=False, error=f"Config fetch failed: {response.status_code}"
                 )
 
         except Exception as e:

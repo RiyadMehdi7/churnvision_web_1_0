@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
 from app.core.config import settings
+from app.core.version import APP_VERSION
 from app.db.session import AsyncSessionLocal
 
 logger = logging.getLogger("churnvision.license_sync")
@@ -42,6 +43,7 @@ class TelemetryCollector:
         try:
             async with AsyncSessionLocal() as db:
                 from sqlalchemy import text
+
                 await db.execute(text("SELECT 1"))
                 db_healthy = True
         except Exception as e:
@@ -50,6 +52,7 @@ class TelemetryCollector:
         # Check Redis/cache connection
         try:
             from app.core.cache import get_cache
+
             cache = await get_cache()
             await cache.set("_health_check", "ok", ttl=5)
             redis_healthy = True
@@ -63,7 +66,7 @@ class TelemetryCollector:
             "database": db_healthy,
             "cache": redis_healthy,
             "uptime_seconds": uptime_seconds,
-            "version": "1.0.0",
+            "version": APP_VERSION,
             "platform": platform.platform(),
             "python_version": platform.python_version(),
         }
@@ -207,15 +210,20 @@ class LicenseSyncService:
                     response_code=result.response_code,
                     response_data={
                         "tier": result.license_tier,
-                        "expires_at": result.expires_at.isoformat() if result.expires_at else None,
+                        "expires_at": result.expires_at.isoformat()
+                        if result.expires_at
+                        else None,
                         "features": result.features,
                     },
                     duration_ms=duration_ms,
                 )
-                logger.info(f"License validation sync successful: tier={result.license_tier}")
+                logger.info(
+                    f"License validation sync successful: tier={result.license_tier}"
+                )
 
                 # Invalidate middleware cache to pick up new license info
                 from app.core.license_middleware import invalidate_license_cache
+
                 invalidate_license_cache()
 
                 return True
@@ -227,7 +235,9 @@ class LicenseSyncService:
                     error_message=result.error or result.revocation_reason,
                     duration_ms=duration_ms,
                 )
-                logger.warning(f"License validation sync failed: {result.error or result.revocation_reason}")
+                logger.warning(
+                    f"License validation sync failed: {result.error or result.revocation_reason}"
+                )
                 return False
 
         except Exception as e:
@@ -300,7 +310,9 @@ class LicenseSyncService:
             )
 
             if success:
-                logger.debug(f"Telemetry sent: users={telemetry_data.get('active_users_24h')}")
+                logger.debug(
+                    f"Telemetry sent: users={telemetry_data.get('active_users_24h')}"
+                )
             else:
                 logger.warning("Telemetry send failed")
 

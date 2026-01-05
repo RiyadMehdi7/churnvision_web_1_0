@@ -1,13 +1,14 @@
 FROM oven/bun:1 AS build
 WORKDIR /app
 
-COPY frontend/package.json frontend/bun.lock ./
+COPY frontend/package.json ./
 COPY frontend/ ./
 
 ARG VITE_API_URL=
 ENV VITE_API_URL=${VITE_API_URL}
 
-RUN bun install
+# Remove existing lockfile and regenerate to fix Tailwind CSS module resolution
+RUN rm -f bun.lock && bun install
 RUN bun run build
 
 FROM nginx:alpine

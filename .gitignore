@@ -33,9 +33,12 @@ env/
 # FastAPI / uvicorn
 *.log
 logs/
+.logs/
 .coverage
 htmlcov/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Node.js / TypeScript / Frontend
 node_modules/

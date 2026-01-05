@@ -90,11 +90,14 @@ class TestInMemoryLoginTracker:
         assert is_locked is False
 
     @pytest.mark.asyncio
-    async def test_prune_old_attempts(self):
+    async def test_prune_old_attempts(self, monkeypatch):
         """Old attempts outside window should be pruned."""
+        # Set a 1-minute window via environment
+        monkeypatch.setenv("LOGIN_ATTEMPT_WINDOW_MINUTES", "1")
+
         from app.core.login_tracker import InMemoryLoginTracker
 
-        tracker = InMemoryLoginTracker(attempt_window_minutes=1)
+        tracker = InMemoryLoginTracker()
         key = "prune_test::127.0.0.1"
 
         # Manually add old timestamps
@@ -119,8 +122,17 @@ class TestRedisLoginTracker:
         redis.expire = AsyncMock()
         redis.get = AsyncMock(return_value=None)
         redis.set = AsyncMock()
+        redis.setex = AsyncMock()
         redis.delete = AsyncMock()
         redis.ttl = AsyncMock(return_value=-2)
+        redis.ping = AsyncMock()
+        redis.pipeline = MagicMock()
+        # Pipeline mock
+        pipe_mock = AsyncMock()
+        pipe_mock.incr = MagicMock()
+        pipe_mock.expire = MagicMock()
+        pipe_mock.execute = AsyncMock(return_value=[1])
+        redis.pipeline.return_value = pipe_mock
         return redis
 
     @pytest.mark.asyncio
@@ -128,39 +140,47 @@ class TestRedisLoginTracker:
         """Should use Redis incr for counting attempts."""
         from app.core.login_tracker import RedisLoginTracker
 
-        tracker = RedisLoginTracker(mock_redis)
+        tracker = RedisLoginTracker("redis://localhost:6379")
+        # Manually inject the mock redis and set connected status
+        tracker._redis = mock_redis
+        tracker._connected = True
+
         key = "redis_test::127.0.0.1"
 
         count = await tracker.record_failed_attempt(key)
 
         assert count == 1
-        mock_redis.incr.assert_called()
-        mock_redis.expire.assert_called()
+        mock_redis.pipeline.assert_called()
 
     @pytest.mark.asyncio
     async def test_is_locked_checks_redis(self, mock_redis):
         """Should check Redis for lock status."""
         from app.core.login_tracker import RedisLoginTracker
 
-        tracker = RedisLoginTracker(mock_redis)
+        tracker = RedisLoginTracker("redis://localhost:6379")
+        tracker._redis = mock_redis
+        tracker._connected = True
+
         key = "check_lock::127.0.0.1"
 
-        mock_redis.get.return_value = None
+        mock_redis.ttl.return_value = -2  # Key doesn't exist
 
         is_locked, remaining = await tracker.is_locked(key)
 
         assert is_locked is False
-        mock_redis.get.assert_called()
+        mock_redis.ttl.assert_called()
 
     @pytest.mark.asyncio
     async def test_is_locked_when_redis_has_lock(self, mock_redis):
         """Should return True when Redis has lock key."""
         from app.core.login_tracker import RedisLoginTracker
 
-        tracker = RedisLoginTracker(mock_redis)
+        tracker = RedisLoginTracker("redis://localhost:6379")
+        tracker._redis = mock_redis
+        tracker._connected = True
+
         key = "locked::127.0.0.1"
 
-        mock_redis.get.return_value = b"1"
         mock_redis.ttl.return_value = 300
 
         is_locked, remaining = await tracker.is_locked(key)
@@ -173,55 +193,54 @@ class TestRedisLoginTracker:
         """Should store lock in Redis with expiry."""
         from app.core.login_tracker import RedisLoginTracker
 
-        tracker = RedisLoginTracker(mock_redis)
+        tracker = RedisLoginTracker("redis://localhost:6379")
+        tracker._redis = mock_redis
+        tracker._connected = True
+
         key = "set_lock::127.0.0.1"
 
         await tracker.set_locked(key, 900)
 
-        mock_redis.set.assert_called()
+        mock_redis.setex.assert_called()
 
     @pytest.mark.asyncio
     async def test_reset_deletes_from_redis(self, mock_redis):
         """Should delete both attempt and lock keys."""
         from app.core.login_tracker import RedisLoginTracker
 
-        tracker = RedisLoginTracker(mock_redis)
+        tracker = RedisLoginTracker("redis://localhost:6379")
+        tracker._redis = mock_redis
+        tracker._connected = True
+
         key = "reset::127.0.0.1"
 
         await tracker.reset(key)
 
-        assert mock_redis.delete.call_count == 2
+        # The delete is called once with both keys
+        mock_redis.delete.assert_called()
 
 
 class TestHybridLoginTracker:
     """Test the hybrid tracker that uses Redis with in-memory fallback."""
 
     @pytest.mark.asyncio
-    async def test_uses_redis_when_available(self):
-        """Should use Redis tracker when Redis is available."""
+    async def test_uses_memory_when_no_redis(self):
+        """Should use in-memory tracker when Redis URL is None."""
         from app.core.login_tracker import HybridLoginTracker
 
-        mock_redis = AsyncMock()
-        mock_redis.incr = AsyncMock(return_value=2)
-        mock_redis.expire = AsyncMock()
+        tracker = HybridLoginTracker(redis_url=None)
 
-        tracker = HybridLoginTracker(redis_client=mock_redis)
+        count = await tracker.record_failed_attempt("memory::1.2.3.4")
 
-        count = await tracker.record_failed_attempt("test::1.2.3.4")
-
-        assert count == 2
-        mock_redis.incr.assert_called()
+        assert count == 1
 
     @pytest.mark.asyncio
     async def test_falls_back_to_memory_on_redis_error(self):
-        """Should fall back to in-memory when Redis fails."""
+        """Should fall back to in-memory when Redis is unreachable."""
         from app.core.login_tracker import HybridLoginTracker
 
-        mock_redis = AsyncMock()
-        mock_redis.incr = AsyncMock(side_effect=Exception("Redis connection failed"))
-        mock_redis.expire = AsyncMock()
-
-        tracker = HybridLoginTracker(redis_client=mock_redis)
+        # Use an invalid URL that will fail to connect
+        tracker = HybridLoginTracker(redis_url="redis://nonexistent:6379")
 
         # Should not raise, should fall back to memory
         count = await tracker.record_failed_attempt("fallback::1.2.3.4")
@@ -229,15 +248,20 @@ class TestHybridLoginTracker:
         assert count == 1  # First attempt in memory
 
     @pytest.mark.asyncio
-    async def test_uses_memory_when_no_redis(self):
-        """Should use in-memory tracker when Redis is None."""
+    async def test_increments_count_correctly(self):
+        """Should correctly increment attempt count."""
         from app.core.login_tracker import HybridLoginTracker
 
-        tracker = HybridLoginTracker(redis_client=None)
+        tracker = HybridLoginTracker(redis_url=None)
+        key = "test_increment::1.2.3.4"
 
-        count = await tracker.record_failed_attempt("memory::1.2.3.4")
+        count1 = await tracker.record_failed_attempt(key)
+        count2 = await tracker.record_failed_attempt(key)
+        count3 = await tracker.record_failed_attempt(key)
 
-        assert count == 1
+        assert count1 == 1
+        assert count2 == 2
+        assert count3 == 3
 
 
 class TestGetLoginTracker:

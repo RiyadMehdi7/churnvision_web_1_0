@@ -1,5 +1,5 @@
 """
-Tests for app/services/churn_prediction.py - Churn prediction ML service.
+Tests for app/services/churn_prediction_service.py - Churn prediction ML service.
 """
 import importlib
 import pytest
@@ -17,7 +17,7 @@ class TestChurnPredictionServiceInit:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path / "new_models"))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -29,7 +29,7 @@ class TestChurnPredictionServiceInit:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -42,7 +42,7 @@ class TestChurnPredictionServiceInit:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         # Train and save a model first
@@ -69,7 +69,7 @@ class TestRiskLevelDetermination:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -82,7 +82,7 @@ class TestRiskLevelDetermination:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -95,7 +95,7 @@ class TestRiskLevelDetermination:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -108,7 +108,7 @@ class TestRiskLevelDetermination:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -125,7 +125,7 @@ class TestContributingFactors:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -151,7 +151,7 @@ class TestContributingFactors:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -176,7 +176,7 @@ class TestContributingFactors:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -201,7 +201,7 @@ class TestContributingFactors:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -231,7 +231,7 @@ class TestRecommendations:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -256,7 +256,7 @@ class TestRecommendations:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -285,7 +285,7 @@ class TestHeuristicPrediction:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -321,7 +321,7 @@ class TestHeuristicPrediction:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -352,7 +352,7 @@ class TestPredictChurn:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -387,7 +387,7 @@ class TestPredictChurn:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -412,7 +412,7 @@ class TestBatchPrediction:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -437,7 +437,7 @@ class TestBatchPrediction:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -489,7 +489,7 @@ class TestModelTraining:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -508,7 +508,7 @@ class TestModelTraining:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -525,7 +525,7 @@ class TestModelTraining:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -541,7 +541,7 @@ class TestModelTraining:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -559,7 +559,7 @@ class TestModelTraining:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()
@@ -583,7 +583,7 @@ class TestTrainedModelPrediction:
         monkeypatch.setenv("MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("ENVIRONMENT", "development")
 
-        from app.services import churn_prediction as cp
+        from app.services import churn_prediction_service as cp
         importlib.reload(cp)
 
         service = cp.ChurnPredictionService()

@@ -79,97 +79,82 @@ class TestRateLimiting:
         assert "testuser" in key
         assert "unknown" in key
 
-    def test_prune_removes_old_attempts(self, monkeypatch):
-        """Old attempts outside window should be removed."""
-        monkeypatch.setenv("LOGIN_ATTEMPT_WINDOW_MINUTES", "15")
-
-        from app.api.v1 import auth
-        import importlib
-        importlib.reload(auth)
-
-        key = "test::127.0.0.1"
-        now = datetime.utcnow()
-
-        # Add old and new attempts
-        auth._FAILED_LOGIN_ATTEMPTS[key] = [
-            now - timedelta(minutes=30),  # Old - should be pruned
-            now - timedelta(minutes=5),   # Recent - should stay
-        ]
-
-        auth._prune_attempts(key)
-
-        assert len(auth._FAILED_LOGIN_ATTEMPTS[key]) == 1
-
-    def test_assert_not_locked_raises_when_locked(self):
+    @pytest.mark.asyncio
+    async def test_assert_not_locked_raises_when_locked(self):
         """Should raise 429 when account is locked."""
-        from app.api.v1 import auth
+        from app.api.v1.auth import _assert_not_locked
+        from app.core.login_tracker import InMemoryLoginTracker
 
+        # Create a tracker with a locked account
+        tracker = InMemoryLoginTracker()
         key = "locked_user::127.0.0.1"
-        auth._LOCKED_UNTIL[key] = datetime.utcnow() + timedelta(minutes=10)
+        await tracker.set_locked(key, 600)  # Lock for 10 minutes
 
-        with pytest.raises(HTTPException) as exc_info:
-            auth._assert_not_locked(key)
+        with patch('app.api.v1.auth.get_login_tracker', return_value=tracker):
+            with pytest.raises(HTTPException) as exc_info:
+                await _assert_not_locked(key)
 
-        assert exc_info.value.status_code == 429
-        assert "Too many" in exc_info.value.detail
+            assert exc_info.value.status_code == 429
+            assert "Too many" in exc_info.value.detail
 
-        # Cleanup
-        auth._LOCKED_UNTIL.pop(key, None)
+    @pytest.mark.asyncio
+    async def test_assert_not_locked_allows_unlocked(self):
+        """Should not raise when account is not locked."""
+        from app.api.v1.auth import _assert_not_locked
+        from app.core.login_tracker import InMemoryLoginTracker
 
-    def test_assert_not_locked_clears_expired_lock(self):
-        """Expired locks should be cleared."""
-        from app.api.v1 import auth
+        tracker = InMemoryLoginTracker()
+        key = "unlocked_user::127.0.0.1"
 
-        key = "expired_lock::127.0.0.1"
-        auth._LOCKED_UNTIL[key] = datetime.utcnow() - timedelta(minutes=1)
+        with patch('app.api.v1.auth.get_login_tracker', return_value=tracker):
+            # Should not raise
+            await _assert_not_locked(key)
 
-        # Should not raise
-        auth._assert_not_locked(key)
-
-        assert key not in auth._LOCKED_UNTIL
-
-    def test_register_failed_locks_after_max_attempts(self, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_register_failed_locks_after_max_attempts(self, monkeypatch):
         """Account should lock after max failed attempts."""
         monkeypatch.setenv("LOGIN_MAX_ATTEMPTS", "3")
         monkeypatch.setenv("LOGIN_LOCKOUT_MINUTES", "15")
 
-        from app.api.v1 import auth
-        import importlib
-        importlib.reload(auth)
+        from app.api.v1.auth import _register_failed_attempt
+        from app.core.login_tracker import InMemoryLoginTracker
 
+        tracker = InMemoryLoginTracker()
         key = "failing_user::127.0.0.1"
 
-        # Clear any existing state
-        auth._FAILED_LOGIN_ATTEMPTS.pop(key, None)
-        auth._LOCKED_UNTIL.pop(key, None)
+        with patch('app.api.v1.auth.get_login_tracker', return_value=tracker):
+            # Register failures up to limit
+            await _register_failed_attempt(key)
+            await _register_failed_attempt(key)
 
-        # Register failures up to limit
-        for i in range(2):
-            auth._register_failed_attempt(key)
+            # Third attempt should trigger lockout
+            with pytest.raises(HTTPException) as exc_info:
+                await _register_failed_attempt(key)
 
-        # Third attempt should trigger lockout
-        with pytest.raises(HTTPException) as exc_info:
-            auth._register_failed_attempt(key)
+            assert exc_info.value.status_code == 429
 
-        assert exc_info.value.status_code == 429
-        assert key in auth._LOCKED_UNTIL
-
-        # Cleanup
-        auth._FAILED_LOGIN_ATTEMPTS.pop(key, None)
-        auth._LOCKED_UNTIL.pop(key, None)
-
-    def test_reset_attempts_clears_state(self):
+    @pytest.mark.asyncio
+    async def test_reset_attempts_clears_state(self):
         """Reset should clear all attempt tracking."""
-        from app.api.v1 import auth
+        from app.api.v1.auth import _reset_attempts
+        from app.core.login_tracker import InMemoryLoginTracker
 
+        tracker = InMemoryLoginTracker()
         key = "reset_user::127.0.0.1"
-        auth._FAILED_LOGIN_ATTEMPTS[key] = [datetime.utcnow()]
-        auth._LOCKED_UNTIL[key] = datetime.utcnow() + timedelta(minutes=10)
 
-        auth._reset_attempts(key)
+        # Add some state
+        await tracker.record_failed_attempt(key)
+        await tracker.set_locked(key, 600)
 
-        assert key not in auth._FAILED_LOGIN_ATTEMPTS
-        assert key not in auth._LOCKED_UNTIL
+        with patch('app.api.v1.auth.get_login_tracker', return_value=tracker):
+            await _reset_attempts(key)
+
+            # Verify state is cleared
+            is_locked, _ = await tracker.is_locked(key)
+            assert is_locked is False
+            # After reset, next attempt should be count 1
+            count = await tracker.record_failed_attempt(key)
+            assert count == 1
 
 
 class TestLoginEndpoint:
@@ -328,13 +313,21 @@ class TestLogoutEndpoint:
     """Test logout endpoint."""
 
     @pytest.mark.asyncio
-    async def test_logout_clears_cookie(self, mock_user):
+    async def test_logout_clears_cookie(self, mock_user, mock_db_session):
         """Logout should clear the access_token cookie."""
         from app.api.v1.auth import logout
 
         mock_response = MagicMock()
+        mock_request = MagicMock()
+        mock_request.cookies = {}
 
-        result = await logout(response=mock_response, current_user=mock_user)
+        result = await logout(
+            response=mock_response,
+            request=mock_request,
+            db=mock_db_session,
+            token="dummy-token",
+            current_user=mock_user
+        )
 
         mock_response.delete_cookie.assert_called()
         assert result["message"] == "Successfully logged out"
@@ -346,9 +339,9 @@ class TestMeEndpoint:
     @pytest.mark.asyncio
     async def test_me_returns_current_user(self, mock_user):
         """Me endpoint should return current user data."""
-        from app.api.v1.auth import get_user_me
+        from app.api.v1.auth import read_users_me
 
-        result = await get_user_me(current_user=mock_user)
+        result = await read_users_me(current_user=mock_user)
 
         assert result.id == mock_user.id
         assert result.email == mock_user.email

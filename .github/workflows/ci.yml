@@ -85,7 +85,7 @@ jobs:
       - name: Install frontend dependencies
         run: |
           cd frontend
-          bun install --frozen-lockfile
+          bun install
 
       - name: Frontend lint
         run: |

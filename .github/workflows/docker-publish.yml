@@ -103,7 +103,7 @@ jobs:
           # Combined ChurnVision Docker Image
           # This image runs both backend and frontend for easy deployment
 
-          FROM python:3.11-slim as backend-builder
+          FROM python:3.11-slim AS backend-builder
 
           WORKDIR /app
 
@@ -123,14 +123,16 @@ jobs:
           RUN uv pip install --system .
 
           # Frontend build stage
-          FROM oven/bun:latest as frontend-builder
+          FROM oven/bun:latest AS frontend-builder
 
           WORKDIR /app
 
-          COPY frontend/package.json frontend/bun.lock* ./
-          RUN bun install --frozen-lockfile
-
+          COPY frontend/package.json ./
           COPY frontend/ ./
+
+          # Clean any copied node_modules/lockfiles and do fresh install
+          RUN rm -rf node_modules bun.lock bun.lockb package-lock.json && bun install
+
           RUN bun run build
 
           # Final stage

@@ -11,7 +11,7 @@ from datetime import datetime
 
 from app.api.deps import get_db, get_current_user, get_user_permissions_by_id, invalidate_user_permissions_cache
 from app.models.user import User
-from app.models.auth import UserAccount, Role, Permission, UserRole
+from app.models.auth import UserAccount, Role, Permission, UserRole, RolePermission
 from app.core.audit import AuditLog, AuditLogger
 from app.core.security import get_password_hash
 from app.schemas.admin import (
@@ -236,7 +236,7 @@ async def get_user(
     role = role_result.scalar_one_or_none()
 
     # Get permissions
-    permissions = await get_user_permissions(db, user_id)
+    permissions = await get_user_permissions_by_id(db, user_id)
 
     return UserWithRole(
         user_id=user.user_id,

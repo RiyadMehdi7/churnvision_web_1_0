@@ -1,10 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import { ProtectedRoute } from './ProtectedRoute';
-import { useLicense } from '../providers/LicenseProvider';
+import { useLicense } from '../../providers/LicenseProvider';
 import { describe, it, expect, vi } from 'vitest';
 
 // Mock the useLicense hook
-vi.mock('../providers/LicenseProvider', () => ({
+vi.mock('../../providers/LicenseProvider', () => ({
   useLicense: vi.fn(),
   getLicenseTierDisplayName: (tier: string) => tier,
 }));

@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
-import { Employee, RiskLevel } from '../types/employee';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { colors } from '../lib/utils';
+import { Employee, RiskLevel } from '@/types/employee';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { colors } from '@/lib/utils';
 
 interface EmployeeNetworkGraphProps {
   employees: Employee[];

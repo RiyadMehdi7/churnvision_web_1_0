@@ -16,8 +16,8 @@ import {
   Users,
   Zap
 } from 'lucide-react';
-import { useGlobalDataCache } from '../hooks/useGlobalDataCache';
-import { getCurrentThresholds, getRiskLevel } from '../config/riskThresholds';
+import { useGlobalDataCache } from '@/hooks/useGlobalDataCache';
+import { getCurrentThresholds, getRiskLevel } from '@/config/riskThresholds';
 
 interface SmartHeaderProps {
   onMenuToggle?: () => void;

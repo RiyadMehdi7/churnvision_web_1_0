@@ -1,8 +1,8 @@
 import React, { useState, memo, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { SmartNotificationSystem, useSmartNotifications } from '../components/SmartNotificationSystem';
-import { SmartHeader } from '../components/SmartHeader';
-import { Button } from '../components/ui/button';
+import { SmartNotificationSystem, useSmartNotifications } from '@/components/notifications/SmartNotificationSystem';
+import { SmartHeader } from '@/components/layout/SmartHeader';
+import { Button } from '@/components/ui/button';
 import { CheckCircle } from 'lucide-react';
 
 const TierShowcase = memo(({ tier, features, onSelect, isSelected }: {

@@ -19,8 +19,8 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { modelIntelligenceService, RoutingInfo } from '../services/modelIntelligenceService';
+import { cn } from '@/lib/utils';
+import { modelIntelligenceService, RoutingInfo } from '@/services/modelIntelligenceService';
 
 interface ModelSelectionCardProps {
   className?: string;

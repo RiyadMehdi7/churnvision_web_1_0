@@ -18,13 +18,13 @@ import {
   Eye,
   Target
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '@/lib/utils';
 import { 
   AnalysisResult, 
   Insight, 
   Recommendation, 
   Visualization
-} from '../types/analysis';
+} from '@/types/analysis';
 
 interface AnalysisResultVisualizationProps {
   result: AnalysisResult;

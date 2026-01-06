@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { cn } from '../lib/utils';
-import { useTabState } from '../hooks/useTabState';
+import { cn } from '@/lib/utils';
+import { useTabState } from '@/hooks/useTabState';
 
 // Types for tab management
 export type TabType = 'dashboard' | 'deep-analysis';

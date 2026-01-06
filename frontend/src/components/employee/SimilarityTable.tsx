@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Users, TrendingUp, FileText, ChevronDown, ChevronUp, MapPin, Calendar, Brain, AlertTriangle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { RiskIndicator } from './RiskIndicator';
+import { RiskIndicator } from '@/components/risk/RiskIndicator';
 
 export interface SimilarityEntry {
   name: string;

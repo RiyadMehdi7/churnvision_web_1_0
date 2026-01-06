@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
-import { RiskIndicator } from './RiskIndicator';
+import { RiskIndicator } from '@/components/risk/RiskIndicator';
 import { describe, it, expect } from 'vitest';
-import { getCurrentThresholds } from '../config/riskThresholds';
+import { getCurrentThresholds } from '../../config/riskThresholds';
 
 describe('RiskIndicator', () => {
   const thresholds = getCurrentThresholds();

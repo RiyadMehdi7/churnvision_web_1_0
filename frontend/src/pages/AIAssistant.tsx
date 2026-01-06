@@ -19,9 +19,9 @@ import {
   X,
   MessageSquare,
 } from 'lucide-react';
-import { PageHeader } from '../components/PageHeader';
+import { PageHeader } from '@/components/common/PageHeader';
 import type { Components } from 'react-markdown';
-import { RiskIndicator } from '../components/RiskIndicator';
+import { RiskIndicator } from '@/components/risk/RiskIndicator';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGlobalDataCache } from '../hooks/useGlobalDataCache';
 import { useBatchReasoning } from '../hooks/useReasoning'; // Added reasoning hooks
@@ -32,12 +32,12 @@ import { useLocation } from 'react-router-dom';
 import { ChatMessage as GlobalChatMessage } from '@/types/chat';
 import { Employee } from '@/types/employee';
 import { useProject } from '@/contexts/ProjectContext';
-import SimilarityTable from '../components/SimilarityTable';
+import SimilarityTable from '@/components/employee/SimilarityTable';
 import { ChurnReasoning } from '@/types/reasoning'; // Fixed import path
 import { getCurrentThresholds, getDynamicRiskLevel } from '@/config/riskThresholds';
 import { standardizePrompt } from '../utils/promptStandardizer';
-import { TrainingReminderBanner } from '../components/TrainingReminderBanner';
-import { ModelTrainingRequired } from '../components/ModelTrainingRequired';
+import { TrainingReminderBanner } from '@/components/notifications/TrainingReminderBanner';
+import { ModelTrainingRequired } from '@/components/model/ModelTrainingRequired';
 
 // Import agentic AI components
 import { AgentExecutionPanel, AgentContextPanel, ActionProposalCard, EmailComposer, TeamsComposer } from '../components/agent';

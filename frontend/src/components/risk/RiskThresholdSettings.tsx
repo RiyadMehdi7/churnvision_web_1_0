@@ -1,12 +1,12 @@
-import { Button } from './ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Label } from './ui/label';
-import { Switch } from './ui/switch';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { 
   RiskThresholds
-} from '../config/riskThresholds';
-import { useDynamicRiskRanges } from '../hooks/useDynamicRiskThresholds';
-import { useToast } from '../hooks/use-toast';
+} from '@/config/riskThresholds';
+import { useDynamicRiskRanges } from '@/hooks/useDynamicRiskThresholds';
+import { useToast } from '@/hooks/use-toast';
 import { Brain, Zap } from 'lucide-react';
 
 interface RiskThresholdSettingsProps {

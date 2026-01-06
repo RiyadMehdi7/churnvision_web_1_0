@@ -1,9 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Brain, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
-import { Employee } from '../types/employee';
-import { getCurrentThresholds, getRiskLevel, getRiskLevelWithStyles } from '../config/riskThresholds';
-import { getRiskColor } from '../lib/utils';
+import { Employee } from '@/types/employee';
+import { getCurrentThresholds, getRiskLevel, getRiskLevelWithStyles } from '@/config/riskThresholds';
+import { getRiskColor } from '@/lib/utils';
 
 interface EnhancedEmployeeCardProps {
   employee: Employee;

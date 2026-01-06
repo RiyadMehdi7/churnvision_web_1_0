@@ -16,8 +16,8 @@ import {
   Loader2,
   Check
 } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { modelIntelligenceService, RiskAlert, AlertsResult } from '../services/modelIntelligenceService';
+import { cn } from '@/lib/utils';
+import { modelIntelligenceService, RiskAlert, AlertsResult } from '@/services/modelIntelligenceService';
 import { useNavigate } from 'react-router-dom';
 
 interface AlertNotificationBellProps {

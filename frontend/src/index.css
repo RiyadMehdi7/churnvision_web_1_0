@@ -1552,3 +1552,549 @@ body.dark {
 }
 
 /* Note: CSS variables are defined in theme.css - this file contains only overrides and animations */
+
+/* ============================================================================
+   PREMIUM ANIMATION SYSTEM
+   Luxurious, smooth animations with carefully tuned bezier curves
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   Premium Easing Functions (CSS Custom Properties)
+   ---------------------------------------------------------------------------- */
+:root {
+  /* Smooth deceleration - objects come to rest naturally */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Elegant entrance with slight overshoot */
+  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-back-subtle: cubic-bezier(0.34, 1.25, 0.64, 1);
+
+  /* Smooth acceleration-deceleration */
+  --ease-in-out-cubic: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+
+  /* Premium micro-interactions */
+  --ease-micro-bounce: cubic-bezier(0.34, 1.5, 0.64, 1);
+  --ease-micro-snap: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Luxurious slow reveals */
+  --ease-luxury-reveal: cubic-bezier(0.4, 0, 0, 1);
+  --ease-luxury-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* Spring-like natural motion */
+  --ease-springy: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+  /* Ultra-smooth for large elements */
+  --ease-silky: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* Duration presets */
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-smooth: 350ms;
+  --duration-slow: 500ms;
+  --duration-luxurious: 700ms;
+}
+
+/* ----------------------------------------------------------------------------
+   Premium Hover Effect Classes
+   ---------------------------------------------------------------------------- */
+
+/* Lift effect - subtle elevation on hover */
+.hover-lift {
+  transition: transform var(--duration-normal) var(--ease-out-quart),
+              box-shadow var(--duration-normal) var(--ease-out-quart);
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.15);
+}
+
+.dark .hover-lift:hover {
+  box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.4);
+}
+
+/* Subtle lift - less pronounced */
+.hover-lift-subtle {
+  transition: transform var(--duration-fast) var(--ease-out-quart),
+              box-shadow var(--duration-fast) var(--ease-out-quart);
+}
+
+.hover-lift-subtle:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px -6px rgba(0, 0, 0, 0.1);
+}
+
+/* Scale effect - grows on hover */
+.hover-scale {
+  transition: transform var(--duration-fast) var(--ease-out-back-subtle);
+}
+
+.hover-scale:hover {
+  transform: scale(1.03);
+}
+
+.hover-scale:active {
+  transform: scale(0.98);
+  transition-duration: 75ms;
+}
+
+/* Glow effect - adds glow on hover */
+.hover-glow {
+  transition: box-shadow var(--duration-normal) var(--ease-out-quart);
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3),
+              0 0 40px rgba(16, 185, 129, 0.15);
+}
+
+.dark .hover-glow:hover {
+  box-shadow: 0 0 25px rgba(16, 185, 129, 0.4),
+              0 0 50px rgba(16, 185, 129, 0.2);
+}
+
+/* Shine effect - moving highlight on hover */
+.hover-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.hover-shine::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: left var(--duration-slow) var(--ease-out-quart);
+}
+
+.hover-shine:hover::before {
+  left: 100%;
+}
+
+/* Border glow effect */
+.hover-border-glow {
+  transition: border-color var(--duration-normal) var(--ease-out-quart),
+              box-shadow var(--duration-normal) var(--ease-out-quart);
+}
+
+.hover-border-glow:hover {
+  border-color: rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+/* ----------------------------------------------------------------------------
+   Premium Animation Classes (applied via className)
+   ---------------------------------------------------------------------------- */
+
+/* Fade in animations */
+.animate-premium-fade-in {
+  animation: premium-fade-in var(--duration-smooth) var(--ease-out-quart) forwards;
+}
+
+.animate-premium-fade-in-up {
+  animation: premium-fade-in-up var(--duration-smooth) var(--ease-out-expo) forwards;
+}
+
+.animate-premium-fade-in-down {
+  animation: premium-fade-in-down var(--duration-smooth) var(--ease-out-expo) forwards;
+}
+
+.animate-premium-fade-in-left {
+  animation: premium-fade-in-left var(--duration-smooth) var(--ease-out-expo) forwards;
+}
+
+.animate-premium-fade-in-right {
+  animation: premium-fade-in-right var(--duration-smooth) var(--ease-out-expo) forwards;
+}
+
+/* Scale animations */
+.animate-premium-scale-in {
+  animation: premium-scale-in var(--duration-smooth) var(--ease-out-back) forwards;
+}
+
+/* Blur entrance */
+.animate-premium-blur-in {
+  animation: premium-blur-in var(--duration-smooth) var(--ease-out-expo) forwards;
+}
+
+/* Float effect (continuous) */
+.animate-premium-float {
+  animation: premium-float 3s var(--ease-in-out-cubic) infinite;
+}
+
+/* Pulse glow (continuous) */
+.animate-premium-pulse-glow {
+  animation: premium-pulse-glow 2.5s var(--ease-in-out-cubic) infinite;
+}
+
+/* Gradient flow (continuous) */
+.animate-premium-gradient-flow {
+  background-size: 200% 200%;
+  animation: premium-gradient-flow 4s ease infinite;
+}
+
+/* Breathe effect (continuous) */
+.animate-premium-breathe {
+  animation: premium-breathe 3s var(--ease-in-out-cubic) infinite;
+}
+
+/* Shimmer effect */
+.animate-premium-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-premium-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.15),
+    transparent
+  );
+  animation: premium-shimmer 2s var(--ease-in-out-cubic) infinite;
+}
+
+/* ----------------------------------------------------------------------------
+   Premium Stagger Animation Utilities
+   Use with [data-stagger-index] attribute
+   ---------------------------------------------------------------------------- */
+[data-stagger-index="0"] { animation-delay: 0ms; }
+[data-stagger-index="1"] { animation-delay: 50ms; }
+[data-stagger-index="2"] { animation-delay: 100ms; }
+[data-stagger-index="3"] { animation-delay: 150ms; }
+[data-stagger-index="4"] { animation-delay: 200ms; }
+[data-stagger-index="5"] { animation-delay: 250ms; }
+[data-stagger-index="6"] { animation-delay: 300ms; }
+[data-stagger-index="7"] { animation-delay: 350ms; }
+[data-stagger-index="8"] { animation-delay: 400ms; }
+[data-stagger-index="9"] { animation-delay: 450ms; }
+
+/* Stagger container */
+.stagger-children > * {
+  opacity: 0;
+  animation: premium-fade-in-up var(--duration-smooth) var(--ease-out-expo) forwards;
+}
+
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 60ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 120ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 180ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 240ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 300ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 360ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 420ms; }
+
+/* ----------------------------------------------------------------------------
+   Premium Focus States
+   ---------------------------------------------------------------------------- */
+.focus-premium:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--background),
+              0 0 0 4px rgba(16, 185, 129, 0.5);
+  transition: box-shadow var(--duration-fast) var(--ease-out-quart);
+}
+
+/* ----------------------------------------------------------------------------
+   Premium Skeleton Loading
+   ---------------------------------------------------------------------------- */
+.skeleton-premium {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg,
+    hsl(var(--muted)) 0%,
+    hsl(var(--muted-foreground) / 0.1) 50%,
+    hsl(var(--muted)) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s var(--ease-in-out-cubic) infinite;
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ----------------------------------------------------------------------------
+   Premium Modal/Dialog Animations
+   ---------------------------------------------------------------------------- */
+.modal-overlay-enter {
+  animation: modal-overlay-in var(--duration-normal) var(--ease-out-quart) forwards;
+}
+
+.modal-overlay-exit {
+  animation: modal-overlay-out var(--duration-fast) var(--ease-luxury-exit) forwards;
+}
+
+.modal-content-enter {
+  animation: modal-content-in var(--duration-smooth) var(--ease-out-back) forwards;
+}
+
+.modal-content-exit {
+  animation: modal-content-out var(--duration-fast) var(--ease-luxury-exit) forwards;
+}
+
+@keyframes modal-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes modal-content-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes modal-content-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Premium Tooltip Animations
+   ---------------------------------------------------------------------------- */
+.tooltip-enter {
+  animation: tooltip-in var(--duration-fast) var(--ease-out-back) forwards;
+}
+
+.tooltip-exit {
+  animation: tooltip-out 100ms var(--ease-luxury-exit) forwards;
+}
+
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes tooltip-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98) translateY(2px);
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Premium Notification/Toast Animations
+   ---------------------------------------------------------------------------- */
+.notification-enter {
+  animation: notification-in var(--duration-smooth) var(--ease-out-back) forwards;
+}
+
+.notification-exit {
+  animation: notification-out var(--duration-fast) var(--ease-luxury-exit) forwards;
+}
+
+@keyframes notification-in {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes notification-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Premium Slide Panel Animations (Sidebars, Drawers)
+   ---------------------------------------------------------------------------- */
+.slide-panel-enter-right {
+  animation: slide-in-right var(--duration-smooth) var(--ease-out-expo) forwards;
+}
+
+.slide-panel-exit-right {
+  animation: slide-out-right var(--duration-normal) var(--ease-luxury-exit) forwards;
+}
+
+.slide-panel-enter-left {
+  animation: slide-in-left var(--duration-smooth) var(--ease-out-expo) forwards;
+}
+
+.slide-panel-exit-left {
+  animation: slide-out-left var(--duration-normal) var(--ease-luxury-exit) forwards;
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slide-out-right {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slide-out-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+
+/* ----------------------------------------------------------------------------
+   Premium Collapse/Expand Animations
+   ---------------------------------------------------------------------------- */
+.collapse-enter {
+  animation: collapse-in var(--duration-smooth) var(--ease-out-quart) forwards;
+  overflow: hidden;
+}
+
+.collapse-exit {
+  animation: collapse-out var(--duration-normal) var(--ease-luxury-exit) forwards;
+  overflow: hidden;
+}
+
+@keyframes collapse-in {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--collapse-height, auto);
+    opacity: 1;
+  }
+}
+
+@keyframes collapse-out {
+  from {
+    height: var(--collapse-height, auto);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Premium Table Row Animations
+   ---------------------------------------------------------------------------- */
+.table-row-enter {
+  animation: table-row-in var(--duration-normal) var(--ease-out-quart) forwards;
+}
+
+@keyframes table-row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Premium Input Focus Animations
+   ---------------------------------------------------------------------------- */
+.input-premium {
+  transition: border-color var(--duration-fast) var(--ease-out-quart),
+              box-shadow var(--duration-fast) var(--ease-out-quart),
+              transform var(--duration-fast) var(--ease-out-quart);
+}
+
+.input-premium:focus {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.15);
+  transform: translateY(-1px);
+}
+
+/* ----------------------------------------------------------------------------
+   Reduced Motion Support
+   Respects user preferences for reduced motion
+   ---------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-premium-float,
+  .animate-premium-pulse-glow,
+  .animate-premium-gradient-flow,
+  .animate-premium-breathe,
+  .animate-premium-shimmer::after {
+    animation: none !important;
+  }
+
+  .hover-lift:hover,
+  .hover-lift-subtle:hover,
+  .hover-scale:hover {
+    transform: none !important;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   GPU Acceleration Hints
+   Apply to elements that animate frequently
+   ---------------------------------------------------------------------------- */
+.gpu-accelerated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+
+/* Remove will-change after animation completes */
+.animation-complete {
+  will-change: auto;
+}

@@ -17,19 +17,19 @@ import {
   CheckCircle,
   Beaker
 } from 'lucide-react';
-import { PageHeader } from '../components/PageHeader';
+import { PageHeader } from '@/components/common/PageHeader';
 import { cn } from '../lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useProject } from '@/contexts/ProjectContext';
-import ErrorBoundary from '@/components/ErrorBoundary';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { useErrorReporting } from '@/utils/errorReporting';
 import { useGlobalDataCache } from '@/hooks/useGlobalDataCache';
 import { Employee } from '@/types/employee';
 import type { TreatmentOptions, TreatmentSuggestion, ApplyTreatmentResult } from '@/types/treatment';
-import { RiskIndicator } from '@/components/RiskIndicator';
-import TreatmentTracker from '@/components/TreatmentTracker';
-import { ROIDashboardTab } from '@/components/ROIDashboardTab';
-import { AtlasSimulatorSubTab } from '@/components/AtlasSimulatorSubTab';
+import { RiskIndicator } from '@/components/risk/RiskIndicator';
+import TreatmentTracker from '@/components/risk/TreatmentTracker';
+import { ROIDashboardTab } from '@/components/tabs/ROIDashboardTab';
+import { AtlasSimulatorSubTab } from '@/components/tabs/AtlasSimulatorSubTab';
 import { useDynamicRiskRanges } from '../hooks/useDynamicRiskThresholds';
 import { FixedSizeList as List } from 'react-window';
 import { AutoSizer } from 'react-virtualized';
@@ -45,8 +45,8 @@ import {
 } from 'recharts';
 import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { TrainingReminderBanner } from '../components/TrainingReminderBanner';
-import { ModelTrainingRequired } from '../components/ModelTrainingRequired';
+import { TrainingReminderBanner } from '@/components/notifications/TrainingReminderBanner';
+import { ModelTrainingRequired } from '@/components/model/ModelTrainingRequired';
 import api from '../services/apiService';
 import { employeeService } from '../services/employeeService';
 

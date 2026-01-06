@@ -13,9 +13,9 @@ import {
   X,
   Lightbulb,
 } from 'lucide-react';
-import { useEmployeeReasoning } from '../hooks/useReasoning';
-import { MLContributor, HeuristicAlert } from '../types/reasoning';
-import { getCurrentThresholds } from '../config/riskThresholds';
+import { useEmployeeReasoning } from '@/hooks/useReasoning';
+import { MLContributor, HeuristicAlert } from '@/types/reasoning';
+import { getCurrentThresholds } from '@/config/riskThresholds';
 
 interface ReasoningDashboardProps {
   hrCode: string;

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Upload, X, AlertCircle, FileText } from 'lucide-react';
-import { cn } from '../lib/utils';
-import api from '../services/apiService';
+import { cn } from '@/lib/utils';
+import api from '@/services/apiService';
 import DataPreviewTable from './DataPreviewTable';
-import { parseFile, autoMapColumns, validateData, transformData } from '../services/fileParsingService';
+import { parseFile, autoMapColumns, validateData, transformData } from '@/services/fileParsingService';
 
 type DataUploadType = 'employee' | 'engagement';
 

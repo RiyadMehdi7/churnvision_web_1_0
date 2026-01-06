@@ -25,7 +25,7 @@ import {
   Wallet,
   Clock
 } from 'lucide-react';
-import { cn, colors } from '../lib/utils';
+import { cn, colors } from '@/lib/utils';
 import {
   LineChart,
   Line,
@@ -41,7 +41,7 @@ import {
   PieChart as RechartsPieChart,
   Pie
 } from 'recharts';
-import api from '../services/apiService';
+import api from '@/services/apiService';
 
 // Types matching backend schemas
 interface PortfolioSummary {

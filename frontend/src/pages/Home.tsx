@@ -14,17 +14,18 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useGlobalDataCache } from '../hooks/useGlobalDataCache';
 import { useProject } from '../contexts/ProjectContext';
 import { Employee } from '../types/employee';
-import { DataUploadWindow } from '../components/DataUploadWindow';
-import { DataUploadNotification } from '../components/DataUploadNotification';
-import { LoadingStates } from '../components/LoadingSpinner';
+import { DataUploadWindow } from '@/components/data/DataUploadWindow';
+import { DataUploadNotification } from '@/components/data/DataUploadNotification';
+import { LoadingStates } from '@/components/common/LoadingSpinner';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { AnalysisResultVisualization } from '../components/AnalysisResultVisualization';
-import EmployeeNetworkGraph from '../components/EmployeeNetworkGraph';
-import { ModelTrainingRequired } from '../components/ModelTrainingRequired';
-import { TrainingReminderBanner } from '../components/TrainingReminderBanner';
-import { ModelIntelligenceTab } from '../components/ModelIntelligenceTab';
-import { CohortAnalysisTab } from '../components/CohortAnalysisTab';
+import { AnalysisResultVisualization } from '@/components/analysis/AnalysisResultVisualization';
+import EmployeeNetworkGraph from '@/components/employee/EmployeeNetworkGraph';
+import { ModelTrainingRequired } from '@/components/model/ModelTrainingRequired';
+import { TrainingReminderBanner } from '@/components/notifications/TrainingReminderBanner';
+import { ModelIntelligenceTab } from '@/components/model/ModelIntelligenceTab';
+import { CohortAnalysisTab } from '@/components/tabs/CohortAnalysisTab';
+import { PageHeader } from '@/components/common/PageHeader';
 import { modelIntelligenceService, DepartureTimeline } from '../services/modelIntelligenceService';
 
 import {
@@ -1346,8 +1347,7 @@ const EmployeeTableRow = memo(({
   );
 });
 
-// Import PageHeader component
-import { PageHeader } from '../components/PageHeader';
+// PageHeader already imported at top of file
 import { LayoutDashboard } from 'lucide-react';
 
 // *** Modified Component: RiskBarCard ***

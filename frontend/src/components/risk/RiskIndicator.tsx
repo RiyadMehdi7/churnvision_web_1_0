@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
-import { getCurrentThresholds, getRiskLevel, isCalibrating, subscribeToCalibrationChanges } from '../config/riskThresholds';
+import { getCurrentThresholds, getRiskLevel, isCalibrating, subscribeToCalibrationChanges } from '../../config/riskThresholds';
 import React from 'react';
 
 interface RiskIndicatorProps {

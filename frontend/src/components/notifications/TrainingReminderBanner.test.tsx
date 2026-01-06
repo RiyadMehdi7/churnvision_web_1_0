@@ -1,17 +1,24 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TrainingReminderBanner } from './TrainingReminderBanner';
-import { useGlobalDataCache } from '../hooks/useGlobalDataCache';
-import { useProject } from '../contexts/ProjectContext';
+import { useGlobalDataCache } from '../../hooks/useGlobalDataCache';
+import { useProject } from '../../contexts/ProjectContext';
 import { useNavigate } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 
 // Mock the hooks
-vi.mock('../hooks/useGlobalDataCache');
-vi.mock('../contexts/ProjectContext');
-vi.mock('react-router-dom', () => ({
-  ...vi.importActual('react-router-dom'),
-  useNavigate: vi.fn(),
+vi.mock('../../hooks/useGlobalDataCache', () => ({
+  useGlobalDataCache: vi.fn(),
 }));
+vi.mock('../../contexts/ProjectContext', () => ({
+  useProject: vi.fn(),
+}));
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: vi.fn(),
+  };
+});
 
 describe('TrainingReminderBanner', () => {
   it('does not render when model is trained', () => {

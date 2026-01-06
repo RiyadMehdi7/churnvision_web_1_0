@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Upload, X, AlertCircle, FileText, BarChart3, Brain } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { engagementDataService } from '../services/engagementDataService';
+import { cn } from '@/lib/utils';
+import { engagementDataService } from '@/services/engagementDataService';
 import { 
   parseFile
-} from '../services/fileParsingService';
+} from '@/services/fileParsingService';
 
 interface EngagementUploadWindowProps {
   show: boolean;

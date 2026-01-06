@@ -2,9 +2,9 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { Responsive, WidthProvider, Layout } from 'react-grid-layout';
 import { motion } from 'framer-motion';
 import { GripVertical, X, Settings, Maximize2 } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { DashboardWidget } from '../types/dashboard';
-import { WIDGET_COMPONENTS } from './widgets';
+import { cn } from '@/lib/utils';
+import { DashboardWidget } from '@/types/dashboard';
+import { WIDGET_COMPONENTS } from '@/components/widgets';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 

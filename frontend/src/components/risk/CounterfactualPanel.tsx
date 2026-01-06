@@ -1,6 +1,6 @@
 import React from 'react';
 // Removed import as Counterfactual is not exported from the target file
-// import { Counterfactual } from '../types/employee';
+// import { Counterfactual } from '@/types/employee';
 
 // Define the Counterfactual type locally based on usage
 type Counterfactual = {

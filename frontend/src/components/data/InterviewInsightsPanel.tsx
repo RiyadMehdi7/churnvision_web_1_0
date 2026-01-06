@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { MessageSquare, TrendingUp, TrendingDown, Users, Brain, AlertCircle, CheckCircle } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { interviewService } from '../services/interviewService';
+import { cn } from '@/lib/utils';
+import { interviewService } from '@/services/interviewService';
 
 interface InterviewInsightsPanelProps {
   className?: string;

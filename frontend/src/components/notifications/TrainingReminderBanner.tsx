@@ -1,8 +1,8 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useGlobalDataCache } from '../hooks/useGlobalDataCache';
-import { useProject } from '../contexts/ProjectContext';
+import { useGlobalDataCache } from '../../hooks/useGlobalDataCache';
+import { useProject } from '../../contexts/ProjectContext';
 
 export function TrainingReminderBanner(): React.ReactElement | null {
   const { activeProject } = useProject();

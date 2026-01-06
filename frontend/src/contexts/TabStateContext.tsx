@@ -1,6 +1,6 @@
 import React, { createContext, useContext, ReactNode } from 'react';
 import { useTabState } from '../hooks/useTabState';
-import { TabType, TabStates, SharedAnalysisContext } from '../components/TabInterfaceController';
+import { TabType, TabStates, SharedAnalysisContext } from '@/components/tabs/TabInterfaceController';
 
 interface TabStateContextType {
   // Current state

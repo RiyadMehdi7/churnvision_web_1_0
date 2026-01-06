@@ -6,7 +6,7 @@ import { ThemeToggle } from '../ui/ThemeToggle'
 import { Home, Beaker, Settings as SettingsIcon, Database, BookOpen } from 'lucide-react'
 import { useLicense, getLicenseTierDisplayName, getLicenseTierColor } from '../../providers/LicenseProvider'
 import { useAuth } from '../../contexts/AuthContext'
-import { AlertNotificationBell } from '../AlertNotificationBell'
+import { AlertNotificationBell } from '@/components/notifications/AlertNotificationBell'
 
 const allNavigation = [
   { name: 'Home', href: '/', icon: Home, feature: 'home' },

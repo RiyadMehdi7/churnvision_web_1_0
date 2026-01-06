@@ -18,7 +18,7 @@ import {
   Lightbulb,
   Target
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '@/lib/utils';
 import {
   BarChart,
   Bar,
@@ -29,7 +29,7 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
-import { modelIntelligenceService, CohortOverview, CohortAnalysis } from '../services/modelIntelligenceService';
+import { modelIntelligenceService, CohortOverview, CohortAnalysis } from '@/services/modelIntelligenceService';
 
 interface CohortAnalysisTabProps {
   className?: string;

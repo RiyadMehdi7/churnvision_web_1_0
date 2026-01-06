@@ -29,7 +29,7 @@ import {
   DollarSign,
   Play
 } from 'lucide-react';
-import { cn, colors } from '../lib/utils';
+import { cn, colors } from '@/lib/utils';
 import {
   LineChart,
   Line,
@@ -43,7 +43,7 @@ import {
   Bar,
   Cell
 } from 'recharts';
-import api from '../services/apiService';
+import api from '@/services/apiService';
 
 // Types for ML-based counterfactual
 interface PerturbableFeature {

@@ -14,9 +14,9 @@ import {
   AlertCircle,
   Trash2
 } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { DashboardLayout } from '../types/dashboard';
-import { CustomizationMode } from '../contexts/HomeCustomizationContext';
+import { cn } from '@/lib/utils';
+import { DashboardLayout } from '@/types/dashboard';
+import { CustomizationMode } from '@/contexts/HomeCustomizationContext';
 
 interface CustomizationToolbarProps {
   isCustomizing: boolean;

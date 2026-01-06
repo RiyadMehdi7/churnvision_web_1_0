@@ -7,14 +7,14 @@ import {
   FolderKanban,
   Brain
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '@/lib/utils';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useGlobalDataCache } from '../hooks/useGlobalDataCache';
-import { useProject } from '../contexts/ProjectContext';
-import { Employee } from '../types/employee';
-import { DataUploadWindow } from './DataUploadWindow';
-import { DataUploadNotification } from './DataUploadNotification';
-import { LoadingStates } from './LoadingSpinner';
+import { useGlobalDataCache } from '@/hooks/useGlobalDataCache';
+import { useProject } from '@/contexts/ProjectContext';
+import { Employee } from '@/types/employee';
+import { DataUploadWindow } from '@/components/data/DataUploadWindow';
+import { DataUploadNotification } from '@/components/data/DataUploadNotification';
+import { LoadingStates } from '@/components/common/LoadingSpinner';
 import { useNavigate } from 'react-router-dom';
 import {
   Select,
@@ -22,10 +22,10 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from './ui/select';
-import { Input } from './ui/input';
-import { getRiskLevelForEmployee, getRiskLevelForEmployeeWithStyles, subscribeToCalibrationChanges, isCalibrating } from '../config/riskThresholds';
-import { autoThresholdService } from '../services/autoThresholdService';
+} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { getRiskLevelForEmployee, getRiskLevelForEmployeeWithStyles, subscribeToCalibrationChanges, isCalibrating } from '@/config/riskThresholds';
+import { autoThresholdService } from '@/services/autoThresholdService';
 import { DashboardState } from './TabInterfaceController';
 
 // Types and utilities

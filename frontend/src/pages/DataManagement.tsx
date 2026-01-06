@@ -10,7 +10,7 @@ import {
     Download, Upload, Clock, MessageSquare, BarChart, GitCompare,
     HardDrive, Plug, ExternalLink, Link2, Settings2
 } from 'lucide-react';
-import { PageHeader } from '../components/PageHeader';
+import { PageHeader } from '@/components/common/PageHeader';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalDataCache } from '@/hooks/useGlobalDataCache';
 import { useProject } from '@/contexts/ProjectContext'; // Import from local context
@@ -22,14 +22,14 @@ import { logger } from '@/utils/clientLogger';
 import { Button } from "@/components/ui/button";
 import { useToast } from '@/hooks/use-toast';
 // Removed unused: import { useBatchReasoning } from '../hooks/useReasoning';
-import { InterviewUploadWindow } from '../components/InterviewUploadWindow';
-import { EngagementUploadWindow } from '../components/EngagementUploadWindow';
-import { ModelPerformanceGauge } from '../components/ModelPerformanceGauge';
-import { DatabaseSyncFlow } from '../components/DatabaseSyncFlow';
-import { StepIndicator, UPLOAD_WORKFLOW_STEPS, type Step } from '../components/StepIndicator';
-import { ContextualLoadingSpinner } from '../components/LoadingSpinner';
+import { InterviewUploadWindow } from '@/components/data/InterviewUploadWindow';
+import { EngagementUploadWindow } from '@/components/data/EngagementUploadWindow';
+import { ModelPerformanceGauge } from '@/components/model/ModelPerformanceGauge';
+import { DatabaseSyncFlow } from '@/components/data/DatabaseSyncFlow';
+import { StepIndicator, UPLOAD_WORKFLOW_STEPS, type Step } from '@/components/common/StepIndicator';
+import { ContextualLoadingSpinner } from '@/components/common/LoadingSpinner';
 import { authService } from '@/services/authService';
-import { DataQualityReport, type DataQualityData } from '../components/DataQualityReport';
+import { DataQualityReport, type DataQualityData } from '@/components/data/DataQualityReport';
 
 // Define accepted file types for CSV and Excel
 const ACCEPTED_FILE_TYPES = [

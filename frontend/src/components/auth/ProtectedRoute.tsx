@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLicense, getLicenseTierDisplayName } from '../providers/LicenseProvider';
+import { useLicense, getLicenseTierDisplayName } from '../../providers/LicenseProvider';
 import { Lock, ArrowRight, Star, Zap, Building2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 

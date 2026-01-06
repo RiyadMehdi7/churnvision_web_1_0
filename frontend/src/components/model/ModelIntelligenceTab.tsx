@@ -17,7 +17,7 @@ import {
   Loader2,
   Brain
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '@/lib/utils';
 import {
   LineChart,
   Line,
@@ -30,7 +30,7 @@ import {
   Bar,
   Legend
 } from 'recharts';
-import { modelIntelligenceService, BacktestingResults, PredictionOutcomesResult } from '../services/modelIntelligenceService';
+import { modelIntelligenceService, BacktestingResults, PredictionOutcomesResult } from '@/services/modelIntelligenceService';
 import { ModelSelectionCard } from './ModelSelectionCard';
 
 interface ModelIntelligenceTabProps {

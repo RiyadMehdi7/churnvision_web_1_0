@@ -9,8 +9,8 @@ import {
   BarChart3,
   Monitor
 } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { DashboardWidget } from '../types/dashboard';
+import { cn } from '@/lib/utils';
+import { DashboardWidget } from '@/types/dashboard';
 
 interface WidgetConfigPanelProps {
   widget: DashboardWidget | null;

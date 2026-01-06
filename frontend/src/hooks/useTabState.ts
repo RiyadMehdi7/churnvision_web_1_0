@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TabType, TabStates, SharedAnalysisContext } from '../components/TabInterfaceController';
+import { TabType, TabStates, SharedAnalysisContext } from '@/components/tabs/TabInterfaceController';
 
 const TAB_STORAGE_KEY = 'churnvision-active-tab';
 const TAB_STATES_STORAGE_KEY = 'churnvision-tab-states';

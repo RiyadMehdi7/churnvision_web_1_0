@@ -3597,23 +3597,21 @@ export function DataManagement(): React.ReactElement {
                                                                 </div>
                                                                 <div className="flex items-center gap-1.5 flex-shrink-0">
                                                                     {!dataset.active && (
-                                                                        <>
-                                                                            <button
-                                                                                onClick={() => setActiveDataset(dataset.id)}
-                                                                                className="p-1.5 text-gray-500 hover:text-green-600 dark:text-gray-400 dark:hover:text-green-300 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-green-500 dark:focus:ring-green-400"
-                                                                                title="Set as active dataset"
-                                                                            >
-                                                                                <Check className="w-4 h-4" />
-                                                                            </button>
-                                                                            <button
-                                                                                onClick={() => handleDeleteDataset(dataset.id)}
-                                                                                className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-300 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-red-500 dark:focus:ring-red-400"
-                                                                                title="Delete dataset"
-                                                                            >
-                                                                                <Trash2 className="w-4 h-4" />
-                                                                            </button>
-                                                                        </>
+                                                                        <button
+                                                                            onClick={() => setActiveDataset(dataset.id)}
+                                                                            className="p-1.5 text-gray-500 hover:text-green-600 dark:text-gray-400 dark:hover:text-green-300 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-green-500 dark:focus:ring-green-400"
+                                                                            title="Set as active dataset"
+                                                                        >
+                                                                            <Check className="w-4 h-4" />
+                                                                        </button>
                                                                     )}
+                                                                    <button
+                                                                        onClick={() => handleDeleteDataset(dataset.id)}
+                                                                        className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-300 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-red-500 dark:focus:ring-red-400"
+                                                                        title="Delete dataset"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </button>
                                                                     <button
                                                                         onClick={() => fetchDatasetPreview(dataset.id, dataset.name)}
                                                                         className="p-1.5 text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-purple-500 dark:focus:ring-purple-400"

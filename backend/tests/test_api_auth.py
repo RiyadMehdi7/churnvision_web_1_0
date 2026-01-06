@@ -111,27 +111,28 @@ class TestRateLimiting:
             await _assert_not_locked(key)
 
     @pytest.mark.asyncio
-    async def test_register_failed_locks_after_max_attempts(self, monkeypatch):
+    async def test_register_failed_locks_after_max_attempts(self):
         """Account should lock after max failed attempts."""
-        monkeypatch.setenv("LOGIN_MAX_ATTEMPTS", "3")
-        monkeypatch.setenv("LOGIN_LOCKOUT_MINUTES", "15")
-
         from app.api.v1.auth import _register_failed_attempt
         from app.core.login_tracker import InMemoryLoginTracker
+        from app.core import config
 
         tracker = InMemoryLoginTracker()
         key = "failing_user::127.0.0.1"
 
-        with patch('app.api.v1.auth.get_login_tracker', return_value=tracker):
-            # Register failures up to limit
-            await _register_failed_attempt(key)
-            await _register_failed_attempt(key)
+        # Patch settings directly instead of env vars (settings already loaded)
+        with patch.object(config.settings, 'LOGIN_MAX_ATTEMPTS', 3):
+            with patch.object(config.settings, 'LOGIN_LOCKOUT_MINUTES', 15):
+                with patch('app.api.v1.auth.get_login_tracker', return_value=tracker):
+                    # Register failures up to limit
+                    await _register_failed_attempt(key)
+                    await _register_failed_attempt(key)
 
-            # Third attempt should trigger lockout
-            with pytest.raises(HTTPException) as exc_info:
-                await _register_failed_attempt(key)
+                    # Third attempt should trigger lockout
+                    with pytest.raises(HTTPException) as exc_info:
+                        await _register_failed_attempt(key)
 
-            assert exc_info.value.status_code == 429
+                    assert exc_info.value.status_code == 429
 
     @pytest.mark.asyncio
     async def test_reset_attempts_clears_state(self):
@@ -321,13 +322,16 @@ class TestLogoutEndpoint:
         mock_request = MagicMock()
         mock_request.cookies = {}
 
-        result = await logout(
-            response=mock_response,
-            request=mock_request,
-            db=mock_db_session,
-            token="dummy-token",
-            current_user=mock_user
-        )
+        # Mock the blacklist and token revocation functions
+        with patch("app.api.v1.auth.blacklist_token_async", new_callable=AsyncMock):
+            with patch("app.api.v1.auth._revoke_all_user_tokens", new_callable=AsyncMock):
+                result = await logout(
+                    response=mock_response,
+                    request=mock_request,
+                    db=mock_db_session,
+                    token="dummy-token",
+                    current_user=mock_user
+                )
 
         mock_response.delete_cookie.assert_called()
         assert result["message"] == "Successfully logged out"

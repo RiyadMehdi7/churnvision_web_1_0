@@ -11,10 +11,7 @@ class TestHealthCheckFunctions:
     @pytest.mark.asyncio
     async def test_check_db_connection_success(self):
         """Should return True when database is reachable."""
-        from app.main import check_db_connection, _health_cache
-
-        # Clear the cache to ensure fresh check
-        _health_cache["database"] = {"healthy": None, "timestamp": 0}
+        from app.db.session import check_db_connection
 
         mock_engine = MagicMock()
         mock_connection = AsyncMock()
@@ -23,7 +20,7 @@ class TestHealthCheckFunctions:
         mock_connection.__aexit__ = AsyncMock(return_value=None)
         mock_connection.execute = AsyncMock()
 
-        with patch('app.main.async_engine', mock_engine):
+        with patch('app.db.session.engine', mock_engine):
             result = await check_db_connection()
 
         assert result is True
@@ -31,15 +28,12 @@ class TestHealthCheckFunctions:
     @pytest.mark.asyncio
     async def test_check_db_connection_failure(self):
         """Should return False when database is unreachable."""
-        from app.main import check_db_connection, _health_cache
-
-        # Clear the cache
-        _health_cache["database"] = {"healthy": None, "timestamp": 0}
+        from app.db.session import check_db_connection
 
         mock_engine = MagicMock()
         mock_engine.connect = MagicMock(side_effect=Exception("Connection refused"))
 
-        with patch('app.main.async_engine', mock_engine):
+        with patch('app.db.session.engine', mock_engine):
             result = await check_db_connection()
 
         assert result is False
@@ -55,7 +49,8 @@ class TestHealthCheckFunctions:
         mock_cache = AsyncMock()
         mock_cache.set = AsyncMock(return_value=True)
 
-        with patch('app.main.get_cache', return_value=mock_cache):
+        # get_cache is imported inside check_redis_connection, so patch it there
+        with patch('app.core.cache.get_cache', new_callable=AsyncMock, return_value=mock_cache):
             result = await check_redis_connection()
 
         assert result is True
@@ -68,7 +63,8 @@ class TestHealthCheckFunctions:
         # Clear the cache
         _health_cache["redis"] = {"healthy": None, "timestamp": 0}
 
-        with patch('app.main.get_cache', side_effect=Exception("Redis connection failed")):
+        # get_cache is imported inside check_redis_connection
+        with patch('app.core.cache.get_cache', new_callable=AsyncMock, side_effect=Exception("Redis connection failed")):
             result = await check_redis_connection()
 
         assert result is False

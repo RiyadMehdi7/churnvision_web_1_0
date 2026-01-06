@@ -32,23 +32,33 @@ class TestPredictEndpoint:
             )
         )
 
-        # Mock the churn service
-        mock_response = MagicMock()
-        mock_response.employee_id = "emp-123"
-        mock_response.churn_probability = 0.65
-        mock_response.risk_level = ChurnRiskLevel.HIGH
-        mock_response.contributing_factors = []
-        mock_response.recommendations = []
+        # Mock the churn service - use Pydantic model for proper serialization
+        from app.schemas.churn import ChurnPredictionResponse
+        from datetime import datetime
 
-        with patch("app.api.v1.churn.churn_service") as mock_service:
-            mock_service.predict_churn = AsyncMock(return_value=mock_response)
+        mock_response = ChurnPredictionResponse(
+            employee_id=123,
+            churn_probability=0.65,
+            risk_level=ChurnRiskLevel.HIGH,
+            contributing_factors=[],
+            recommendations=[],
+            predicted_at=datetime.utcnow()
+        )
 
-            with patch("app.api.v1.churn.AuditLogger.log_prediction", new_callable=AsyncMock):
-                result = await predict_employee_churn(
-                    request=request,
-                    db=mock_db_session,
-                    current_user=mock_user
-                )
+        # Mock the dataset service (returns mock dataset)
+        mock_dataset = MagicMock()
+        mock_dataset.dataset_id = "test-dataset"
+
+        with patch("app.api.v1.churn.get_active_dataset", new_callable=AsyncMock, return_value=mock_dataset):
+            with patch("app.api.v1.churn.churn_service") as mock_service:
+                mock_service.predict_churn = AsyncMock(return_value=mock_response)
+
+                with patch("app.api.v1.churn.AuditLogger.log_prediction", new_callable=AsyncMock):
+                    result = await predict_employee_churn(
+                        request=request,
+                        db=mock_db_session,
+                        current_user=mock_user
+                    )
 
         assert result.employee_id == 123
 

@@ -4506,46 +4506,42 @@ export function DataManagement(): React.ReactElement {
                 document.body
             )}
 
-            {/* Uploaded Dataset Preview Modal - Enhanced */}
+            {/* Uploaded Dataset Preview Modal - Professional Data Table Design */}
             {datasetPreviewModal.isOpen && createPortal(
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 md:p-6"
                     onClick={closeDatasetPreviewModal}
                 >
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                        initial={{ opacity: 0, scale: 0.96, y: 10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                        className="bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 rounded-2xl shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col border border-gray-200/50 dark:border-gray-700/50 overflow-hidden"
+                        exit={{ opacity: 0, scale: 0.96, y: 10 }}
+                        transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+                        className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl shadow-black/20 w-full max-w-[95vw] xl:max-w-7xl max-h-[92vh] flex flex-col border border-slate-200 dark:border-slate-700/60 overflow-hidden"
                         onClick={(e: React.MouseEvent) => e.stopPropagation()}
                     >
-                        {/* Modal Header - Gradient with glassmorphism */}
-                        <div className="relative overflow-hidden">
-                            {/* Background pattern */}
-                            <div className="absolute inset-0 bg-gradient-to-r from-purple-600/10 via-blue-600/10 to-emerald-600/10 dark:from-purple-500/20 dark:via-blue-500/20 dark:to-emerald-500/20" />
-                            <div className="absolute inset-0 bg-[linear-gradient(to_right,#8882_1px,transparent_1px),linear-gradient(to_bottom,#8882_1px,transparent_1px)] bg-[size:14px_24px] opacity-30" />
-
-                            <div className="relative px-6 py-5">
-                                <div className="flex items-start justify-between gap-4">
-                                    <div className="flex items-center gap-4">
-                                        {/* Icon */}
-                                        <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-blue-600 shadow-lg shadow-purple-500/25">
-                                            <Table2 className="w-6 h-6 text-white" />
+                        {/* Modal Header - Clean minimal design */}
+                        <div className="flex-shrink-0 border-b border-slate-200 dark:border-slate-700/60">
+                            <div className="px-5 py-4 md:px-6 md:py-5">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="flex items-center gap-4 min-w-0">
+                                        {/* Icon with subtle gradient */}
+                                        <div className="flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/20">
+                                            <Table2 className="w-5 h-5 text-white" />
                                         </div>
 
-                                        <div>
-                                            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                                        <div className="min-w-0">
+                                            <h2 className="text-lg font-semibold text-slate-900 dark:text-white truncate tracking-tight">
                                                 {datasetPreviewModal.datasetName}
                                             </h2>
                                             {datasetPreviewModal.data && (
-                                                <div className="flex items-center gap-3 mt-1.5">
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30">
-                                                        <Users className="w-3.5 h-3.5" />
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
                                                         {datasetPreviewModal.data.totalRows.toLocaleString()} rows
                                                     </span>
-                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30">
-                                                        <Hash className="w-3.5 h-3.5" />
+                                                    <span className="text-slate-300 dark:text-slate-600">•</span>
+                                                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
                                                         {datasetPreviewModal.data.headers.length} columns
                                                     </span>
                                                 </div>
@@ -4555,52 +4551,56 @@ export function DataManagement(): React.ReactElement {
 
                                     <button
                                         onClick={closeDatasetPreviewModal}
-                                        className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-white/50 dark:hover:bg-white/10 rounded-xl transition-all duration-200"
+                                        className="flex-shrink-0 p-2 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
                                         aria-label="Close preview"
                                     >
                                         <X className="w-5 h-5" />
                                     </button>
                                 </div>
 
-                                {/* Search bar */}
+                                {/* Search bar - refined styling */}
                                 {datasetPreviewModal.data && !datasetPreviewModal.isLoading && (
                                     <div className="mt-4 relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+                                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
                                         <input
                                             type="text"
-                                            placeholder="Search employees by name, department, position..."
+                                            placeholder="Search across all columns..."
                                             value={datasetPreviewModal.searchQuery}
                                             onChange={(e) => setDatasetPreviewModal(prev => ({ ...prev, searchQuery: e.target.value }))}
-                                            className="w-full pl-10 pr-4 py-2.5 text-sm bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 dark:focus:ring-purple-400/50 focus:border-transparent transition-all duration-200"
+                                            className="w-full pl-10 pr-20 py-2.5 text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/40 dark:focus:ring-cyan-400/30 dark:focus:border-cyan-400/30 transition-all"
                                         />
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-1">
+                                            <kbd className="px-1.5 py-0.5 text-[10px] font-medium text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 rounded border border-slate-200 dark:border-slate-600">⌘</kbd>
+                                            <kbd className="px-1.5 py-0.5 text-[10px] font-medium text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 rounded border border-slate-200 dark:border-slate-600">F</kbd>
+                                        </div>
                                     </div>
                                 )}
                             </div>
                         </div>
 
-                        {/* Modal Body */}
-                        <div className="flex-1 overflow-hidden">
+                        {/* Modal Body - Table container */}
+                        <div className="flex-1 overflow-hidden min-h-0">
                             {datasetPreviewModal.isLoading && (
-                                <div className="flex flex-col items-center justify-center h-full py-16">
-                                    <div className="relative">
-                                        <div className="w-16 h-16 rounded-full border-4 border-purple-200 dark:border-purple-900" />
-                                        <div className="absolute inset-0 w-16 h-16 rounded-full border-4 border-transparent border-t-purple-600 animate-spin" />
+                                <div className="flex flex-col items-center justify-center h-full py-20">
+                                    <div className="relative w-12 h-12">
+                                        <div className="absolute inset-0 rounded-full border-2 border-slate-200 dark:border-slate-700" />
+                                        <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-500 animate-spin" />
                                     </div>
-                                    <p className="mt-4 text-gray-600 dark:text-gray-400 font-medium">Loading dataset...</p>
-                                    <p className="mt-1 text-sm text-gray-400 dark:text-gray-500">Fetching employee records</p>
+                                    <p className="mt-4 text-sm font-medium text-slate-600 dark:text-slate-400">Loading preview...</p>
+                                    <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Fetching dataset records</p>
                                 </div>
                             )}
 
                             {datasetPreviewModal.error && (
-                                <div className="flex flex-col items-center justify-center h-full py-16 text-center px-6">
-                                    <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-4">
-                                        <AlertCircle className="w-8 h-8 text-red-500 dark:text-red-400" />
+                                <div className="flex flex-col items-center justify-center h-full py-20 text-center px-6">
+                                    <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center mb-4 ring-1 ring-red-100 dark:ring-red-800/30">
+                                        <AlertCircle className="w-7 h-7 text-red-500 dark:text-red-400" />
                                     </div>
-                                    <p className="text-lg font-semibold text-gray-900 dark:text-white">Failed to load preview</p>
-                                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md">{datasetPreviewModal.error}</p>
+                                    <p className="text-base font-semibold text-slate-900 dark:text-white">Failed to load preview</p>
+                                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 max-w-sm">{datasetPreviewModal.error}</p>
                                     <button
                                         onClick={() => datasetPreviewModal.datasetId && fetchDatasetPreview(datasetPreviewModal.datasetId, datasetPreviewModal.datasetName)}
-                                        className="mt-4 px-4 py-2 text-sm font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+                                        className="mt-5 px-4 py-2 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 rounded-lg transition-colors ring-1 ring-cyan-200 dark:ring-cyan-800/40"
                                     >
                                         Try again
                                     </button>
@@ -4617,58 +4617,105 @@ export function DataManagement(): React.ReactElement {
                                     )
                                     : datasetPreviewModal.data.rows;
 
+                                // Helper to detect column type for formatting
+                                const getColumnType = (header: string): 'id' | 'name' | 'date' | 'currency' | 'status' | 'number' | 'text' => {
+                                    const h = header.toLowerCase();
+                                    if (h.includes('code') || h.includes('_id') || h === 'id' || h.includes('hr_code')) return 'id';
+                                    if (h.includes('name') || h.includes('full_name')) return 'name';
+                                    if (h.includes('date') || h.includes('_at') || h.includes('time')) return 'date';
+                                    if (h.includes('cost') || h.includes('salary') || h.includes('amount') || h.includes('price')) return 'currency';
+                                    if (h.includes('status') || h.includes('state')) return 'status';
+                                    if (h.includes('tenure') || h.includes('count') || h.includes('number') || h.includes('age')) return 'number';
+                                    return 'text';
+                                };
+
                                 // Helper to get column icon
                                 const getColumnIcon = (header: string) => {
                                     const h = header.toLowerCase();
-                                    if (h.includes('name') || h.includes('full')) return <Users className="w-3.5 h-3.5" />;
-                                    if (h.includes('department') || h.includes('structure')) return <Briefcase className="w-3.5 h-3.5" />;
-                                    if (h.includes('position') || h.includes('role')) return <Briefcase className="w-3.5 h-3.5" />;
-                                    if (h.includes('date') || h.includes('tenure')) return <Calendar className="w-3.5 h-3.5" />;
-                                    if (h.includes('cost') || h.includes('salary')) return <DollarSign className="w-3.5 h-3.5" />;
-                                    if (h.includes('code') || h.includes('id')) return <Hash className="w-3.5 h-3.5" />;
+                                    if (h.includes('name') || h.includes('full')) return <Users className="w-3 h-3" />;
+                                    if (h.includes('department') || h.includes('structure')) return <Briefcase className="w-3 h-3" />;
+                                    if (h.includes('position') || h.includes('role')) return <Briefcase className="w-3 h-3" />;
+                                    if (h.includes('date') || h.includes('tenure') || h.includes('_at')) return <Calendar className="w-3 h-3" />;
+                                    if (h.includes('cost') || h.includes('salary')) return <DollarSign className="w-3 h-3" />;
+                                    if (h.includes('code') || h.includes('id')) return <Hash className="w-3 h-3" />;
+                                    if (h.includes('manager')) return <Users className="w-3 h-3" />;
                                     return null;
                                 };
 
                                 // Helper to style status cells
                                 const getStatusStyle = (value: string) => {
                                     const v = String(value).toLowerCase();
-                                    if (v === 'active' || v === 'employed') return 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30';
-                                    if (v === 'inactive' || v === 'terminated' || v === 'left') return 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300 border-red-200 dark:border-red-500/30';
-                                    if (v === 'on leave' || v === 'pending') return 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30';
-                                    return '';
+                                    if (v === 'active' || v === 'employed' || v === 'yes' || v === 'true')
+                                        return 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-500/20';
+                                    if (v === 'inactive' || v === 'terminated' || v === 'left' || v === 'no' || v === 'false')
+                                        return 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 ring-1 ring-red-200 dark:ring-red-500/20';
+                                    if (v === 'on leave' || v === 'pending' || v === 'warning')
+                                        return 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 ring-1 ring-amber-200 dark:ring-amber-500/20';
+                                    return 'bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-600';
+                                };
+
+                                // Format cell value based on type
+                                const formatCellValue = (value: any, type: string): string => {
+                                    if (value === null || value === undefined || value === '') return '';
+                                    const strVal = String(value);
+
+                                    if (type === 'currency' && !isNaN(Number(value))) {
+                                        return new Intl.NumberFormat('en-US', {
+                                            style: 'currency',
+                                            currency: 'USD',
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: 0
+                                        }).format(Number(value));
+                                    }
+                                    if (type === 'number' && !isNaN(Number(value))) {
+                                        return Number(value).toLocaleString();
+                                    }
+                                    if (type === 'date' && strVal.match(/^\d{4}-\d{2}-\d{2}/)) {
+                                        try {
+                                            return new Date(strVal).toLocaleDateString('en-US', {
+                                                year: 'numeric',
+                                                month: 'short',
+                                                day: 'numeric'
+                                            });
+                                        } catch { return strVal; }
+                                    }
+                                    return strVal;
                                 };
 
                                 return (
-                                    <div className="h-full overflow-auto">
-                                        <table className="min-w-full">
-                                            <thead className="bg-gray-50/90 dark:bg-gray-800/90 backdrop-blur-sm sticky top-0 z-10">
-                                                <tr>
-                                                    <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider w-14 border-b border-gray-200 dark:border-gray-700">
-                                                        #
+                                    <div className="h-full overflow-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
+                                        <table className="min-w-full border-collapse">
+                                            {/* Sticky header with shadow */}
+                                            <thead className="sticky top-0 z-10">
+                                                <tr className="bg-slate-50 dark:bg-slate-800/95 backdrop-blur-sm shadow-[0_1px_3px_0_rgba(0,0,0,0.05)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.2)]">
+                                                    <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider w-16 bg-slate-50 dark:bg-slate-800/95">
+                                                        <span className="font-mono">#</span>
                                                     </th>
                                                     {datasetPreviewModal.data.headers.map((header, index) => (
                                                         <th
                                                             key={index}
-                                                            className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap border-b border-gray-200 dark:border-gray-700"
+                                                            className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap bg-slate-50 dark:bg-slate-800/95"
                                                         >
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-gray-400 dark:text-gray-500">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-slate-400 dark:text-slate-500 opacity-70">
                                                                     {getColumnIcon(header)}
                                                                 </span>
-                                                                {header.replace(/_/g, ' ')}
+                                                                <span>{header.replace(/_/g, ' ')}</span>
                                                             </div>
                                                         </th>
                                                     ))}
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                            <tbody>
                                                 {filteredRows.length === 0 ? (
                                                     <tr>
-                                                        <td colSpan={datasetPreviewModal.data.headers.length + 1} className="px-4 py-12 text-center">
+                                                        <td colSpan={datasetPreviewModal.data.headers.length + 1} className="px-4 py-16 text-center bg-white dark:bg-slate-900">
                                                             <div className="flex flex-col items-center">
-                                                                <Search className="w-10 h-10 text-gray-300 dark:text-gray-600 mb-3" />
-                                                                <p className="text-gray-500 dark:text-gray-400 font-medium">No results found</p>
-                                                                <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Try adjusting your search terms</p>
+                                                                <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3">
+                                                                    <Search className="w-5 h-5 text-slate-400 dark:text-slate-500" />
+                                                                </div>
+                                                                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">No matching records</p>
+                                                                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Try adjusting your search query</p>
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -4676,31 +4723,47 @@ export function DataManagement(): React.ReactElement {
                                                     filteredRows.map((row, rowIndex) => (
                                                         <tr
                                                             key={rowIndex}
-                                                            className="hover:bg-purple-50/50 dark:hover:bg-purple-900/10 transition-colors group"
+                                                            className={`
+                                                                border-b border-slate-100 dark:border-slate-800/60
+                                                                transition-colors duration-100
+                                                                hover:bg-cyan-50/50 dark:hover:bg-cyan-900/10
+                                                                ${rowIndex % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/50 dark:bg-slate-800/20'}
+                                                            `}
                                                         >
-                                                            <td className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-mono">
+                                                            <td className="px-4 py-3 text-xs text-slate-400 dark:text-slate-500 font-mono tabular-nums w-16">
                                                                 {rowIndex + 1}
                                                             </td>
                                                             {datasetPreviewModal.data!.headers.map((header, cellIndex) => {
                                                                 const cellValue = row[header];
-                                                                const displayValue = cellValue === null || cellValue === undefined ? '' : String(cellValue);
-                                                                const isStatus = header.toLowerCase().includes('status');
-                                                                const statusStyle = isStatus ? getStatusStyle(displayValue) : '';
+                                                                const columnType = getColumnType(header);
+                                                                const displayValue = formatCellValue(cellValue, columnType);
+                                                                const isStatus = columnType === 'status';
+                                                                const isEmpty = cellValue === null || cellValue === undefined || cellValue === '';
 
                                                                 return (
                                                                     <td
                                                                         key={cellIndex}
-                                                                        className="px-4 py-3 text-sm text-gray-700 dark:text-gray-200 whitespace-nowrap max-w-[250px]"
-                                                                        title={displayValue}
+                                                                        className={`px-4 py-3 text-sm whitespace-nowrap max-w-[280px] ${
+                                                                            columnType === 'id'
+                                                                                ? 'font-mono text-xs text-slate-500 dark:text-slate-400'
+                                                                                : columnType === 'name'
+                                                                                ? 'font-medium text-slate-800 dark:text-slate-200'
+                                                                                : columnType === 'currency' || columnType === 'number'
+                                                                                ? 'font-mono tabular-nums text-slate-700 dark:text-slate-300 text-right'
+                                                                                : columnType === 'date'
+                                                                                ? 'text-slate-500 dark:text-slate-400'
+                                                                                : 'text-slate-600 dark:text-slate-300'
+                                                                        }`}
+                                                                        title={String(cellValue ?? '')}
                                                                     >
-                                                                        {isStatus && displayValue ? (
-                                                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusStyle}`}>
+                                                                        {isEmpty ? (
+                                                                            <span className="text-slate-300 dark:text-slate-600 select-none">—</span>
+                                                                        ) : isStatus ? (
+                                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${getStatusStyle(displayValue)}`}>
                                                                                 {displayValue}
                                                                             </span>
-                                                                        ) : displayValue ? (
-                                                                            <span className="truncate block">{displayValue}</span>
                                                                         ) : (
-                                                                            <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
+                                                                            <span className="truncate block">{displayValue}</span>
                                                                         )}
                                                                     </td>
                                                                 );
@@ -4715,31 +4778,40 @@ export function DataManagement(): React.ReactElement {
                             })()}
                         </div>
 
-                        {/* Modal Footer */}
-                        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-700/50 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-sm">
-                            <div className="flex items-center gap-4">
+                        {/* Modal Footer - Clean and informative */}
+                        <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 md:px-6 md:py-4 border-t border-slate-200 dark:border-slate-700/60 bg-slate-50/80 dark:bg-slate-800/50">
+                            <div className="flex items-center gap-3">
                                 {datasetPreviewModal.data && (
-                                    <>
-                                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                            Showing {datasetPreviewModal.searchQuery
-                                                ? `${datasetPreviewModal.data.rows.filter(row =>
-                                                    Object.values(row).some(val =>
-                                                        String(val).toLowerCase().includes(datasetPreviewModal.searchQuery.toLowerCase())
-                                                    )
-                                                ).length} of `
-                                                : `${datasetPreviewModal.data.rows.length} of `}
-                                            {datasetPreviewModal.data.totalRows.toLocaleString()} records
+                                    <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
+                                            <span className="hidden sm:inline">Displaying</span>
+                                            <span className="font-medium text-slate-700 dark:text-slate-300">
+                                                {datasetPreviewModal.searchQuery
+                                                    ? datasetPreviewModal.data.rows.filter(row =>
+                                                        Object.values(row).some(val =>
+                                                            String(val).toLowerCase().includes(datasetPreviewModal.searchQuery.toLowerCase())
+                                                        )
+                                                    ).length
+                                                    : datasetPreviewModal.data.rows.length}
+                                            </span>
+                                            <span>of</span>
+                                            <span className="font-medium text-slate-700 dark:text-slate-300">
+                                                {datasetPreviewModal.data.totalRows.toLocaleString()}
+                                            </span>
+                                            <span className="hidden sm:inline">records</span>
                                         </div>
-                                    </>
+                                    </div>
                                 )}
                             </div>
-                            <button
-                                onClick={closeDatasetPreviewModal}
-                                className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-xl shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 transition-all duration-200"
-                            >
-                                Close Preview
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={closeDatasetPreviewModal}
+                                    className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                                >
+                                    Close
+                                </button>
+                            </div>
                         </div>
                     </motion.div>
                 </div>,

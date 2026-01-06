@@ -1134,6 +1134,7 @@ const LicenseSettings = ({ licenseStatus, licenseData, gracePeriodEnds, licenseT
 
 const AppearanceSettings = () => (
   <div className="space-y-6">
+    {/* Theme toggle hidden temporarily */}
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -1143,6 +1144,8 @@ const AppearanceSettings = () => (
         <CardDescription>Customize the app's visual appearance</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        <p className="text-sm text-gray-500">Theme settings coming soon.</p>
+        {/*
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <Label>Color Theme</Label>
@@ -1150,6 +1153,7 @@ const AppearanceSettings = () => (
           </div>
           <ThemeToggle />
         </div>
+        */}
       </CardContent>
     </Card>
   </div>

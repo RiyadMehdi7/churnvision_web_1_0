@@ -107,7 +107,8 @@ export function Header(): React.ReactElement {
               {getLicenseTierDisplayName(licenseTier)}
             </div>
             <AlertNotificationBell />
-            <ThemeToggle />
+            {/* ThemeToggle hidden temporarily */}
+            {/* <ThemeToggle /> */}
 
             {/* User Menu */}
             {user && (

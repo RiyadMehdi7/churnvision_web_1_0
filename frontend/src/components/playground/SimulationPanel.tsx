@@ -7,10 +7,13 @@
  * 3. Fine-tune feature values if needed
  * 4. Run ML-based simulation
  * 5. View projected outcomes
+ *
+ * Design aligned with ChurnVision design system (AtlasSimulatorSubTab pattern).
  */
 
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play,
   Settings2,
@@ -19,13 +22,9 @@ import {
   ChevronUp,
   RefreshCw,
   Zap,
+  AlertCircle,
+  Check,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Slider } from '@/components/ui/slider';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import api from '@/services/apiService';
 import { cn } from '@/lib/utils';
 import { BalancedScorecard } from './BalancedScorecard';
@@ -142,6 +141,39 @@ const FEATURE_CONFIG: Record<string, {
   },
 };
 
+// SectionCard matching ROIDashboardTab pattern
+const SectionCard: React.FC<{
+  title: string;
+  description?: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  headerAction?: React.ReactNode;
+}> = ({ title, description, icon, children, className, headerAction }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    className={cn(
+      "bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden",
+      className
+    )}
+  >
+    <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+      <div>
+        <div className="flex items-center gap-2">
+          {icon && <span className="text-gray-400">{icon}</span>}
+          <h3 className="font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
+        </div>
+        {description && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{description}</p>
+        )}
+      </div>
+      {headerAction}
+    </div>
+    <div className="p-5">{children}</div>
+  </motion.div>
+);
+
 export function SimulationPanel({
   employeeId,
   treatments,
@@ -231,255 +263,353 @@ export function SimulationPanel({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Treatment Selection */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-purple-500" />
-            Select Treatment
-          </CardTitle>
-          <CardDescription>
-            Choose a treatment intervention to simulate its impact
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {treatments.map((treatment) => (
-              <button
-                key={treatment.id}
-                onClick={() => handleTreatmentSelect(treatment)}
-                className={cn(
-                  'p-3 rounded-lg border text-left transition-all',
-                  'hover:border-purple-300 hover:bg-purple-50',
-                  selectedTreatment?.id === treatment.id
-                    ? 'border-purple-500 bg-purple-50 ring-1 ring-purple-500'
-                    : 'border-slate-200 bg-white'
+      <SectionCard
+        title="Select Treatment"
+        description="Choose a treatment intervention to simulate its impact"
+        icon={<Sparkles className="w-4 h-4" />}
+      >
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {treatments.map((treatment) => (
+            <motion.button
+              key={treatment.id}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => handleTreatmentSelect(treatment)}
+              className={cn(
+                'p-4 rounded-xl border text-left transition-all',
+                'hover:border-blue-300 dark:hover:border-blue-600',
+                selectedTreatment?.id === treatment.id
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-500'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+              )}
+            >
+              <div className="flex items-start justify-between">
+                <p className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                  {treatment.name}
+                </p>
+                {selectedTreatment?.id === treatment.id && (
+                  <Check className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
                 )}
-              >
-                <p className="font-medium text-sm">{treatment.name}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-slate-500">
-                    ${treatment.cost.toLocaleString()}
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  ${treatment.cost.toLocaleString()}
+                </span>
+                {treatment.effectSize && (
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">
+                    {(treatment.effectSize * 100).toFixed(0)}% effect
                   </span>
-                  {treatment.effectSize && (
-                    <Badge variant="outline" className="text-xs">
-                      {(treatment.effectSize * 100).toFixed(0)}% effect
-                    </Badge>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+                )}
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      </SectionCard>
 
       {/* Feature Modifications (Advanced) */}
-      {selectedTreatment && (
-        <Card>
-          <CardHeader className="pb-3">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center justify-between w-full cursor-pointer text-left"
+      <AnimatePresence>
+        {selectedTreatment && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+          >
+            <SectionCard
+              title="Feature Adjustments"
+              description="Fine-tune the ML features this treatment will modify"
+              icon={<Settings2 className="w-4 h-4" />}
+              headerAction={
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                >
+                  {showAdvanced ? (
+                    <ChevronUp className="w-5 h-5 text-gray-400" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                  )}
+                </button>
+              }
             >
-              <div className="flex items-center gap-2">
-                <Settings2 className="h-5 w-5 text-slate-500" />
-                <CardTitle className="text-lg">Feature Adjustments</CardTitle>
-              </div>
-              {showAdvanced ? (
-                <ChevronUp className="h-5 w-5 text-slate-400" />
-              ) : (
-                <ChevronDown className="h-5 w-5 text-slate-400" />
-              )}
-            </button>
-            <CardDescription>
-              Fine-tune the ML features this treatment will modify
-            </CardDescription>
-          </CardHeader>
-
-          {showAdvanced && (
-            <CardContent>
-              {isMappingLoading ? (
-                <div className="text-center py-4 text-slate-500">
-                  Loading feature mapping...
-                </div>
-              ) : treatmentMapping ? (
-                <div className="space-y-4">
-                  {/* Default modifications from treatment */}
-                  <div className="bg-slate-50 rounded-lg p-3 mb-4">
-                    <p className="text-sm text-slate-600 mb-2">
-                      <strong>{treatmentMapping.treatment_name}</strong> targets these features:
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {treatmentMapping.affected_features.map((feature: string) => (
-                        <Badge key={feature} variant="secondary">
-                          {FEATURE_CONFIG[feature]?.label || feature}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Customizable sliders */}
-                  {treatmentMapping.affected_features.map((feature: string) => {
-                    const config = FEATURE_CONFIG[feature];
-                      if (!config) return null;
-
-                      const defaultValue = treatmentMapping.feature_modifications[feature];
-                      const currentValue = customModifications[feature] ?? defaultValue;
-
-                      return (
-                        <div key={feature} className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-sm">{config.label}</Label>
-                            <span className="text-sm font-medium">
-                              {config.format(currentValue as number)}
-                            </span>
+              <AnimatePresence>
+                {showAdvanced && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                  >
+                    {isMappingLoading ? (
+                      <div className="flex items-center justify-center py-8 text-gray-500 dark:text-gray-400">
+                        <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                        Loading feature mapping...
+                      </div>
+                    ) : treatmentMapping ? (
+                      <div className="space-y-4">
+                        {/* Default modifications from treatment */}
+                        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-100 dark:border-gray-700">
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                            <span className="font-semibold text-gray-900 dark:text-gray-100">
+                              {treatmentMapping.treatment_name}
+                            </span>{' '}
+                            targets these features:
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {treatmentMapping.affected_features.map((feature: string) => (
+                              <span
+                                key={feature}
+                                className="px-2.5 py-1 text-xs font-medium rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                              >
+                                {FEATURE_CONFIG[feature]?.label || feature}
+                              </span>
+                            ))}
                           </div>
-                          <Slider
-                            value={[currentValue as number]}
-                            min={config.min}
-                            max={config.max}
-                            step={config.step}
-                            onValueChange={([value]) => handleFeatureChange(feature, value)}
-                          />
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-4 text-slate-500">
-                    Select a treatment to see feature modifications
-                  </div>
+
+                        {/* Customizable sliders */}
+                        <div className="space-y-4">
+                          {treatmentMapping.affected_features.map((feature: string) => {
+                            const config = FEATURE_CONFIG[feature];
+                            if (!config) return null;
+
+                            const defaultValue = treatmentMapping.feature_modifications[feature];
+                            const currentValue = customModifications[feature] ?? defaultValue;
+                            const hasModification = feature in customModifications;
+
+                            return (
+                              <div key={feature} className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    {config.label}
+                                  </span>
+                                  <span className={cn(
+                                    "text-sm font-medium min-w-[3rem] text-right tabular-nums",
+                                    hasModification
+                                      ? "text-blue-600 dark:text-blue-400"
+                                      : "text-gray-700 dark:text-gray-300"
+                                  )}>
+                                    {config.format(currentValue as number)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="range"
+                                    min={config.min}
+                                    max={config.max}
+                                    step={config.step}
+                                    value={currentValue as number}
+                                    onChange={(e) => handleFeatureChange(feature, parseFloat(e.target.value))}
+                                    className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full appearance-none cursor-pointer accent-blue-500"
+                                  />
+                                </div>
+                                {hasModification && (
+                                  <div className="flex items-center gap-1.5 text-xs">
+                                    <span className="text-gray-500 dark:text-gray-400">
+                                      Default: {config.format(defaultValue as number)}
+                                    </span>
+                                    <span className="text-gray-400">→</span>
+                                    <span className="font-medium text-blue-600 dark:text-blue-400">
+                                      {config.format(currentValue as number)}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                        Select a treatment to see feature modifications
+                      </div>
+                    )}
+                  </motion.div>
                 )}
-              </CardContent>
-            )}
-        </Card>
-      )}
+              </AnimatePresence>
+            </SectionCard>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Simulation Controls */}
-      {selectedTreatment && (
-        <Card>
-          <CardContent className="pt-6">
+      <AnimatePresence>
+        {selectedTreatment && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5"
+          >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <Switch
-                  id="ml-model"
-                  checked={useMLModel}
-                  onCheckedChange={setUseMLModel}
-                />
-                <Label htmlFor="ml-model" className="flex items-center gap-2">
-                  <Zap className={cn('h-4 w-4', useMLModel ? 'text-amber-500' : 'text-slate-400')} />
-                  Use ML Model
-                  {useMLModel && (
-                    <Badge variant="outline" className="text-xs bg-amber-50">
-                      Recommended
-                    </Badge>
+                <button
+                  onClick={() => setUseMLModel(!useMLModel)}
+                  className={cn(
+                    "relative w-11 h-6 rounded-full transition-colors",
+                    useMLModel ? "bg-emerald-500" : "bg-gray-300 dark:bg-gray-600"
                   )}
-                </Label>
+                >
+                  <span className={cn(
+                    "absolute top-1 w-4 h-4 bg-white rounded-full transition-transform shadow-sm",
+                    useMLModel ? "translate-x-6" : "translate-x-1"
+                  )} />
+                </button>
+                <div className="flex items-center gap-2">
+                  <Zap className={cn('w-4 h-4', useMLModel ? 'text-amber-500' : 'text-gray-400')} />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Use ML Model
+                  </span>
+                  {useMLModel && (
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                      Recommended
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
             <div className="flex gap-3">
-              <Button
+              <button
                 onClick={handleRunSimulation}
                 disabled={simulateMutation.isPending}
-                className="flex-1"
+                className={cn(
+                  "flex-1 px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2",
+                  "bg-blue-600 text-white hover:bg-blue-700",
+                  "disabled:opacity-50 disabled:cursor-not-allowed"
+                )}
               >
                 {simulateMutation.isPending ? (
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Play className="h-4 w-4 mr-2" />
+                  <Play className="w-4 h-4" />
                 )}
                 Run Simulation
-              </Button>
+              </button>
 
               {simulationResult && (
-                <Button
-                  variant="outline"
+                <button
                   onClick={handleGenerateRecommendation}
                   disabled={recommendMutation.isPending}
+                  className={cn(
+                    "px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center gap-2",
+                    "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200",
+                    "hover:bg-gray-200 dark:hover:bg-gray-600",
+                    "disabled:opacity-50 disabled:cursor-not-allowed"
+                  )}
                 >
                   {recommendMutation.isPending ? (
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    <RefreshCw className="w-4 h-4 animate-spin" />
                   ) : (
-                    <Sparkles className="h-4 w-4 mr-2" />
+                    <Sparkles className="w-4 h-4" />
                   )}
                   Generate Recommendation
-                </Button>
+                </button>
               )}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Simulation Results */}
-      {simulationResult && (
-        <Card className="border-green-200 bg-green-50/30">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                Simulation Results
+      <AnimatePresence>
+        {simulationResult && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-white dark:bg-gray-800 rounded-xl border border-emerald-200 dark:border-emerald-800 overflow-hidden"
+          >
+            <div className="px-5 py-4 border-b border-emerald-100 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                    Simulation Results
+                  </h3>
+                </div>
                 {simulationResult.ml_model_used && (
-                  <Badge variant="outline" className="bg-amber-50 text-amber-700">
+                  <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
                     ML Model
-                  </Badge>
+                  </span>
                 )}
-              </CardTitle>
+              </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <BalancedScorecard
-              currentChurnProbability={simulationResult.pre_churn_probability}
-              currentELTV={simulationResult.eltv_pre_treatment}
-              projectedChurnProbability={simulationResult.post_churn_probability}
-              projectedELTV={simulationResult.eltv_post_treatment}
-              treatmentCost={simulationResult.treatment_cost}
-              projectedROI={simulationResult.roi}
-              showProjected={true}
-            />
+            <div className="p-5">
+              <BalancedScorecard
+                currentChurnProbability={simulationResult.pre_churn_probability}
+                currentELTV={simulationResult.eltv_pre_treatment}
+                projectedChurnProbability={simulationResult.post_churn_probability}
+                projectedELTV={simulationResult.eltv_post_treatment}
+                treatmentCost={simulationResult.treatment_cost}
+                projectedROI={simulationResult.roi}
+                showProjected={true}
+              />
 
-            {/* Detailed breakdown */}
-            <div className="mt-4 pt-4 border-t border-green-200">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <p className="text-slate-500">Treatment</p>
-                  <p className="font-medium">{simulationResult.treatment_name}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Churn Reduction</p>
-                  <p className="font-medium text-green-600">
-                    -{(Math.abs(simulationResult.churn_delta) * 100).toFixed(1)} pp
-                  </p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Net Benefit</p>
-                  <p className="font-medium text-blue-600">
-                    ${simulationResult.net_benefit.toLocaleString()}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-slate-500">Features Modified</p>
-                  <p className="font-medium">
-                    {Object.keys(simulationResult.feature_modifications).length}
-                  </p>
+              {/* Detailed breakdown */}
+              <div className="mt-5 pt-5 border-t border-gray-100 dark:border-gray-700">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                      Treatment
+                    </p>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">
+                      {simulationResult.treatment_name}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                      Churn Reduction
+                    </p>
+                    <p className="font-semibold text-emerald-600 dark:text-emerald-400">
+                      -{(Math.abs(simulationResult.churn_delta) * 100).toFixed(1)} pp
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                      Net Benefit
+                    </p>
+                    <p className="font-semibold text-blue-600 dark:text-blue-400">
+                      ${simulationResult.net_benefit.toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+                      Features Modified
+                    </p>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">
+                      {Object.keys(simulationResult.feature_modifications).length}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Error handling */}
-      {simulateMutation.isError && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="pt-6">
-            <p className="text-red-700">
-              Simulation failed: {(simulateMutation.error as Error)?.message || 'Unknown error'}
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      <AnimatePresence>
+        {simulateMutation.isError && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 p-5"
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-red-800 dark:text-red-200">Simulation Failed</p>
+                <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                  {(simulateMutation.error as Error)?.message || 'Unknown error occurred'}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

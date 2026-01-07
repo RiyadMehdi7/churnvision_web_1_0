@@ -81,3 +81,69 @@ class ManualSimulationResponse(BaseModel):
     new_churn_probability: float
     new_risk_level: str
     delta: float
+
+
+# =============================================================================
+# ML-Based Simulation Schemas (using real model predictions)
+# =============================================================================
+
+class MLSimulationRequest(BaseModel):
+    """Request for ML-based treatment simulation"""
+    employee_id: str = Field(..., description="Employee HR code")
+    treatment_id: int = Field(..., description="Treatment definition ID")
+    custom_modifications: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional custom feature modifications to override treatment defaults"
+    )
+    use_ml_model: bool = Field(
+        True,
+        description="Whether to use real ML model (True) or heuristics (False)"
+    )
+
+
+class MLSimulationResult(BaseModel):
+    """Result of ML-based treatment simulation"""
+    employee_id: str
+    treatment_id: int
+    treatment_name: str
+    treatment_cost: float
+    feature_modifications: Dict[str, Any] = Field(
+        ...,
+        description="The ML features that were modified for this simulation"
+    )
+    pre_churn_probability: float = Field(..., ge=0, le=1)
+    post_churn_probability: float = Field(..., ge=0, le=1)
+    churn_delta: float = Field(
+        ...,
+        description="Change in churn probability (negative = improvement)"
+    )
+    eltv_pre_treatment: float
+    eltv_post_treatment: float
+    treatment_effect_eltv: float
+    net_benefit: float = Field(
+        ...,
+        description="ELTV gain minus treatment cost"
+    )
+    roi: float = Field(..., description="ROI percentage")
+    new_survival_probabilities: Dict[str, float]
+    ml_model_used: bool = Field(
+        ...,
+        description="Whether real ML model was used (True) or heuristics (False)"
+    )
+    applied_treatment: Dict[str, Any]
+
+
+class TreatmentFeatureMappingResponse(BaseModel):
+    """Response showing how a treatment maps to ML features"""
+    treatment_id: int
+    treatment_name: str
+    description: str
+    estimated_cost: float
+    feature_modifications: Dict[str, Any] = Field(
+        ...,
+        description="The ML features this treatment affects and their target values"
+    )
+    affected_features: List[str] = Field(
+        ...,
+        description="List of ML feature names affected by this treatment"
+    )

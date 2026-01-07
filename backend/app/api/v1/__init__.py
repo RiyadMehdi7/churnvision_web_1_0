@@ -20,6 +20,7 @@ from app.api.v1 import (
     playground,
     rag,
     reasoning,
+    recommendations,
     settings,
     sso_admin,
 )
@@ -70,6 +71,12 @@ protected_router.include_router(
     model_monitoring.router,
     prefix="/model-monitoring",
     tags=["model-monitoring"],
+)
+protected_router.include_router(
+    recommendations.router,
+    prefix="/recommendations",
+    tags=["recommendations"],
+    dependencies=[Depends(require_license_tier("enterprise"))],
 )
 
 # Expose license routes without the dependency so activation/status endpoints stay reachable

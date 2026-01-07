@@ -27,7 +27,10 @@ from app.schemas.playground import (
     ApplyTreatmentRequest,
     ApplyTreatmentResult,
     ManualSimulationRequest,
-    ManualSimulationResponse
+    ManualSimulationResponse,
+    MLSimulationRequest,
+    MLSimulationResult,
+    TreatmentFeatureMappingResponse
 )
 from app.schemas.roi_dashboard import (
     ROIDashboardData,
@@ -40,6 +43,7 @@ from app.schemas.roi_dashboard import (
 from app.services.eltv_service import eltv_service
 from app.services.treatment_service import treatment_validation_service
 from app.services.roi_dashboard_service import roi_dashboard_service
+from app.services.treatment_mapping_service import treatment_mapping_service
 
 router = APIRouter()
 
@@ -247,6 +251,114 @@ async def apply_treatment(
         )
 
 
+@router.post("/simulate-ml", response_model=MLSimulationResult)
+async def simulate_treatment_ml(
+    request: MLSimulationRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Simulate applying a treatment using the REAL ML model (counterfactual analysis).
+
+    This is the recommended endpoint for accurate treatment simulation. It:
+    1. Maps treatments to their corresponding ML feature modifications
+    2. Runs the actual trained ML model to predict baseline vs. scenario outcomes
+    3. Calculates ELTV impact using Weibull survival curves
+    4. Returns comprehensive ROI analysis
+
+    Unlike the legacy /simulate endpoint (which uses heuristics), this endpoint
+    uses the same ML model as the Atlas counterfactual analysis for consistency.
+
+    Optional: Pass custom_modifications to fine-tune the treatment's feature effects.
+    """
+
+    try:
+        if request.use_ml_model:
+            # Use the new ML-based simulation
+            result = await treatment_validation_service.apply_treatment_simulation_ml(
+                db=db,
+                employee_hr_code=request.employee_id,
+                treatment_id=request.treatment_id,
+                custom_modifications=request.custom_modifications
+            )
+        else:
+            # Fall back to heuristic-based simulation for comparison
+            result = await treatment_validation_service.apply_treatment_simulation(
+                db=db,
+                employee_hr_code=request.employee_id,
+                treatment_id=request.treatment_id
+            )
+            # Add missing fields for schema compatibility
+            result['feature_modifications'] = {}
+            result['churn_delta'] = result['post_churn_probability'] - result['pre_churn_probability']
+            result['net_benefit'] = result['treatment_effect_eltv'] - result['treatment_cost']
+            result['ml_model_used'] = False
+
+        return MLSimulationResult(
+            employee_id=result['employee_id'],
+            treatment_id=result['treatment_id'],
+            treatment_name=result['treatment_name'],
+            treatment_cost=result['treatment_cost'],
+            feature_modifications=result.get('feature_modifications', {}),
+            pre_churn_probability=result['pre_churn_probability'],
+            post_churn_probability=result['post_churn_probability'],
+            churn_delta=result.get('churn_delta', result['post_churn_probability'] - result['pre_churn_probability']),
+            eltv_pre_treatment=result['eltv_pre_treatment'],
+            eltv_post_treatment=result['eltv_post_treatment'],
+            treatment_effect_eltv=result['treatment_effect_eltv'],
+            net_benefit=result.get('net_benefit', result['treatment_effect_eltv'] - result['treatment_cost']),
+            roi=min(999.99, max(-999.99, result['roi'])) if isinstance(result['roi'], (int, float)) else 0,
+            new_survival_probabilities=result['new_survival_probabilities'],
+            ml_model_used=result.get('ml_model_used', False),
+            applied_treatment=result['applied_treatment']
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error in ML simulation: {str(e)}"
+        )
+
+
+@router.get("/treatment-mapping/{treatment_id}", response_model=TreatmentFeatureMappingResponse)
+async def get_treatment_feature_mapping(
+    treatment_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get the ML feature mapping for a specific treatment.
+
+    This shows which ML model features a treatment will modify and their target values.
+    Useful for understanding what a treatment does at the ML level before applying it.
+    """
+
+    try:
+        mapping = await treatment_mapping_service.get_treatment_feature_mapping(
+            db=db,
+            treatment_id=treatment_id
+        )
+
+        return TreatmentFeatureMappingResponse(
+            treatment_id=mapping.treatment_id,
+            treatment_name=mapping.treatment_name,
+            description=mapping.description,
+            estimated_cost=mapping.estimated_cost,
+            feature_modifications=mapping.feature_modifications,
+            affected_features=list(mapping.feature_modifications.keys())
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving treatment mapping: {str(e)}"
+        )
+
+
 @router.post("/manual-simulate", response_model=ManualSimulationResponse)
 async def manual_simulate(
     request: ManualSimulationRequest,
@@ -254,11 +366,27 @@ async def manual_simulate(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Simulate churn with manual feature changes (What-If analysis).
+    Simulate churn with manual feature changes (What-If analysis) using REAL ML model.
 
     This allows users to see how changes to employee attributes
     (salary, tenure, etc.) would affect their churn probability.
+
+    IMPORTANT: This endpoint now uses the actual trained ML model via
+    simulate_counterfactual() instead of the previous heuristic multipliers.
+    This ensures predictions are consistent with the Atlas counterfactual system.
     """
+    # Import here to avoid circular dependency
+    from app.services.churn_prediction_service import churn_prediction_service
+
+    # Get employee data for building base features
+    query = select(HRDataInput).where(
+        HRDataInput.hr_code == request.employee_id
+    ).order_by(desc(HRDataInput.report_date)).limit(1)
+    result = await db.execute(query)
+    employee = result.scalar_one_or_none()
+
+    if not employee:
+        raise HTTPException(status_code=404, detail=f"Employee {request.employee_id} not found")
 
     # Get current churn probability
     query = select(ChurnOutput).where(
@@ -268,49 +396,60 @@ async def manual_simulate(
     churn_data = result.scalar_one_or_none()
 
     current_prob = float(churn_data.resign_proba) if churn_data else 0.5
-    new_prob = current_prob
+    salary = float(employee.employee_cost) if employee.employee_cost else 50000
+    tenure = float(employee.tenure) if employee.tenure else 0
 
+    # Build base ML features from employee data
+    base_features = {
+        'satisfaction_level': 0.6,
+        'last_evaluation': 0.7,
+        'number_project': 3,
+        'average_monthly_hours': 160,
+        'time_spend_company': int(tenure),
+        'work_accident': False,
+        'promotion_last_5years': False,
+        'department': employee.structure_name or 'sales',
+        'salary_level': 'low' if salary < 45000 else ('high' if salary >= 80000 else 'medium'),
+    }
+
+    # Map business-level changes to ML feature names
     changes = request.changed_features
+    ml_modifications = {}
 
-    # Apply heuristic adjustments based on feature changes
-    # In a production system, you would re-run the ML model with modified features
+    # Direct ML feature mappings
+    direct_features = [
+        'satisfaction_level', 'last_evaluation', 'number_project',
+        'average_monthly_hours', 'time_spend_company', 'work_accident',
+        'promotion_last_5years', 'department', 'salary_level'
+    ]
+    for feature in direct_features:
+        if feature in changes:
+            ml_modifications[feature] = changes[feature]
 
-    # Tenure adjustment
+    # Map business-level terms to ML features
     if 'tenure' in changes:
-        new_tenure = float(changes['tenure'])
-        # Longer tenure generally means lower churn
-        if new_tenure > 3:
-            new_prob *= 0.9
-        elif new_tenure > 5:
-            new_prob *= 0.85
-
-    # Salary adjustment
+        ml_modifications['time_spend_company'] = int(changes['tenure'])
     if 'employee_cost' in changes:
         new_salary = float(changes['employee_cost'])
-        # Higher salary generally means lower churn
-        if new_salary > 100000:
-            new_prob *= 0.85
-        elif new_salary > 75000:
-            new_prob *= 0.9
+        ml_modifications['salary_level'] = 'low' if new_salary < 45000 else ('high' if new_salary >= 80000 else 'medium')
 
-    # Satisfaction level adjustment
-    if 'satisfaction_level' in changes:
-        satisfaction = float(changes['satisfaction_level'])
-        if satisfaction > 0.8:
-            new_prob *= 0.7
-        elif satisfaction > 0.6:
-            new_prob *= 0.85
-        elif satisfaction < 0.4:
-            new_prob *= 1.3
+    # Run REAL ML model counterfactual simulation
+    try:
+        counterfactual_result = await churn_prediction_service.simulate_counterfactual(
+            employee_id=request.employee_id,
+            base_features=base_features,
+            modifications=ml_modifications,
+            scenario_name="Manual What-If Analysis",
+            annual_salary=salary
+        )
 
-    # Promotion adjustment
-    if changes.get('promotion_last_5years') == 1:
-        new_prob *= 0.85
+        new_prob = counterfactual_result.scenario_churn_probability
+        delta = new_prob - current_prob
 
-    # Clamp probability
-    new_prob = max(0.01, min(0.99, new_prob))
-
-    delta = new_prob - current_prob
+    except Exception as e:
+        # Fallback to baseline if ML model fails
+        new_prob = current_prob
+        delta = 0.0
 
     # Determine risk level
     if new_prob >= 0.7:

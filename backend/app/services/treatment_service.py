@@ -20,6 +20,7 @@ from app.models.treatment import TreatmentDefinition, TreatmentApplication
 from app.models.hr_data import HRDataInput
 from app.models.churn import ChurnOutput
 from app.services.eltv_service import ELTVService, eltv_service
+from app.services.treatment_mapping_service import treatment_mapping_service, TreatmentMappingService
 
 
 @dataclass
@@ -511,6 +512,146 @@ class TreatmentValidationService:
                 'effectSize': effect.adjusted_effect_size
             }
         }
+
+    async def apply_treatment_simulation_ml(
+        self,
+        db: AsyncSession,
+        employee_hr_code: str,
+        treatment_id: int,
+        custom_modifications: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Simulate applying a treatment using the REAL ML model (counterfactual analysis).
+
+        This method uses the TreatmentMappingService to translate the treatment
+        into ML feature modifications, then calls simulate_counterfactual() for
+        actual model predictions instead of heuristic estimates.
+
+        Args:
+            db: Database session
+            employee_hr_code: Employee HR code
+            treatment_id: Treatment definition ID
+            custom_modifications: Optional user-provided feature overrides
+
+        Returns:
+            Dict with ML-based simulation results including real churn predictions
+        """
+        # Import here to avoid circular dependency
+        from app.services.churn_prediction_service import churn_prediction_service
+
+        # 1. Get employee data
+        query = select(HRDataInput).where(
+            HRDataInput.hr_code == employee_hr_code
+        ).order_by(desc(HRDataInput.report_date)).limit(1)
+        result = await db.execute(query)
+        employee = result.scalar_one_or_none()
+
+        if not employee:
+            raise ValueError(f"Employee {employee_hr_code} not found")
+
+        # 2. Get treatment definition and its feature mapping
+        treatment_mapping = await treatment_mapping_service.get_treatment_feature_mapping(
+            db=db,
+            treatment_id=treatment_id
+        )
+
+        # 3. Build base ML features from employee data
+        # Map HR data fields to the 9 EmployeeChurnFeatures
+        salary = float(employee.employee_cost) if employee.employee_cost else 50000
+        tenure = float(employee.tenure) if employee.tenure else 0
+
+        base_features = {
+            'satisfaction_level': 0.6,  # Default if not in data
+            'last_evaluation': 0.7,
+            'number_project': 3,
+            'average_monthly_hours': 160,
+            'time_spend_company': int(tenure),
+            'work_accident': False,
+            'promotion_last_5years': False,
+            'department': employee.structure_name or 'sales',
+            'salary_level': self._estimate_salary_level(salary),
+        }
+
+        # 4. Get feature modifications from treatment mapping
+        modifications = treatment_mapping.feature_modifications.copy()
+
+        # 5. Apply custom modifications if provided (user fine-tuning)
+        if custom_modifications:
+            modifications.update(custom_modifications)
+
+        # 6. Call the REAL ML model via counterfactual simulation
+        counterfactual_result = await churn_prediction_service.simulate_counterfactual(
+            employee_id=employee_hr_code,
+            base_features=base_features,
+            modifications=modifications,
+            scenario_name=f"Treatment: {treatment_mapping.treatment_name}",
+            scenario_id=f"treatment_{treatment_id}",
+            annual_salary=salary
+        )
+
+        # 7. Calculate ELTV with both scenarios
+        position_level = eltv_service.estimate_position_level(
+            position=employee.position,
+            salary=salary,
+            tenure=tenure
+        )
+
+        pre_eltv_result = eltv_service.calculate_eltv(
+            annual_salary=salary,
+            churn_probability=counterfactual_result.baseline_churn_probability,
+            tenure_years=tenure,
+            position_level=position_level
+        )
+
+        post_eltv_result = eltv_service.calculate_eltv(
+            annual_salary=salary,
+            churn_probability=counterfactual_result.scenario_churn_probability,
+            tenure_years=tenure,
+            position_level=position_level
+        )
+
+        # 8. Calculate ROI with treatment cost
+        treatment_cost = treatment_mapping.estimated_cost
+        eltv_gain = post_eltv_result.eltv - pre_eltv_result.eltv
+        net_benefit = eltv_gain - treatment_cost
+        roi = (net_benefit / treatment_cost * 100) if treatment_cost > 0 else (999.99 if eltv_gain > 0 else 0)
+
+        return {
+            'employee_id': employee_hr_code,
+            'treatment_id': treatment_id,
+            'treatment_name': treatment_mapping.treatment_name,
+            'treatment_cost': treatment_cost,
+            'feature_modifications': modifications,
+            'pre_churn_probability': counterfactual_result.baseline_churn_probability,
+            'post_churn_probability': counterfactual_result.scenario_churn_probability,
+            'churn_delta': counterfactual_result.churn_probability_delta,
+            'eltv_pre_treatment': pre_eltv_result.eltv,
+            'eltv_post_treatment': post_eltv_result.eltv,
+            'treatment_effect_eltv': eltv_gain,
+            'net_benefit': net_benefit,
+            'roi': min(999.99, max(-999.99, roi)),
+            'new_survival_probabilities': post_eltv_result.survival_probabilities,
+            'ml_model_used': True,
+            'applied_treatment': {
+                'id': treatment_id,
+                'name': treatment_mapping.treatment_name,
+                'cost': treatment_cost,
+                'description': treatment_mapping.description,
+                'affected_features': list(modifications.keys())
+            }
+        }
+
+    def _estimate_salary_level(self, salary: float) -> str:
+        """
+        Estimate salary level category from annual salary.
+        Maps to the ML model's salary_level feature (low/medium/high).
+        """
+        if salary < 45000:
+            return 'low'
+        elif salary < 80000:
+            return 'medium'
+        else:
+            return 'high'
 
     async def record_treatment_application(
         self,

@@ -30,6 +30,7 @@ import { RiskIndicator } from '@/components/risk/RiskIndicator';
 import TreatmentTracker from '@/components/risk/TreatmentTracker';
 import { ROIDashboardTab } from '@/components/tabs/ROIDashboardTab';
 import { AtlasSimulatorSubTab } from '@/components/tabs/AtlasSimulatorSubTab';
+import { RedesignedScenarioTab } from '@/components/playground/RedesignedScenarioTab';
 import { useDynamicRiskRanges } from '../hooks/useDynamicRiskThresholds';
 import { FixedSizeList as List } from 'react-window';
 import { AutoSizer } from 'react-virtualized';
@@ -1885,246 +1886,6 @@ export function Playground() {
               </div>
             ) : (
               <div className="flex flex-col h-full space-y-5">
-                {selectedEmployeeData ? (
-                  /* Premium Metrics Dashboard */
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0"
-                  >
-                    {/* Current ELTV/RVI Card */}
-                    <div className="group relative overflow-hidden rounded-2xl border border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-white via-slate-50/30 to-white dark:from-slate-900 dark:via-slate-800/60 dark:to-slate-900 shadow-lg shadow-slate-200/30 dark:shadow-slate-950/40 p-5 h-fit hover:shadow-xl transition-shadow duration-300">
-                      {/* Decorative accent */}
-                      <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-violet-500/10 via-transparent to-transparent dark:from-violet-500/20 rounded-full blur-2xl" />
-                      <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-violet-500 via-indigo-500 to-violet-400 rounded-full" />
-
-                      <div className="relative">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                              {localStorage.getItem('settings.dataMode') === 'performance' ? 'Current RVI' : 'Current ELTV'}
-                            </span>
-                            <InfoPopover
-                              title={localStorage.getItem('settings.dataMode') === 'performance' ? 'What is RVI?' : 'What is ELTV?'}
-                              content={
-                                <>
-                                  {localStorage.getItem('settings.dataMode') === 'performance' ? (
-                                    <>
-                                      <p><strong>RVI (Retention Value Index)</strong> is a qualitative indicator (High/Medium/Low) derived from modeled retention value and churn risk signals.</p>
-                                      <p>It does not use salary in performance mode. Categories are computed from underlying ELTV ranks.</p>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <p><strong>ELTV (Employee Lifetime Value)</strong> estimates the present value of expected contribution based on predicted retention over a fixed horizon with discounting, scaled by the employee's salary.</p>
-                                      <p>Higher survival probabilities and salary yield higher ELTV.</p>
-                                    </>
-                                  )}
-                                </>
-                              }
-                            >
-                              <Info className="w-3.5 h-3.5 text-slate-400 hover:text-violet-500 cursor-pointer transition-colors" />
-                            </InfoPopover>
-                          </div>
-                          <div className="p-2 rounded-lg bg-violet-100/80 dark:bg-violet-500/20">
-                            <Calculator className="w-4 h-4 text-violet-600 dark:text-violet-400" />
-                          </div>
-                        </div>
-                        <div className="flex items-baseline gap-2">
-                          <span className={cn(
-                            "text-2xl font-bold tracking-tight font-mono",
-                            localStorage.getItem('settings.dataMode') === 'performance'
-                              ? getELTVCategoryClass(selectedEmployeeData.current_eltv)
-                              : "text-slate-900 dark:text-slate-50"
-                          )}>
-                            {localStorage.getItem('settings.dataMode') === 'performance'
-                              ? (selectedEmployeeData.current_eltv > 0 ? formatELTVByMode(selectedEmployeeData.current_eltv, 'quality') : 'N/A')
-                              : formatELTVByMode(selectedEmployeeData.current_eltv, 'quantification')}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Baseline value</p>
-                      </div>
-                    </div>
-
-                    {/* Post-Treatment ELTV/RVI Card */}
-                    <div className={cn(
-                      "group relative overflow-hidden rounded-2xl border p-5 h-fit transition-all duration-300",
-                      applyTreatmentResult
-                        ? "border-emerald-300/60 dark:border-emerald-600/40 bg-gradient-to-br from-emerald-50 via-teal-50/30 to-emerald-50 dark:from-emerald-900/30 dark:via-teal-900/20 dark:to-emerald-900/30 shadow-lg shadow-emerald-200/30 dark:shadow-emerald-950/30"
-                        : "border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-white via-slate-50/30 to-white dark:from-slate-900 dark:via-slate-800/60 dark:to-slate-900 shadow-lg shadow-slate-200/30 dark:shadow-slate-950/40 opacity-70"
-                    )}>
-                      {/* Decorative accent */}
-                      <div className={cn(
-                        "absolute top-0 right-0 w-24 h-24 rounded-full blur-2xl transition-colors",
-                        applyTreatmentResult
-                          ? "bg-gradient-to-bl from-emerald-500/15 via-transparent to-transparent dark:from-emerald-500/25"
-                          : "bg-gradient-to-bl from-slate-400/5 via-transparent to-transparent"
-                      )} />
-                      <div className={cn(
-                        "absolute top-0 left-0 w-1 h-full rounded-full transition-colors",
-                        applyTreatmentResult
-                          ? "bg-gradient-to-b from-emerald-500 via-teal-500 to-emerald-400"
-                          : "bg-gradient-to-b from-slate-300 via-slate-400 to-slate-300 dark:from-slate-600 dark:via-slate-500 dark:to-slate-600"
-                      )} />
-
-                      <div className="relative">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                              {localStorage.getItem('settings.dataMode') === 'performance' ? 'Post-Treatment RVI' : 'Post-Treatment ELTV'}
-                            </span>
-                            <InfoPopover
-                              title={localStorage.getItem('settings.dataMode') === 'performance' ? 'RVI Post‑Treatment' : 'ELTV Post‑Treatment'}
-                              content={
-                                <>
-                                  {localStorage.getItem('settings.dataMode') === 'performance' ? (
-                                    <>
-                                      <p>Shows expected <strong>RVI category</strong> after applying the selected treatment, reflecting improved retention without salary.</p>
-                                      <p>Categories are derived from updated ELTV ranks under the treatment's predicted churn reduction.</p>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <p>Projected <strong>ELTV</strong> using updated survival probabilities after treatment. Display does not subtract treatment cost; cost is shown separately in ROI.</p>
-                                      <p>Depends on survival curve shape, discounting, and the employee's salary.</p>
-                                    </>
-                                  )}
-                                </>
-                              }
-                            >
-                              <Info className="w-3.5 h-3.5 text-slate-400 hover:text-emerald-500 cursor-pointer transition-colors" />
-                            </InfoPopover>
-                          </div>
-                          <div className={cn(
-                            "p-2 rounded-lg transition-colors",
-                            applyTreatmentResult
-                              ? "bg-emerald-100/80 dark:bg-emerald-500/20"
-                              : "bg-slate-100/80 dark:bg-slate-700/40"
-                          )}>
-                            <TrendingUp className={cn(
-                              "w-4 h-4",
-                              applyTreatmentResult
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : "text-slate-400 dark:text-slate-500"
-                            )} />
-                          </div>
-                        </div>
-                        <CustomTooltip
-                          content={applyTreatmentResult
-                            ? `Raw value: ${applyTreatmentResult.eltv_post_treatment}, Treatment ID: ${applyTreatmentResult.applied_treatment.id}, Treatment: ${applyTreatmentResult.applied_treatment.name}`
-                            : "No treatment applied"
-                          }
-                          disabled={!applyTreatmentResult}
-                        >
-                          <div className="flex items-baseline gap-2">
-                            <span className={cn(
-                              "text-2xl font-bold tracking-tight font-mono cursor-help",
-                              applyTreatmentResult
-                                ? (localStorage.getItem('settings.dataMode') === 'performance'
-                                  ? getELTVCategoryClass(applyTreatmentResult.eltv_post_treatment)
-                                  : "text-emerald-700 dark:text-emerald-300")
-                                : "text-slate-400 dark:text-slate-500"
-                            )}>
-                              {applyTreatmentResult
-                                ? (localStorage.getItem('settings.dataMode') === 'performance'
-                                  ? formatELTVByMode(applyTreatmentResult.eltv_post_treatment, 'quality')
-                                  : formatELTVByMode(applyTreatmentResult.eltv_post_treatment, 'quantification'))
-                                : (localStorage.getItem('settings.dataMode') === 'performance' ? '—' : '$ —')}
-                            </span>
-                          </div>
-                        </CustomTooltip>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                          {applyTreatmentResult ? 'After intervention' : 'Apply treatment to see'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Budget Input Card */}
-                    <div className="relative overflow-hidden rounded-2xl border border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-white via-slate-50/30 to-white dark:from-slate-900 dark:via-slate-800/60 dark:to-slate-900 shadow-lg shadow-slate-200/30 dark:shadow-slate-950/40 p-5 col-span-1 sm:col-span-2 lg:col-span-2 h-fit">
-                      {/* Decorative accent */}
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-cyan-500/5 via-transparent to-transparent dark:from-cyan-500/10 rounded-full blur-2xl" />
-                      <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-cyan-500 via-blue-500 to-cyan-400 rounded-full" />
-
-                      <div className="relative">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                              Budget Constraint
-                            </span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
-                              Optional
-                            </span>
-                          </div>
-                          <div className="p-2 rounded-lg bg-cyan-100/80 dark:bg-cyan-500/20">
-                            <Calculator className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="relative flex-1">
-                            <input
-                              type="number"
-                              name="budgetInput"
-                              id="budgetInput"
-                              className="block w-full rounded-xl border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 pl-4 pr-10 py-2.5 text-lg font-mono font-medium text-slate-900 dark:text-slate-100 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all"
-                              placeholder="10"
-                              min="0"
-                              max="100"
-                              step="0.1"
-                              value={budget ?? ''}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setBudget(val === '' ? null : parseFloat(val));
-                              }}
-                            />
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4">
-                              <span className="text-lg font-medium text-slate-400 dark:text-slate-500">%</span>
-                            </div>
-                          </div>
-                          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-[150px]">
-                            of annual salary
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                ) : (
-                  /* Premium Overview Card - Empty State */
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                    className="relative overflow-hidden rounded-2xl border border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-slate-50 via-white to-slate-50/80 dark:from-slate-900 dark:via-slate-800/95 dark:to-slate-900/90 shadow-lg shadow-slate-200/40 dark:shadow-slate-950/50"
-                  >
-                    {/* Ambient background pattern */}
-                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(120,119,198,0.08),transparent)] dark:bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(120,119,198,0.12),transparent)]" />
-                    <div className="absolute top-0 right-0 w-72 h-72 bg-gradient-to-bl from-violet-500/5 via-transparent to-transparent dark:from-violet-500/10 rounded-full blur-3xl" />
-                    <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-tr from-emerald-500/5 via-transparent to-transparent dark:from-emerald-500/10 rounded-full blur-3xl" />
-
-                    <div className="relative px-8 py-10">
-                      <div className="flex items-start gap-5">
-                        <div className="flex-shrink-0 p-3.5 rounded-xl bg-gradient-to-br from-violet-500/10 to-indigo-500/10 dark:from-violet-500/20 dark:to-indigo-500/20 border border-violet-200/50 dark:border-violet-500/30">
-                          <FlaskConical className="w-7 h-7 text-violet-600 dark:text-violet-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50 mb-2">
-                            Retention Intelligence Lab
-                          </h3>
-                          <p className="text-base text-slate-600 dark:text-slate-400 leading-relaxed max-w-2xl">
-                            Model interventions, simulate treatment outcomes, and forecast ROI across your workforce. Select an employee from the sidebar to unlock personalized scenario analysis.
-                          </p>
-                          <div className="flex items-center gap-3 mt-5">
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-500/30">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                              Ready to analyze
-                            </span>
-                            <span className="text-xs text-slate-500 dark:text-slate-500">
-                              {sortedEmployeesMemo?.length || 0} employees available
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
 
                 {/* Premium Tab Navigation */}
                 <div className="relative">
@@ -2218,20 +1979,21 @@ export function Playground() {
 
                     {/* Scenario Sub-Tab Content */}
                     {scenarioSubTab === 'comparison' ? (
-                      <ScenarioComparisonTab
-                        scenarios={scenarios}
-                        setScenarios={setScenarios}
-                        nextScenarioId={nextScenarioId}
-                        setNextScenarioId={setNextScenarioId}
+                      <RedesignedScenarioTab
                         selectedEmployee={selectedEmployee}
                         selectedEmployeeData={selectedEmployeeData}
                         treatmentSuggestions={treatmentSuggestions}
                         applyTreatment={applyTreatment}
                         isApplyingTreatment={isApplyingTreatment}
                         selectedTreatment={selectedTreatment}
+                        applyTreatmentResult={applyTreatmentResult}
                         isPerformanceMode={isPerformanceMode}
                         budget={budget}
                         transformedChartData={transformedChartData}
+                        onResetSimulation={() => {
+                          setApplyTreatmentResult(null);
+                          setSelectedTreatment(null);
+                        }}
                       />
                     ) : (
                       <AtlasSimulatorSubTab

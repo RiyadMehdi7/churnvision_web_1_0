@@ -79,6 +79,8 @@ class EnsembleService:
     def __init__(self):
         self._model_factories = {
             "xgboost": self._create_xgboost,
+            "lightgbm": self._create_lightgbm,
+            "catboost": self._create_catboost,
             "random_forest": self._create_random_forest,
             "logistic": self._create_logistic,
             "tabpfn": self._create_tabpfn,
@@ -329,6 +331,32 @@ class EnsembleService:
             scale_pos_weight=class_imbalance_ratio,
             eval_metric="auc",
             use_label_encoder=False,
+        )
+
+    def _create_lightgbm(self, class_imbalance_ratio: float) -> Any:
+        """Create LightGBM classifier."""
+        import lightgbm as lgb
+        return lgb.LGBMClassifier(
+            n_estimators=100,
+            max_depth=5,
+            learning_rate=0.1,
+            random_state=42,
+            scale_pos_weight=class_imbalance_ratio,
+            verbosity=-1,  # Suppress warnings
+            force_col_wise=True,  # Better for small datasets
+        )
+
+    def _create_catboost(self, class_imbalance_ratio: float) -> Any:
+        """Create CatBoost classifier."""
+        from catboost import CatBoostClassifier
+        return CatBoostClassifier(
+            iterations=100,
+            depth=5,
+            learning_rate=0.1,
+            random_state=42,
+            scale_pos_weight=class_imbalance_ratio,
+            verbose=False,  # Suppress training output
+            allow_writing_files=False,  # Don't write temp files
         )
 
     def _create_random_forest(self, class_imbalance_ratio: float) -> RandomForestClassifier:

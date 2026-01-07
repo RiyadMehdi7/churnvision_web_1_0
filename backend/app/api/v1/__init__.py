@@ -15,6 +15,7 @@ from app.api.v1 import (
     gdpr,
     intelligent_chat,
     license as license_routes,
+    model_monitoring,
     projects,
     playground,
     rag,
@@ -64,6 +65,11 @@ protected_router.include_router(
     prefix="/connectors",
     tags=["connectors"],
     dependencies=[Depends(require_license_tier("enterprise"))],
+)
+protected_router.include_router(
+    model_monitoring.router,
+    prefix="/model-monitoring",
+    tags=["model-monitoring"],
 )
 
 # Expose license routes without the dependency so activation/status endpoints stay reachable

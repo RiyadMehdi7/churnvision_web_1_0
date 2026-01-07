@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 # Available model types
-MODEL_TYPES = ["tabpfn", "xgboost", "random_forest", "logistic"]
+MODEL_TYPES = ["tabpfn", "xgboost", "lightgbm", "catboost", "random_forest", "logistic"]
 
 
 @dataclass
@@ -176,6 +176,8 @@ class ModelRouterService:
         return {
             "tabpfn": self._score_tabpfn(profile),
             "xgboost": self._score_xgboost(profile),
+            "lightgbm": self._score_lightgbm(profile),
+            "catboost": self._score_catboost(profile),
             "random_forest": self._score_random_forest(profile),
             "logistic": self._score_logistic(profile),
         }
@@ -250,6 +252,94 @@ class ModelRouterService:
         # Slight penalty for very small datasets (TabPFN may be better)
         if profile.n_samples < 200:
             score *= 0.85
+
+        return max(0.0, min(1.0, score))
+
+    def _score_lightgbm(self, profile: DatasetProfile) -> float:
+        """
+        Score LightGBM suitability.
+
+        LightGBM excels with:
+        - Large datasets (fastest gradient boosting)
+        - High-dimensional sparse data
+        - Categorical features (native support)
+        - Memory efficiency
+        """
+        score = profile.tree_model_suitability_score
+
+        # LightGBM shines with large datasets (histogram-based, very fast)
+        if profile.n_samples > 10000:
+            score = min(1.0, score + 0.15)
+        elif profile.n_samples > 5000:
+            score = min(1.0, score + 0.1)
+        elif profile.n_samples > 1000:
+            score = min(1.0, score + 0.05)
+
+        # LightGBM handles high-dimensional data efficiently
+        if profile.n_features > 50:
+            score = min(1.0, score + 0.1)
+
+        # Native categorical feature handling
+        if profile.categorical_features > 0:
+            score = min(1.0, score + 0.05)
+
+        # LightGBM handles missing data natively
+        if 0 < profile.missing_ratio < 0.2:
+            score = min(1.0, score + 0.05)
+
+        # Good with imbalanced data
+        if profile.is_severely_imbalanced:
+            score = min(1.0, score + 0.08)
+
+        # Slight penalty for very small datasets (may overfit)
+        if profile.n_samples < 500:
+            score *= 0.9
+
+        return max(0.0, min(1.0, score))
+
+    def _score_catboost(self, profile: DatasetProfile) -> float:
+        """
+        Score CatBoost suitability.
+
+        CatBoost excels with:
+        - Categorical features (best-in-class handling)
+        - Mixed feature types
+        - Preventing target leakage (ordered boosting)
+        - Out-of-the-box quality without tuning
+        """
+        score = profile.tree_model_suitability_score
+
+        # CatBoost is the champion for categorical features
+        if profile.categorical_features > 3:
+            score = min(1.0, score + 0.15)
+        elif profile.categorical_features > 0:
+            score = min(1.0, score + 0.08)
+
+        # High cardinality categoricals are CatBoost's specialty
+        if profile.high_cardinality_features > 2:
+            score = min(1.0, score + 0.12)
+        elif profile.high_cardinality_features > 0:
+            score = min(1.0, score + 0.06)
+
+        # CatBoost handles imbalanced data well
+        if profile.is_severely_imbalanced:
+            score = min(1.0, score + 0.08)
+
+        # Ordered boosting prevents overfitting on medium datasets
+        if 1000 <= profile.n_samples <= 10000:
+            score = min(1.0, score + 0.05)
+
+        # CatBoost handles missing data natively
+        if 0 < profile.missing_ratio < 0.2:
+            score = min(1.0, score + 0.05)
+
+        # Large datasets - CatBoost is good but LightGBM is faster
+        if profile.n_samples > 50000:
+            score *= 0.95
+
+        # Small datasets - ordered boosting helps prevent overfitting
+        if profile.n_samples < 500:
+            score *= 0.95
 
         return max(0.0, min(1.0, score))
 
@@ -350,11 +440,39 @@ class ModelRouterService:
 
         elif model == "xgboost":
             if profile.n_samples > 1000:
-                reasons.append(f"Large dataset ({profile.n_samples} samples) benefits from gradient boosting")
+                reasons.append(
+                    f"Large dataset ({profile.n_samples} samples) benefits from gradient boosting"
+                )
             if profile.is_severely_imbalanced:
                 reasons.append("Class imbalance handled with scale_pos_weight")
             if profile.missing_ratio > 0:
                 reasons.append("Native missing value handling")
+
+        elif model == "lightgbm":
+            if profile.n_samples > 5000:
+                reasons.append(
+                    f"Large dataset ({profile.n_samples} samples) ideal for histogram-based boosting"
+                )
+            if profile.n_features > 50:
+                reasons.append(
+                    f"High-dimensional data ({profile.n_features} features) handled efficiently"
+                )
+            if profile.categorical_features > 0:
+                reasons.append("Native categorical feature support")
+
+        elif model == "catboost":
+            if profile.categorical_features > 0:
+                reasons.append(
+                    f"Categorical features ({profile.categorical_features}) "
+                    "handled with target encoding"
+                )
+            if profile.high_cardinality_features > 0:
+                reasons.append(
+                    f"High cardinality features ({profile.high_cardinality_features}) "
+                    "are CatBoost's specialty"
+                )
+            if 1000 <= profile.n_samples <= 10000:
+                reasons.append("Ordered boosting prevents overfitting on medium datasets")
 
         elif model == "random_forest":
             if profile.high_cardinality_features > 0:
@@ -384,11 +502,15 @@ class ModelRouterService:
         """Generate reason why an alternative model could work."""
         if model == "tabpfn":
             return "Pre-trained transformer for small data"
-        elif model == "xgboost":
+        if model == "xgboost":
             return "Robust gradient boosting for general tabular data"
-        elif model == "random_forest":
+        if model == "lightgbm":
+            return "Fast histogram-based boosting for large datasets"
+        if model == "catboost":
+            return "Best-in-class categorical feature handling"
+        if model == "random_forest":
             return "Ensemble method with feature importance"
-        elif model == "logistic":
+        if model == "logistic":
             return "Fast, interpretable linear model"
         return f"Alternative with score {score:.2f}"
 
@@ -428,7 +550,7 @@ class ModelRouterService:
 
     def get_supported_models(self) -> List[str]:
         """Get list of all supported model types."""
-        models = ["xgboost", "random_forest", "logistic"]
+        models = ["xgboost", "lightgbm", "catboost", "random_forest", "logistic"]
         if self._check_tabpfn_available():
             models.insert(0, "tabpfn")
         return models

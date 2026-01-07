@@ -52,6 +52,7 @@ from app.services.model_router_service import ModelRouterService, ModelRecommend
 from app.services.tabpfn_service import TabPFNWrapper, is_tabpfn_available, compute_permutation_importance
 from app.services.ensemble_service import EnsembleService, EnsembleConfig
 from app.services.data_driven_thresholds_service import data_driven_thresholds_service, DatasetThresholds
+from app.services.model_drift_service import model_drift_service
 
 logger = logging.getLogger(__name__)
 
@@ -1416,9 +1417,15 @@ class ChurnPredictionService:
             logger.info("TabPFN model - will use permutation importance for explanations")
         elif SHAP_AVAILABLE:
             try:
-                if isinstance(self.model, (xgb.XGBClassifier, RandomForestClassifier)):
+                # Check if model supports TreeExplainer (XGBoost, RF, LightGBM, CatBoost)
+                model_type_name = type(self.model).__name__
+                tree_based_models = (
+                    'XGBClassifier', 'RandomForestClassifier',
+                    'LGBMClassifier', 'CatBoostClassifier'
+                )
+                if model_type_name in tree_based_models:
                     self.shap_explainer = shap.TreeExplainer(self.model)
-                    logger.info("SHAP TreeExplainer initialized")
+                    logger.info(f"SHAP TreeExplainer initialized for {model_type_name}")
                 else:
                     # For logistic regression, use KernelExplainer (slower)
                     background = shap.sample(X_train_scaled, min(100, len(X_train_scaled)))
@@ -1542,6 +1549,19 @@ class ChurnPredictionService:
         self._save_model(dataset_id)
 
         self.active_version = model_id
+
+        # === NEW: Set reference data for drift detection ===
+        try:
+            categorical_features = ['department', 'salary_level']
+            model_drift_service.set_reference_data(
+                X=X_train,  # Use original training data (before SMOTE)
+                feature_names=feature_names,
+                categorical_features=categorical_features,
+                model_version=model_id
+            )
+            logger.info(f"Drift detection reference data set: {len(X_train)} samples")
+        except Exception as e:
+            logger.warning(f"Failed to set drift reference data: {e}")
 
         logger.info(f"Model trained: accuracy={metrics['accuracy']:.3f}, "
                    f"roc_auc={metrics.get('roc_auc', 0):.3f}, "
@@ -1679,6 +1699,43 @@ class ChurnPredictionService:
                 'class_weight': 'balanced'
             }
             return LogisticRegression(**params)
+
+        elif model_type == "lightgbm":
+            # LightGBM - fast histogram-based gradient boosting
+            import lightgbm as lgb
+            params = hyperparameters or {
+                'n_estimators': 300,
+                'max_depth': 7,
+                'learning_rate': 0.05,
+                'num_leaves': 31,          # Default, good for most cases
+                'min_child_samples': 20,   # Prevent overfitting
+                'subsample': 0.8,
+                'colsample_bytree': 0.8,
+                'reg_alpha': 0.1,
+                'reg_lambda': 1.0,
+                'random_state': 42,
+                'scale_pos_weight': class_imbalance_ratio,
+                'verbosity': -1,           # Suppress warnings
+                'force_col_wise': True,    # Better for small datasets
+                'n_jobs': -1
+            }
+            return lgb.LGBMClassifier(**params)
+
+        elif model_type == "catboost":
+            # CatBoost - best for categorical features
+            from catboost import CatBoostClassifier
+            params = hyperparameters or {
+                'iterations': 300,
+                'depth': 7,
+                'learning_rate': 0.05,
+                'l2_leaf_reg': 3.0,        # L2 regularization
+                'random_seed': 42,
+                'scale_pos_weight': class_imbalance_ratio,
+                'verbose': False,          # Suppress training output
+                'allow_writing_files': False,  # Don't write temp files
+                'thread_count': -1
+            }
+            return CatBoostClassifier(**params)
 
         else:
             logger.warning(f"Unknown model type '{model_type}', defaulting to XGBoost")

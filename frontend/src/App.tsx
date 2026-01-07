@@ -11,10 +11,8 @@ import { OnboardingTutorial } from '@/components/OnboardingTutorial';
 
 import { SkipToContent } from '@/components/common/SkipToContent';
 import { DataManagement } from './pages/DataManagement';
-import { ActivationComponent } from '@/components/auth/ActivationComponent';
-import { LicenseProvider, useLicense } from './providers/LicenseProvider';
+import { LicenseProvider } from './providers/LicenseProvider';
 import { Settings } from './pages/Settings';
-import { ModelDownloadPrompt } from '@/components/model/ModelDownloadPrompt';
 import { Toaster } from "@/components/ui/toaster";
 import { ProjectProvider, useProject } from './contexts/ProjectContext';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -47,7 +45,6 @@ const queryClient = new QueryClient({
 
 
 // Web application - not running in Electron
-const isElectron = false;
 
 // Get the app version from environment variable or default
 const envVersion = import.meta.env.VITE_APP_VERSION;
@@ -123,12 +120,10 @@ const ReasoningRoute: React.FC = () => {
 // Inner component to render UI based on auth state (license checks disabled)
 function AppContent(): ReactElement {
   const location = useLocation();
-  const { apiAvailable: licenseApiAvailable } = useLicenseProviderStateCheck();
   const { fetchHomeData, fetchAIAssistantData, fetchPlaygroundData } = useGlobalDataCache();
   const { showOnboarding, completeOnboarding } = useOnboarding();
   // DISABLED: License checks - keeping for future use
   // const { licenseStatus, isLoading: isLicenseLoading, error: licenseError, isLicensed, gracePeriodEnds } = useLicense();
-  const { licenseTier } = useLicense(); // Keep licenseTier for Header display
   // Get project context
   const { activeProject, isLoadingProject } = useProject();
   const { toast } = useToast();
@@ -574,13 +569,6 @@ function AppContent(): ReactElement {
         {!isAuthPage && <Footer />}
       </>
 
-      {import.meta.env.DEV && (
-        <div
-          className="fixed bottom-0 right-0 bg-yellow-500 text-black px-2 py-1 text-xs font-mono z-50 cursor-pointer"
-        >
-          {isElectron ? 'Electron' : 'Browser'} v{appVersion}
-        </div>
-      )}
       <OnboardingTutorial
         isOpen={showOnboarding}
         onClose={() => completeOnboarding()}
@@ -589,11 +577,6 @@ function AppContent(): ReactElement {
       />
     </div>
   );
-}
-
-// Helper Hook - no longer needed for web application (removed Electron API check)
-const useLicenseProviderStateCheck = () => {
-  return { apiAvailable: true }; // Always available via backend API
 }
 
 // Main App component now wraps content with the provider

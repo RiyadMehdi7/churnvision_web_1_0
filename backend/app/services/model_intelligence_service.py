@@ -304,8 +304,8 @@ class ModelIntelligenceService:
                 try:
                     term_date = datetime.strptime(str(r.termination_date), "%Y-%m-%d") if isinstance(r.termination_date, str) else r.termination_date
                     days_to_outcome = (term_date - r.generated_at).days
-                except:
-                    pass
+                except (ValueError, TypeError, AttributeError) as e:
+                    logger.debug(f"Could not calculate days to outcome for {r.hr_code}: {e}")
 
             outcomes.append(PredictionOutcome(
                 hr_code=r.hr_code,

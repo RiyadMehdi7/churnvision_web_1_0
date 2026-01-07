@@ -168,7 +168,11 @@ def _parse_additional_data_column(raw: Any) -> Dict[str, Any]:
         try:
             parsed = json_module.loads(raw)
             return parsed if isinstance(parsed, dict) else {}
-        except:
+        except json_module.JSONDecodeError as e:
+            logger.warning(f"Invalid JSON in additional_data: {e} - preview: {str(raw)[:100]}")
+            return {}
+        except Exception as e:
+            logger.error(f"Unexpected error parsing additional_data: {type(e).__name__}: {e}")
             return {}
     return {}
 

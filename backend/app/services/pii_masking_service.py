@@ -237,7 +237,11 @@ class PIIMaskingService:
                 amount_str = match.group(0).replace('$', '').replace(',', '').replace('/year', '').replace('/yr', '').replace('/month', '').replace('/mo', '').lower().replace('k', '000')
                 amount = float(amount_str)
                 return f"[{self._categorize_salary(amount)}]"
-            except:
+            except (ValueError, AttributeError) as e:
+                logger.debug(f"Could not parse salary value: {e}")
+                return '[SALARY_REDACTED]'
+            except Exception as e:
+                logger.warning(f"Unexpected error parsing salary: {type(e).__name__}: {e}")
                 return '[SALARY_REDACTED]'
 
         masked_text = self.SALARY_PATTERN.sub(replace_salary, masked_text)

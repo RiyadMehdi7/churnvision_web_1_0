@@ -413,11 +413,11 @@ const TreatmentCard = memo(({
   // Derive class based on ROI for visual indication
   const getRoiClass = (roi: 'high' | 'medium' | 'low') => {
     if (!roi || typeof roi !== 'string') {
-      return 'text-gray-500 dark:text-gray-400';
+      return 'text-slate-500 dark:text-slate-400';
     }
     if (roi === 'high') return 'text-emerald-600 dark:text-emerald-400';
-    if (roi === 'medium') return 'text-yellow-600 dark:text-yellow-400';
-    return 'text-red-600 dark:text-red-400';
+    if (roi === 'medium') return 'text-amber-600 dark:text-amber-400';
+    return 'text-rose-600 dark:text-rose-400';
   };
 
   // Determine if this is an ongoing cost treatment
@@ -426,134 +426,190 @@ const TreatmentCard = memo(({
 
   return (
     <motion.div
-      className={`group relative overflow-hidden rounded-xl transition-all duration-500 cursor-pointer ${isSelected
-        ? 'bg-gradient-to-br from-blue-500/10 via-purple-500/5 to-blue-500/10 border-2 border-blue-400/50 shadow-xl shadow-blue-500/20'
-        : 'bg-gradient-to-br from-white via-gray-50/50 to-white dark:from-gray-800 dark:via-gray-800/80 dark:to-gray-800 border border-gray-200/60 dark:border-gray-700/60 hover:border-blue-300/50 dark:hover:border-blue-600/50 hover:shadow-lg hover:shadow-blue-500/10'
-        }`}
+      className={cn(
+        'group relative overflow-hidden rounded-2xl cursor-pointer transition-all duration-300',
+        isSelected
+          ? 'bg-gradient-to-br from-emerald-50 via-teal-50/50 to-emerald-50 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-emerald-950/40 border-2 border-emerald-400/60 dark:border-emerald-500/50 shadow-xl shadow-emerald-500/20 dark:shadow-emerald-500/10'
+          : 'bg-gradient-to-br from-white via-slate-50/30 to-white dark:from-slate-900 dark:via-slate-800/50 dark:to-slate-900 border border-slate-200/70 dark:border-slate-700/60 hover:border-emerald-300/60 dark:hover:border-emerald-600/50 hover:shadow-lg hover:shadow-slate-200/50 dark:hover:shadow-slate-950/50'
+      )}
       onClick={() => {
         !isLoading && onSelect(treatment);
       }}
       whileHover={{
-        scale: 1.01,
-        transition: {
-          type: "tween",
-          duration: 0.15
-        }
+        scale: 1.008,
+        transition: { type: "spring", stiffness: 400, damping: 25 }
       }}
       whileTap={{
-        scale: 0.99,
-        transition: {
-          type: "tween",
-          duration: 0.1
-        }
+        scale: 0.995,
+        transition: { type: "spring", stiffness: 400, damping: 25 }
       }}
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{
-        duration: 0.2,
-        ease: "easeOut"
-      }}
-      style={{
-        willChange: 'transform',
-        backfaceVisibility: 'hidden'
-      }}
+      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
     >
-      {/* Simplified overlay */}
-      <div className="absolute inset-0 bg-blue-50/50 dark:bg-blue-900/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+      {/* Premium decorative elements */}
+      <div className={cn(
+        "absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl transition-opacity duration-500",
+        isSelected
+          ? "bg-gradient-to-bl from-emerald-400/25 via-teal-400/15 to-transparent opacity-100"
+          : "bg-gradient-to-bl from-slate-300/20 via-slate-200/10 to-transparent opacity-0 group-hover:opacity-100"
+      )} />
+      <div className={cn(
+        "absolute bottom-0 left-0 w-24 h-24 rounded-full blur-2xl transition-opacity duration-500",
+        isSelected
+          ? "bg-gradient-to-tr from-teal-400/20 via-emerald-400/10 to-transparent opacity-100"
+          : "bg-gradient-to-tr from-slate-300/15 to-transparent opacity-0 group-hover:opacity-60"
+      )} />
+
+      {/* Left accent bar */}
+      <div className={cn(
+        "absolute top-0 left-0 w-1 h-full rounded-full transition-all duration-300",
+        isSelected
+          ? "bg-gradient-to-b from-emerald-500 via-teal-500 to-emerald-400"
+          : "bg-gradient-to-b from-slate-300 via-slate-200 to-slate-300 dark:from-slate-600 dark:via-slate-700 dark:to-slate-600 group-hover:from-emerald-400 group-hover:via-teal-400 group-hover:to-emerald-400"
+      )} />
+
+      {/* Hover shimmer effect */}
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 -skew-x-12 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
 
       {/* Loading overlay */}
       {isLoading && (
-        <div className="absolute inset-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm flex items-center justify-center rounded-xl z-50">
-          <div className="flex items-center gap-2">
-            <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-            <span className="text-sm text-gray-600 dark:text-gray-300">Applying...</span>
+        <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex items-center justify-center rounded-2xl z-50">
+          <div className="flex flex-col items-center gap-3">
+            <div className="relative">
+              <div className="absolute inset-0 bg-emerald-400/20 rounded-full blur-xl animate-pulse" />
+              <Loader2 className="w-8 h-8 text-emerald-500 animate-spin relative" />
+            </div>
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Applying treatment...</span>
           </div>
         </div>
       )}
 
-      <div className="relative z-10 p-5 flex flex-col">
+      <div className="relative z-10 p-6 flex flex-col">
         <div className="flex flex-col gap-4">
           {/* Header */}
-          <div className="flex justify-between items-start mb-4">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-2">
-                <div className={`w-2 h-2 rounded-full ${isSelected ? 'bg-blue-400' : 'bg-gray-300 dark:bg-gray-600'} transition-colors`}></div>
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-tight break-words">
+          <div className="flex justify-between items-start mb-2">
+            <div className="flex-1 min-w-0 pl-3">
+              <div className="flex items-center gap-3 mb-2.5">
+                <div className={cn(
+                  "w-2.5 h-2.5 rounded-full transition-all duration-300",
+                  isSelected
+                    ? "bg-emerald-500 shadow-lg shadow-emerald-500/50 ring-4 ring-emerald-500/20"
+                    : "bg-slate-300 dark:bg-slate-600 group-hover:bg-emerald-400 group-hover:shadow-md group-hover:shadow-emerald-400/30"
+                )} />
+                <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-base leading-tight break-words tracking-tight">
                   {treatment.name}
                 </h3>
               </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed break-words whitespace-pre-line">
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed break-words whitespace-pre-line pl-5">
                 {treatment.description}
               </p>
             </div>
-            {/* Status indicator */}
-            <div className={`flex-shrink-0 w-3 h-3 rounded-full ${isSelected ? 'bg-blue-500 shadow-lg shadow-blue-500/50' : 'bg-gray-300 dark:bg-gray-600'
-              } transition-all duration-300`}></div>
+            {/* Premium status indicator */}
+            <div className={cn(
+              "flex-shrink-0 w-5 h-5 rounded-lg flex items-center justify-center transition-all duration-300",
+              isSelected
+                ? "bg-emerald-500 shadow-lg shadow-emerald-500/40"
+                : "bg-slate-200 dark:bg-slate-700 group-hover:bg-emerald-400/80"
+            )}>
+              {isSelected && (
+                <motion.svg
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="w-3 h-3 text-white"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                >
+                  <polyline points="20 6 9 17 4 12" />
+                </motion.svg>
+              )}
+            </div>
           </div>
 
           {/* Treatment info badges */}
           {(((treatment as any).timeToEffect) || (treatment.riskLevels && treatment.riskLevels.length > 0)) && (
-            <div className="flex items-center gap-2 text-xs mb-4 flex-wrap">
+            <div className="flex items-center gap-2.5 text-xs mb-3 flex-wrap pl-3">
               {(treatment as any).timeToEffect && (
-                <span className="inline-flex items-center gap-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800 whitespace-normal break-words">
-                  <Info size={12} />
-                  <span className="font-medium">Effect: {(treatment as any).timeToEffect}</span>
+                <span className="inline-flex items-center gap-1.5 bg-gradient-to-r from-cyan-50 to-sky-50 dark:from-cyan-950/40 dark:to-sky-950/40 text-cyan-700 dark:text-cyan-300 px-3 py-1.5 rounded-full border border-cyan-200/60 dark:border-cyan-800/60 whitespace-normal break-words shadow-sm">
+                  <Info size={11} className="flex-shrink-0" />
+                  <span className="font-medium text-[11px] uppercase tracking-wide">Effect: {(treatment as any).timeToEffect}</span>
                 </span>
               )}
               {treatment.riskLevels && treatment.riskLevels.length > 0 && (
-                <span className="inline-flex items-center gap-1.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800 whitespace-normal break-words">
-                  <AlertTriangle size={12} />
-                  <span className="font-medium">Best for: {treatment.riskLevels.join(', ')} risk</span>
+                <span className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 text-amber-700 dark:text-amber-300 px-3 py-1.5 rounded-full border border-amber-200/60 dark:border-amber-800/60 whitespace-normal break-words shadow-sm">
+                  <AlertTriangle size={11} className="flex-shrink-0" />
+                  <span className="font-medium text-[11px] uppercase tracking-wide">Best for: {treatment.riskLevels.join(', ')} risk</span>
                 </span>
               )}
             </div>
           )}
 
-          {/* LLM Reasoning Display - Enhanced Look */}
+          {/* LLM Reasoning Display - Premium Glass Panel */}
           {treatment.explanation && treatment.explanation.length > 0 && treatment.explanation[0].ruleId === 'llm' && (
-            <div className="mb-4 p-4 bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 dark:from-indigo-900/20 dark:via-purple-900/20 dark:to-blue-900/20 rounded-xl border border-indigo-200/50 dark:border-indigo-700/50">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="mb-4 p-4 relative overflow-hidden rounded-xl border border-violet-200/60 dark:border-violet-800/50 bg-gradient-to-br from-violet-50/80 via-indigo-50/50 to-purple-50/80 dark:from-violet-950/30 dark:via-indigo-950/20 dark:to-purple-950/30 backdrop-blur-sm"
+            >
+              {/* Decorative glow */}
+              <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-violet-400/20 via-transparent to-transparent rounded-full blur-2xl" />
+
+              <div className="flex items-center gap-2.5 mb-3 relative">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
                   <Bot size={14} className="text-white" />
                 </div>
-                <h4 className="text-sm font-semibold text-indigo-800 dark:text-indigo-200">
+                <h4 className="text-sm font-semibold text-violet-800 dark:text-violet-200 tracking-tight">
                   AI Reasoning
                 </h4>
               </div>
-              <p className="text-sm text-indigo-700 dark:text-indigo-300 leading-relaxed pl-2 border-l-2 border-indigo-300 dark:border-indigo-600 break-words">
+              <p className="text-sm text-violet-700 dark:text-violet-300 leading-relaxed pl-3 border-l-2 border-violet-400/60 dark:border-violet-500/60 break-words relative">
                 {treatment.explanation[0].reason}
               </p>
-            </div>
+            </motion.div>
           )}
 
-          {/* Metrics Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-900/20 dark:to-emerald-900/10 rounded-lg p-3 border border-emerald-200/50 dark:border-emerald-800/50">
-              <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 mb-1 whitespace-pre-wrap leading-snug">Churn Impact</p>
-              <p className={`text-sm font-bold ${treatment.projected_churn_prob_change <= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+          {/* Metrics Grid - Premium Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            {/* Churn Impact Card */}
+            <div className="relative overflow-hidden rounded-xl p-4 bg-gradient-to-br from-emerald-50 via-teal-50/50 to-emerald-50 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/50">
+              <div className="absolute top-0 right-0 w-12 h-12 bg-gradient-to-bl from-emerald-400/20 to-transparent rounded-full blur-xl" />
+              <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 mb-1.5 uppercase tracking-wider">Churn Impact</p>
+              <p className={cn(
+                "text-lg font-bold font-mono tracking-tight",
+                treatment.projected_churn_prob_change <= 0
+                  ? 'text-emerald-700 dark:text-emerald-300'
+                  : 'text-rose-700 dark:text-rose-300'
+              )}>
                 {formatChangePercent(treatment.projected_churn_prob_change)}
               </p>
-              <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70 mt-0.5">
+              <p className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 mt-1 font-medium">
                 ~{Math.abs((treatment.effectSize || 0) * 100).toFixed(0)}% reduction
               </p>
             </div>
 
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-900/20 dark:to-blue-900/10 rounded-lg p-3 border border-blue-200/50 dark:border-blue-800/50">
-              <p className="text-xs font-medium text-blue-600 dark:text-blue-400 mb-1 whitespace-pre-wrap leading-snug">ROI</p>
-              <p className={`text-sm font-bold ${getRoiClass(treatment.projected_roi)}`}>
+            {/* ROI Card */}
+            <div className="relative overflow-hidden rounded-xl p-4 bg-gradient-to-br from-violet-50 via-indigo-50/50 to-violet-50 dark:from-violet-950/40 dark:via-indigo-950/30 dark:to-violet-950/40 border border-violet-200/60 dark:border-violet-800/50">
+              <div className="absolute top-0 right-0 w-12 h-12 bg-gradient-to-bl from-violet-400/20 to-transparent rounded-full blur-xl" />
+              <p className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 mb-1.5 uppercase tracking-wider">ROI</p>
+              <p className={cn("text-lg font-bold tracking-tight", getRoiClass(treatment.projected_roi))}>
                 {formatROI(treatment.projected_roi)}
               </p>
-              <p className="text-xs text-blue-600/70 dark:text-blue-400/70 mt-0.5">
+              <p className="text-[10px] text-violet-600/70 dark:text-violet-400/70 mt-1 font-medium">
                 {isOngoingCost ? 'over 3 years' : 'one-time'}
               </p>
             </div>
 
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 dark:from-gray-800/20 dark:to-gray-800/10 rounded-lg p-3 border border-gray-200/50 dark:border-gray-700/50">
-              <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 whitespace-pre-wrap leading-snug">Cost</p>
-              <p className="text-sm font-bold text-gray-800 dark:text-gray-200">
+            {/* Cost Card */}
+            <div className="relative overflow-hidden rounded-xl p-4 bg-gradient-to-br from-slate-50 via-slate-100/50 to-slate-50 dark:from-slate-800/60 dark:via-slate-800/40 dark:to-slate-800/60 border border-slate-200/60 dark:border-slate-700/50">
+              <div className="absolute top-0 right-0 w-12 h-12 bg-gradient-to-bl from-slate-300/30 dark:from-slate-600/30 to-transparent rounded-full blur-xl" />
+              <p className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">Cost</p>
+              <p className="text-lg font-bold text-slate-800 dark:text-slate-200 font-mono tracking-tight">
                 {formatCostPercentage(calculateCostPercentage(treatment.cost, employeeSalary))}
               </p>
-              <p className="text-xs text-gray-600/70 dark:text-gray-400/70 mt-0.5">
+              <p className="text-[10px] text-slate-500 dark:text-slate-500 mt-1 font-medium">
                 of annual salary
               </p>
             </div>
@@ -1828,221 +1884,335 @@ export function Playground() {
                 <p className="text-sm text-red-600 dark:text-red-300">{error}</p>
               </div>
             ) : (
-              <div className="flex flex-col h-full space-y-4">
+              <div className="flex flex-col h-full space-y-5">
                 {selectedEmployeeData ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-shrink-0">
-                    <div className="bg-white dark:bg-gray-800 rounded-xl p-3 shadow-sm relative overflow-hidden border border-gray-100 dark:border-gray-700 h-fit">
-                      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-50 dark:opacity-20" />
-                      <div className="relative z-10">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="flex items-center gap-1">
-                              <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                {localStorage.getItem('settings.dataMode') === 'performance' ? 'Current RVI' : 'Current ELTV'}
-                              </h3>
-                              <InfoPopover
-                                title={localStorage.getItem('settings.dataMode') === 'performance' ? 'What is RVI?' : 'What is ELTV?'}
-                                content={
-                                  <>
-                                    {localStorage.getItem('settings.dataMode') === 'performance' ? (
-                                      <>
-                                        <p><strong>RVI (Retention Value Index)</strong> is a qualitative indicator (High/Medium/Low) derived from modeled retention value and churn risk signals.</p>
-                                        <p>It does not use salary in performance mode. Categories are computed from underlying ELTV ranks.</p>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <p><strong>ELTV (Employee Lifetime Value)</strong> estimates the present value of expected contribution based on predicted retention over a fixed horizon with discounting, scaled by the employee’s salary.</p>
-                                        <p>Higher survival probabilities and salary yield higher ELTV.</p>
-                                      </>
-                                    )}
-                                  </>
-                                }
-                              >
-                                <Info className="w-3.5 h-3.5 text-gray-400 cursor-pointer" />
-                              </InfoPopover>
-                            </div>
-                            <div className="mt-1 flex items-baseline gap-2">
-                              <span className={cn(
-                                "text-xl font-semibold",
-                                localStorage.getItem('settings.dataMode') === 'performance'
-                                  ? getELTVCategoryClass(selectedEmployeeData.current_eltv)
-                                  : "text-gray-900 dark:text-gray-100"
-                              )}>
-                                {localStorage.getItem('settings.dataMode') === 'performance'
-                                  ? (selectedEmployeeData.current_eltv > 0 ? formatELTVByMode(selectedEmployeeData.current_eltv, 'quality') : 'N/A')
-                                  : formatELTVByMode(selectedEmployeeData.current_eltv, 'quantification')}
-                              </span>
-                            </div>
+                  /* Premium Metrics Dashboard */
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0"
+                  >
+                    {/* Current ELTV/RVI Card */}
+                    <div className="group relative overflow-hidden rounded-2xl border border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-white via-slate-50/30 to-white dark:from-slate-900 dark:via-slate-800/60 dark:to-slate-900 shadow-lg shadow-slate-200/30 dark:shadow-slate-950/40 p-5 h-fit hover:shadow-xl transition-shadow duration-300">
+                      {/* Decorative accent */}
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-violet-500/10 via-transparent to-transparent dark:from-violet-500/20 rounded-full blur-2xl" />
+                      <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-violet-500 via-indigo-500 to-violet-400 rounded-full" />
+
+                      <div className="relative">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                              {localStorage.getItem('settings.dataMode') === 'performance' ? 'Current RVI' : 'Current ELTV'}
+                            </span>
+                            <InfoPopover
+                              title={localStorage.getItem('settings.dataMode') === 'performance' ? 'What is RVI?' : 'What is ELTV?'}
+                              content={
+                                <>
+                                  {localStorage.getItem('settings.dataMode') === 'performance' ? (
+                                    <>
+                                      <p><strong>RVI (Retention Value Index)</strong> is a qualitative indicator (High/Medium/Low) derived from modeled retention value and churn risk signals.</p>
+                                      <p>It does not use salary in performance mode. Categories are computed from underlying ELTV ranks.</p>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <p><strong>ELTV (Employee Lifetime Value)</strong> estimates the present value of expected contribution based on predicted retention over a fixed horizon with discounting, scaled by the employee's salary.</p>
+                                      <p>Higher survival probabilities and salary yield higher ELTV.</p>
+                                    </>
+                                  )}
+                                </>
+                              }
+                            >
+                              <Info className="w-3.5 h-3.5 text-slate-400 hover:text-violet-500 cursor-pointer transition-colors" />
+                            </InfoPopover>
                           </div>
-                          <Calculator className="w-5 h-5 text-gray-400" />
+                          <div className="p-2 rounded-lg bg-violet-100/80 dark:bg-violet-500/20">
+                            <Calculator className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                          </div>
                         </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className={cn(
+                            "text-2xl font-bold tracking-tight font-mono",
+                            localStorage.getItem('settings.dataMode') === 'performance'
+                              ? getELTVCategoryClass(selectedEmployeeData.current_eltv)
+                              : "text-slate-900 dark:text-slate-50"
+                          )}>
+                            {localStorage.getItem('settings.dataMode') === 'performance'
+                              ? (selectedEmployeeData.current_eltv > 0 ? formatELTVByMode(selectedEmployeeData.current_eltv, 'quality') : 'N/A')
+                              : formatELTVByMode(selectedEmployeeData.current_eltv, 'quantification')}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Baseline value</p>
                       </div>
                     </div>
 
+                    {/* Post-Treatment ELTV/RVI Card */}
                     <div className={cn(
-                      "rounded-xl p-3 shadow-sm relative overflow-hidden border h-fit",
+                      "group relative overflow-hidden rounded-2xl border p-5 h-fit transition-all duration-300",
                       applyTreatmentResult
-                        ? "bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700"
-                        : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 opacity-60"
+                        ? "border-emerald-300/60 dark:border-emerald-600/40 bg-gradient-to-br from-emerald-50 via-teal-50/30 to-emerald-50 dark:from-emerald-900/30 dark:via-teal-900/20 dark:to-emerald-900/30 shadow-lg shadow-emerald-200/30 dark:shadow-emerald-950/30"
+                        : "border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-white via-slate-50/30 to-white dark:from-slate-900 dark:via-slate-800/60 dark:to-slate-900 shadow-lg shadow-slate-200/30 dark:shadow-slate-950/40 opacity-70"
                     )}>
-                      {applyTreatmentResult &&
-                        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-transparent opacity-50 dark:opacity-30" />}
-                      <div className="relative z-10">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="flex items-center gap-1">
-                              <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                {localStorage.getItem('settings.dataMode') === 'performance' ? 'RVI Post-Treatment' : 'ELTV Post-Treatment'}
-                              </h3>
-                              <InfoPopover
-                                title={localStorage.getItem('settings.dataMode') === 'performance' ? 'RVI Post‑Treatment' : 'ELTV Post‑Treatment'}
-                                content={
-                                  <>
-                                    {localStorage.getItem('settings.dataMode') === 'performance' ? (
-                                      <>
-                                        <p>Shows expected <strong>RVI category</strong> after applying the selected treatment, reflecting improved retention without salary.</p>
-                                        <p>Categories are derived from updated ELTV ranks under the treatment’s predicted churn reduction.</p>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <p>Projected <strong>ELTV</strong> using updated survival probabilities after treatment. Display does not subtract treatment cost; cost is shown separately in ROI.</p>
-                                        <p>Depends on survival curve shape, discounting, and the employee’s salary.</p>
-                                      </>
-                                    )}
-                                  </>
-                                }
-                              >
-                                <Info className="w-3.5 h-3.5 text-gray-400 cursor-pointer" />
-                              </InfoPopover>
-                            </div>
-                            <div className="mt-1 flex items-baseline gap-2">
-                              <CustomTooltip
-                                content={applyTreatmentResult
-                                  ? `Raw value: ${applyTreatmentResult.eltv_post_treatment}, Treatment ID: ${applyTreatmentResult.applied_treatment.id}, Treatment: ${applyTreatmentResult.applied_treatment.name}`
-                                  : "No treatment applied"
-                                }
-                                disabled={!applyTreatmentResult}
-                              >
-                                <span className={cn(
-                                  "text-xl font-semibold cursor-help",
-                                  applyTreatmentResult
-                                    ? (localStorage.getItem('settings.dataMode') === 'performance'
-                                      ? getELTVCategoryClass(applyTreatmentResult.eltv_post_treatment)
-                                      : "text-blue-600 dark:text-blue-400")
-                                    : "text-gray-400 dark:text-gray-500"
-                                )}>
-                                  {applyTreatmentResult
-                                    ? (localStorage.getItem('settings.dataMode') === 'performance'
-                                      ? formatELTVByMode(applyTreatmentResult.eltv_post_treatment, 'quality')
-                                      : formatELTVByMode(applyTreatmentResult.eltv_post_treatment, 'quantification'))
-                                    : (localStorage.getItem('settings.dataMode') === 'performance' ? 'Unknown' : '$ -.--')}
-                                </span>
-                              </CustomTooltip>
-                            </div>
+                      {/* Decorative accent */}
+                      <div className={cn(
+                        "absolute top-0 right-0 w-24 h-24 rounded-full blur-2xl transition-colors",
+                        applyTreatmentResult
+                          ? "bg-gradient-to-bl from-emerald-500/15 via-transparent to-transparent dark:from-emerald-500/25"
+                          : "bg-gradient-to-bl from-slate-400/5 via-transparent to-transparent"
+                      )} />
+                      <div className={cn(
+                        "absolute top-0 left-0 w-1 h-full rounded-full transition-colors",
+                        applyTreatmentResult
+                          ? "bg-gradient-to-b from-emerald-500 via-teal-500 to-emerald-400"
+                          : "bg-gradient-to-b from-slate-300 via-slate-400 to-slate-300 dark:from-slate-600 dark:via-slate-500 dark:to-slate-600"
+                      )} />
+
+                      <div className="relative">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                              {localStorage.getItem('settings.dataMode') === 'performance' ? 'Post-Treatment RVI' : 'Post-Treatment ELTV'}
+                            </span>
+                            <InfoPopover
+                              title={localStorage.getItem('settings.dataMode') === 'performance' ? 'RVI Post‑Treatment' : 'ELTV Post‑Treatment'}
+                              content={
+                                <>
+                                  {localStorage.getItem('settings.dataMode') === 'performance' ? (
+                                    <>
+                                      <p>Shows expected <strong>RVI category</strong> after applying the selected treatment, reflecting improved retention without salary.</p>
+                                      <p>Categories are derived from updated ELTV ranks under the treatment's predicted churn reduction.</p>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <p>Projected <strong>ELTV</strong> using updated survival probabilities after treatment. Display does not subtract treatment cost; cost is shown separately in ROI.</p>
+                                      <p>Depends on survival curve shape, discounting, and the employee's salary.</p>
+                                    </>
+                                  )}
+                                </>
+                              }
+                            >
+                              <Info className="w-3.5 h-3.5 text-slate-400 hover:text-emerald-500 cursor-pointer transition-colors" />
+                            </InfoPopover>
                           </div>
-                          <TrendingUp className={cn(
-                            "w-5 h-5",
+                          <div className={cn(
+                            "p-2 rounded-lg transition-colors",
                             applyTreatmentResult
-                              ? "text-blue-500"
-                              : "text-gray-400"
-                          )} />
+                              ? "bg-emerald-100/80 dark:bg-emerald-500/20"
+                              : "bg-slate-100/80 dark:bg-slate-700/40"
+                          )}>
+                            <TrendingUp className={cn(
+                              "w-4 h-4",
+                              applyTreatmentResult
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : "text-slate-400 dark:text-slate-500"
+                            )} />
+                          </div>
                         </div>
+                        <CustomTooltip
+                          content={applyTreatmentResult
+                            ? `Raw value: ${applyTreatmentResult.eltv_post_treatment}, Treatment ID: ${applyTreatmentResult.applied_treatment.id}, Treatment: ${applyTreatmentResult.applied_treatment.name}`
+                            : "No treatment applied"
+                          }
+                          disabled={!applyTreatmentResult}
+                        >
+                          <div className="flex items-baseline gap-2">
+                            <span className={cn(
+                              "text-2xl font-bold tracking-tight font-mono cursor-help",
+                              applyTreatmentResult
+                                ? (localStorage.getItem('settings.dataMode') === 'performance'
+                                  ? getELTVCategoryClass(applyTreatmentResult.eltv_post_treatment)
+                                  : "text-emerald-700 dark:text-emerald-300")
+                                : "text-slate-400 dark:text-slate-500"
+                            )}>
+                              {applyTreatmentResult
+                                ? (localStorage.getItem('settings.dataMode') === 'performance'
+                                  ? formatELTVByMode(applyTreatmentResult.eltv_post_treatment, 'quality')
+                                  : formatELTVByMode(applyTreatmentResult.eltv_post_treatment, 'quantification'))
+                                : (localStorage.getItem('settings.dataMode') === 'performance' ? '—' : '$ —')}
+                            </span>
+                          </div>
+                        </CustomTooltip>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                          {applyTreatmentResult ? 'After intervention' : 'Apply treatment to see'}
+                        </p>
                       </div>
                     </div>
 
-                    {/* Budget Input */}
-                    <div className="bg-white dark:bg-gray-800 rounded-xl p-3 shadow-sm border border-gray-100 dark:border-gray-700 col-span-1 sm:col-span-2 lg:col-span-2 h-fit">
-                      <label htmlFor="budgetInput" className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-                        Budget Constraint (Optional)
-                      </label>
-                      <div className="relative mt-1 rounded-md shadow-sm">
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                          <span className="text-gray-500 dark:text-gray-400 sm:text-sm">%</span>
+                    {/* Budget Input Card */}
+                    <div className="relative overflow-hidden rounded-2xl border border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-white via-slate-50/30 to-white dark:from-slate-900 dark:via-slate-800/60 dark:to-slate-900 shadow-lg shadow-slate-200/30 dark:shadow-slate-950/40 p-5 col-span-1 sm:col-span-2 lg:col-span-2 h-fit">
+                      {/* Decorative accent */}
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-cyan-500/5 via-transparent to-transparent dark:from-cyan-500/10 rounded-full blur-2xl" />
+                      <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-cyan-500 via-blue-500 to-cyan-400 rounded-full" />
+
+                      <div className="relative">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                              Budget Constraint
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                              Optional
+                            </span>
+                          </div>
+                          <div className="p-2 rounded-lg bg-cyan-100/80 dark:bg-cyan-500/20">
+                            <Calculator className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                          </div>
                         </div>
-                        <input
-                          type="number"
-                          name="budgetInput"
-                          id="budgetInput"
-                          className="block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 pl-3 pr-8 py-2 focus:border-blue-500 focus:ring-blue-500 sm:text-sm dark:text-gray-100"
-                          placeholder="Max % of salary (e.g., 10)"
-                          min="0"
-                          max="100"
-                          step="0.1"
-                          value={budget ?? ''}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setBudget(val === '' ? null : parseFloat(val));
-                          }}
-                        />
+                        <div className="flex items-center gap-3">
+                          <div className="relative flex-1">
+                            <input
+                              type="number"
+                              name="budgetInput"
+                              id="budgetInput"
+                              className="block w-full rounded-xl border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 pl-4 pr-10 py-2.5 text-lg font-mono font-medium text-slate-900 dark:text-slate-100 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all"
+                              placeholder="10"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={budget ?? ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setBudget(val === '' ? null : parseFloat(val));
+                              }}
+                            />
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4">
+                              <span className="text-lg font-medium text-slate-400 dark:text-slate-500">%</span>
+                            </div>
+                          </div>
+                          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-[150px]">
+                            of annual salary
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Percentage of employee's annual salary
-                      </p>
                     </div>
-                  </div>
+                  </motion.div>
                 ) : (
-                  <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Playground Overview</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
-                      Explore scenario planning, mass treatment, and tracking tools using the tabs below. Select an employee when you&rsquo;re ready to generate personalized insights and projections.
-                    </p>
-                  </div>
+                  /* Premium Overview Card - Empty State */
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                    className="relative overflow-hidden rounded-2xl border border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-slate-50 via-white to-slate-50/80 dark:from-slate-900 dark:via-slate-800/95 dark:to-slate-900/90 shadow-lg shadow-slate-200/40 dark:shadow-slate-950/50"
+                  >
+                    {/* Ambient background pattern */}
+                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(120,119,198,0.08),transparent)] dark:bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(120,119,198,0.12),transparent)]" />
+                    <div className="absolute top-0 right-0 w-72 h-72 bg-gradient-to-bl from-violet-500/5 via-transparent to-transparent dark:from-violet-500/10 rounded-full blur-3xl" />
+                    <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-tr from-emerald-500/5 via-transparent to-transparent dark:from-emerald-500/10 rounded-full blur-3xl" />
+
+                    <div className="relative px-8 py-10">
+                      <div className="flex items-start gap-5">
+                        <div className="flex-shrink-0 p-3.5 rounded-xl bg-gradient-to-br from-violet-500/10 to-indigo-500/10 dark:from-violet-500/20 dark:to-indigo-500/20 border border-violet-200/50 dark:border-violet-500/30">
+                          <FlaskConical className="w-7 h-7 text-violet-600 dark:text-violet-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50 mb-2">
+                            Retention Intelligence Lab
+                          </h3>
+                          <p className="text-base text-slate-600 dark:text-slate-400 leading-relaxed max-w-2xl">
+                            Model interventions, simulate treatment outcomes, and forecast ROI across your workforce. Select an employee from the sidebar to unlock personalized scenario analysis.
+                          </p>
+                          <div className="flex items-center gap-3 mt-5">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-500/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              Ready to analyze
+                            </span>
+                            <span className="text-xs text-slate-500 dark:text-slate-500">
+                              {sortedEmployeesMemo?.length || 0} employees available
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
                 )}
 
-                {/* Tab Navigation */}
-                <div className="flex space-x-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-                  <button
-                    onClick={() => setActiveTab('scenario')}
-                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'scenario'
-                      ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                      }`}
-                  >
-                    <GitCompare className="w-4 h-4" />
-                    Scenario
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('roi-dashboard')}
-                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'roi-dashboard'
-                      ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                      }`}
-                  >
-                    <TrendingUp className="w-4 h-4" />
-                    ROI Dashboard
-                  </button>
+                {/* Premium Tab Navigation */}
+                <div className="relative">
+                  {/* Ambient glow behind tabs */}
+                  <div className="absolute -inset-1 bg-gradient-to-r from-violet-500/5 via-indigo-500/5 to-violet-500/5 dark:from-violet-500/10 dark:via-indigo-500/10 dark:to-violet-500/10 rounded-2xl blur-xl opacity-60" />
+
+                  <div className="relative flex p-1.5 gap-1.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/50 backdrop-blur-sm">
+                    <button
+                      onClick={() => setActiveTab('scenario')}
+                      className={cn(
+                        "group relative flex-1 flex items-center justify-center gap-2.5 px-5 py-3 text-sm font-medium rounded-lg transition-all duration-300 overflow-hidden",
+                        activeTab === 'scenario'
+                          ? "bg-white dark:bg-slate-900 text-violet-700 dark:text-violet-300 shadow-lg shadow-slate-200/50 dark:shadow-slate-950/50 border border-slate-200/80 dark:border-slate-700/60"
+                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-slate-700/30"
+                      )}
+                    >
+                      {activeTab === 'scenario' && (
+                        <motion.div
+                          layoutId="tab-indicator"
+                          className="absolute inset-0 bg-gradient-to-r from-violet-500/5 via-transparent to-indigo-500/5 dark:from-violet-500/10 dark:to-indigo-500/10"
+                          transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+                        />
+                      )}
+                      <GitCompare className={cn(
+                        "w-4 h-4 transition-colors relative z-10",
+                        activeTab === 'scenario' ? "text-violet-600 dark:text-violet-400" : ""
+                      )} />
+                      <span className="relative z-10">Scenario Lab</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('roi-dashboard')}
+                      className={cn(
+                        "group relative flex-1 flex items-center justify-center gap-2.5 px-5 py-3 text-sm font-medium rounded-lg transition-all duration-300 overflow-hidden",
+                        activeTab === 'roi-dashboard'
+                          ? "bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-lg shadow-slate-200/50 dark:shadow-slate-950/50 border border-slate-200/80 dark:border-slate-700/60"
+                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-slate-700/30"
+                      )}
+                    >
+                      {activeTab === 'roi-dashboard' && (
+                        <motion.div
+                          layoutId="tab-indicator"
+                          className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 via-transparent to-teal-500/5 dark:from-emerald-500/10 dark:to-teal-500/10"
+                          transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+                        />
+                      )}
+                      <TrendingUp className={cn(
+                        "w-4 h-4 transition-colors relative z-10",
+                        activeTab === 'roi-dashboard' ? "text-emerald-600 dark:text-emerald-400" : ""
+                      )} />
+                      <span className="relative z-10">ROI Dashboard</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Tab Content */}
                 {activeTab === 'scenario' ? (
                   <div className="space-y-4">
-                    {/* Scenario Sub-Tab Navigation */}
-                    <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 pb-2">
+                    {/* Premium Scenario Sub-Tab Navigation */}
+                    <div className="flex items-center gap-1 p-1 bg-slate-50/50 dark:bg-slate-800/30 rounded-lg border border-slate-200/40 dark:border-slate-700/30 w-fit">
                       <button
                         onClick={() => setScenarioSubTab('comparison')}
-                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                        className={cn(
+                          "relative flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all duration-200",
                           scenarioSubTab === 'comparison'
-                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }`}
+                            ? "bg-white dark:bg-slate-800 text-violet-700 dark:text-violet-300 shadow-sm border border-slate-200/60 dark:border-slate-600/40"
+                            : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-700/40"
+                        )}
                       >
-                        <span className="flex items-center gap-1.5">
-                          <GitCompare className="w-4 h-4" />
-                          Treatment Comparison
-                        </span>
+                        <GitCompare className="w-4 h-4" />
+                        <span>Treatment Comparison</span>
+                        {scenarioSubTab === 'comparison' && (
+                          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-violet-500 dark:bg-violet-400" />
+                        )}
                       </button>
                       <button
                         onClick={() => setScenarioSubTab('atlas')}
-                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                        className={cn(
+                          "relative flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all duration-200",
                           scenarioSubTab === 'atlas'
-                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }`}
+                            ? "bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 shadow-sm border border-slate-200/60 dark:border-slate-600/40"
+                            : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-700/40"
+                        )}
                       >
-                        <span className="flex items-center gap-1.5">
-                          <Beaker className="w-4 h-4" />
-                          Atlas Simulator
-                        </span>
+                        <Beaker className="w-4 h-4" />
+                        <span>Atlas Simulator</span>
+                        {scenarioSubTab === 'atlas' && (
+                          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-indigo-500 dark:bg-indigo-400" />
+                        )}
                       </button>
                     </div>
 
@@ -2262,41 +2432,88 @@ const ScenarioComparisonTab = memo(({
   // }, [scenarios]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
-      <div className="lg:col-span-2 bg-white dark:bg-gray-800/80 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700/50 flex flex-col overflow-hidden h-full min-h-0">
-        <div className="flex flex-col p-4 h-full min-h-0 overflow-y-auto">
-          {/* Chart Title and Controls */}
-          <div className="mb-3 pb-2 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Scenario Comparison - Retention Probability
-              </h3>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={addScenario}
-                  disabled={!selectedEmployee || scenarios.length >= MAX_SCENARIOS}
-                  title={!selectedEmployee ? 'Select an employee to add personalized scenarios' : scenarios.length >= MAX_SCENARIOS ? `Maximum of ${MAX_SCENARIOS} scenarios reached` : undefined}
-                  className="px-3 py-1 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                >
-                  <GitCompare className="w-3 h-3" />
-                  Add Scenario
-                </button>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 flex-1 min-h-0">
+      {/* Chart Panel - Premium Glass Design */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="lg:col-span-2 relative overflow-hidden rounded-2xl border border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900 dark:via-slate-800/80 dark:to-slate-900 shadow-xl shadow-slate-200/40 dark:shadow-slate-950/50 flex flex-col h-full min-h-0"
+      >
+        {/* Decorative background elements */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-violet-500/[0.03] via-transparent to-transparent dark:from-violet-500/[0.08] rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-80 h-80 bg-gradient-to-tr from-cyan-500/[0.03] via-transparent to-transparent dark:from-cyan-500/[0.08] rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative flex flex-col p-5 h-full min-h-0 overflow-y-auto">
+          {/* Chart Header */}
+          <div className="mb-4 pb-4 border-b border-slate-200/60 dark:border-slate-700/40 flex-shrink-0">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500/10 to-indigo-500/10 dark:from-violet-500/20 dark:to-indigo-500/20 border border-violet-200/50 dark:border-violet-500/30">
+                  <Activity className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+                    Retention Forecast
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Compare scenarios over 12-month horizon
+                  </p>
+                </div>
               </div>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={addScenario}
+                disabled={!selectedEmployee || scenarios.length >= MAX_SCENARIOS}
+                title={!selectedEmployee ? 'Select an employee to add personalized scenarios' : scenarios.length >= MAX_SCENARIOS ? `Maximum of ${MAX_SCENARIOS} scenarios reached` : undefined}
+                className={cn(
+                  "px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 transition-all duration-200",
+                  selectedEmployee && scenarios.length < MAX_SCENARIOS
+                    ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-500/25 hover:shadow-xl hover:shadow-violet-500/30"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
+                )}
+              >
+                <GitCompare className="w-4 h-4" />
+                Add Scenario
+              </motion.button>
             </div>
 
             {!selectedEmployeeData && (
-              <div className="mb-3 p-3 rounded-md bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-200 text-xs">
-                Select an employee to compare baseline versus treated retention probabilities. Until then, the chart below will stay empty.
-              </div>
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-4 rounded-xl bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-800/50 dark:to-slate-800/30 border border-slate-200/60 dark:border-slate-700/40"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-1.5 rounded-lg bg-slate-200/60 dark:bg-slate-700/60">
+                    <Info className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300">No employee selected</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Select an employee from the sidebar to visualize retention scenarios
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
             )}
 
-            {/* Scenario Management */}
+            {/* Scenario Pills */}
             {scenarios.length > 0 && (
-              <div className="space-y-2 mb-3">
+              <div className="flex flex-wrap gap-2 mt-4">
                 {scenarios.map((scenario) => (
-                  <div key={scenario.id} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: scenario.color }}></div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{scenario.name}</span>
+                  <motion.div
+                    key={scenario.id}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="group flex items-center gap-2 px-3 py-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200/60 dark:border-slate-700/50 shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div
+                      className="w-3 h-3 rounded-full ring-2 ring-white dark:ring-slate-800 shadow-sm"
+                      style={{ backgroundColor: scenario.color }}
+                    />
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{scenario.name}</span>
                     <select
                       value={scenario.treatmentId || ''}
                       onChange={(e) => {
@@ -2304,7 +2521,7 @@ const ScenarioComparisonTab = memo(({
                         const treatmentId = value === '' ? null : parseInt(value, 10);
                         updateScenarioTreatment(scenario.id, treatmentId);
                       }}
-                      className="text-xs bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-2 py-1"
+                      className="text-xs bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all"
                     >
                       <option value="">No Treatment</option>
                       {treatmentSuggestions.map(treatment => {
@@ -2324,70 +2541,106 @@ const ScenarioComparisonTab = memo(({
                     </select>
                     <button
                       onClick={() => removeScenario(scenario.id)}
-                      className="text-red-500 hover:text-red-700 ml-auto"
+                      className="p-1 rounded-full text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
                     >
                       ×
                     </button>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             )}
 
             {selectedEmployeeData && (
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                <p className="text-sm text-blue-800 dark:text-blue-200">
-                  <strong>Current Risk:</strong> {(selectedEmployeeData.current_churn_probability * 100).toFixed(1)}% annual churn probability
-                </p>
-                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                  Compare different treatment scenarios side by side. Each line represents a different scenario with its applied treatment.
-                </p>
-              </div>
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-4 p-4 rounded-xl bg-gradient-to-r from-amber-50/80 via-orange-50/50 to-amber-50/80 dark:from-amber-900/20 dark:via-orange-900/10 dark:to-amber-900/20 border border-amber-200/60 dark:border-amber-700/40"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-800/40">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                        {(selectedEmployeeData.current_churn_probability * 100).toFixed(1)}% Annual Churn Risk
+                      </p>
+                      <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                        Baseline probability without interventions
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-bold font-mono text-amber-700 dark:text-amber-300">
+                      {(100 - selectedEmployeeData.current_churn_probability * 100).toFixed(0)}%
+                    </p>
+                    <p className="text-xs text-amber-600 dark:text-amber-400">retention</p>
+                  </div>
+                </div>
+              </motion.div>
             )}
           </div>
 
-          <div className="flex-1" style={{ height: '300px' }}>
-            <ResponsiveContainer width="100%" height={300}>
+          {/* Chart Area */}
+          <div className="flex-1 min-h-[300px]">
+            <ResponsiveContainer width="100%" height={320}>
               <LineChart
                 data={scenarioChartData}
-                margin={{ top: 5, right: 20, left: 0, bottom: 20 }}
+                margin={{ top: 10, right: 30, left: 5, bottom: 25 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <defs>
+                  <linearGradient id="chartGrid" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#e2e8f0" stopOpacity={0.8} />
+                    <stop offset="100%" stopColor="#e2e8f0" stopOpacity={0.2} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="url(#chartGrid)" vertical={false} />
                 <XAxis
                   dataKey="month"
-                  label={{ value: 'Months from Now', position: 'bottom', dy: 5, style: { fontSize: 12, fill: '#6b7280' } }}
+                  label={{ value: 'Months', position: 'bottom', dy: 10, style: { fontSize: 11, fill: '#64748b', fontWeight: 500 } }}
                   type="number"
                   domain={[1, 12]}
                   ticks={[1, 3, 6, 9, 12]}
-                  stroke="#6b7280"
-                  tick={{ fontSize: 11 }}
-                  axisLine={{ stroke: "#d1d5db" }}
-                  tickLine={{ stroke: "#d1d5db" }}
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  axisLine={{ stroke: "#cbd5e1", strokeWidth: 1 }}
+                  tickLine={false}
                 />
                 <YAxis
-                  label={{ value: 'Retention Probability (%)', angle: -90, position: 'insideLeft', offset: -5, dx: -10, style: { fontSize: 12, fill: '#6b7280' } }}
+                  label={{ value: 'Retention %', angle: -90, position: 'insideLeft', offset: 0, dx: -5, style: { fontSize: 11, fill: '#64748b', fontWeight: 500 } }}
                   domain={[0, 100]}
-                  stroke="#6b7280"
-                  tick={{ fontSize: 11 }}
-                  axisLine={{ stroke: "#d1d5db" }}
-                  tickLine={{ stroke: "#d1d5db" }}
-                  width={45}
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  axisLine={{ stroke: "#cbd5e1", strokeWidth: 1 }}
+                  tickLine={false}
+                  width={50}
                 />
                 <RechartsTooltip
                   content={({ active, payload, label }) => {
                     if (active && payload && payload.length) {
                       return (
-                        <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg text-xs max-w-xs">
-                          <p className="font-medium text-gray-900 dark:text-gray-100 mb-2">
-                            {label} months from now
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl p-4 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl shadow-slate-200/50 dark:shadow-slate-950/50"
+                        >
+                          <p className="font-semibold text-slate-900 dark:text-slate-100 mb-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+                            Month {label}
                           </p>
-                          {payload.map((entry: any) => (
-                            <div key={entry.name} className="flex items-center gap-2 mb-1">
-                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
-                              <span className="text-gray-600 dark:text-gray-300">{entry.name}:</span>
-                              <span className="font-medium text-gray-800 dark:text-gray-100">{entry.value.toFixed(1)}%</span>
-                            </div>
-                          ))}
-                        </div>
+                          <div className="space-y-2">
+                            {payload.map((entry: any) => (
+                              <div key={entry.name} className="flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
+                                  <span className="text-sm text-slate-600 dark:text-slate-300">{entry.name}</span>
+                                </div>
+                                <span className="text-sm font-bold font-mono text-slate-900 dark:text-slate-100">
+                                  {entry.value.toFixed(1)}%
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </motion.div>
                       );
                     }
                     return null;
@@ -2395,10 +2648,10 @@ const ScenarioComparisonTab = memo(({
                 />
                 <Legend
                   verticalAlign="top"
-                  height={30}
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: '12px', paddingTop: '5px' }}
-                  formatter={(value) => <span className="text-gray-600 dark:text-gray-300">{value}</span>}
+                  height={36}
+                  iconSize={10}
+                  wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }}
+                  formatter={(value) => <span className="text-slate-600 dark:text-slate-300 font-medium">{value}</span>}
                 />
 
                 {scenarios.map((scenario) => (
@@ -2407,9 +2660,9 @@ const ScenarioComparisonTab = memo(({
                     type="monotone"
                     dataKey={scenario.name}
                     stroke={scenario.color}
-                    strokeWidth={2}
+                    strokeWidth={2.5}
                     dot={false}
-                    activeDot={{ r: 5, strokeWidth: 1, fill: scenario.color }}
+                    activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', fill: scenario.color }}
                     name={scenario.name}
                   />
                 ))}
@@ -2417,19 +2670,40 @@ const ScenarioComparisonTab = memo(({
             </ResponsiveContainer>
           </div>
         </div>
-      </div>
+      </motion.div>
 
-      <div className="bg-white dark:bg-gray-800/80 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700/50 flex flex-col overflow-hidden h-full min-h-0">
-        <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
-          <h3 className="text-base font-medium text-gray-700 dark:text-gray-200">
-            AI-Generated Treatments
-          </h3>
+      {/* Treatments Panel - Premium Card Design */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+        className="relative overflow-hidden rounded-2xl border border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-white via-slate-50/30 to-white dark:from-slate-900 dark:via-slate-800/60 dark:to-slate-900 shadow-xl shadow-slate-200/40 dark:shadow-slate-950/50 flex flex-col h-full min-h-0"
+      >
+        {/* Decorative gradient */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-emerald-500/[0.04] via-transparent to-transparent dark:from-emerald-500/[0.08] rounded-full blur-3xl pointer-events-none" />
+
+        {/* Header */}
+        <div className="relative flex items-center gap-3 p-5 border-b border-slate-200/60 dark:border-slate-700/40 flex-shrink-0">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500/10 to-teal-500/10 dark:from-emerald-500/20 dark:to-teal-500/20 border border-emerald-200/50 dark:border-emerald-500/30">
+            <Zap className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+              Treatment Options
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              AI-powered interventions
+            </p>
+          </div>
+          {treatmentSuggestions.length > 0 && (
+            <span className="ml-auto px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+              {treatmentSuggestions.length} available
+            </span>
+          )}
         </div>
 
-        {/* Disclaimer removed; presentation is now governed by global data mode in Settings */}
-
         {treatmentSuggestions.length > 0 ? (
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent dark:scrollbar-thumb-gray-600">
+          <div className="relative flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent dark:scrollbar-thumb-slate-600">
             {treatmentSuggestions
               .filter(treatment => {
                 if (budget === null) return true;
@@ -2437,24 +2711,39 @@ const ScenarioComparisonTab = memo(({
                 return costPercentage <= budget;
               })
               .slice(0, 6)
-              .map((treatment) => (
-                <TreatmentCard
+              .map((treatment, index) => (
+                <motion.div
                   key={treatment.id}
-                  treatment={treatment}
-                  onSelect={applyTreatment}
-                  isSelected={selectedTreatment?.id === treatment.id}
-                  isLoading={isApplyingTreatment && selectedTreatment?.id === treatment.id}
-
-                  employeeSalary={selectedEmployeeData?.current_features.employee_cost || 0}
-                />
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: index * 0.05 }}
+                >
+                  <TreatmentCard
+                    treatment={treatment}
+                    onSelect={applyTreatment}
+                    isSelected={selectedTreatment?.id === treatment.id}
+                    isLoading={isApplyingTreatment && selectedTreatment?.id === treatment.id}
+                    employeeSalary={selectedEmployeeData?.current_features.employee_cost || 0}
+                  />
+                </motion.div>
               ))}
           </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-center py-8 text-gray-500 dark:text-gray-400">
-            <p>{selectedEmployeeData ? 'No treatment suggestions available for this employee.' : 'Select an employee to generate treatment suggestions.'}</p>
+          <div className="relative flex-1 flex flex-col items-center justify-center text-center p-8">
+            <div className="p-4 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 mb-4">
+              <FlaskConical className="w-10 h-10 text-slate-400 dark:text-slate-500" />
+            </div>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              {selectedEmployeeData ? 'No treatments available' : 'Awaiting selection'}
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-[200px]">
+              {selectedEmployeeData
+                ? 'No AI-generated treatments for this employee profile.'
+                : 'Select an employee to generate personalized treatment options.'}
+            </p>
           </div>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 });
@@ -2918,203 +3207,258 @@ const MassTreatmentTab = memo(({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-semibold">Mass Treatment Analysis</h3>
-        <p className="text-sm text-gray-500">Identify and prioritize employees for retention efforts.</p>
+      {/* Premium Header Section */}
+      <div className="relative overflow-hidden p-6 border-b border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900 dark:via-slate-800/60 dark:to-slate-900">
+        {/* Decorative background elements */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-violet-500/5 via-indigo-500/5 to-transparent rounded-full blur-3xl" />
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-emerald-500/5 via-teal-500/5 to-transparent rounded-full blur-3xl" />
 
-        {/* Enhanced Progress Bar for Bulk Operations */}
-        {isApplyingBulkTreatment && bulkProgress.total > 0 && (
-          <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                  <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                    {bulkOperationCancelled ? 'Cancelling...' : 'Applying Treatments'}
-                  </span>
-                </div>
-                <span className="text-sm text-blue-700 dark:text-blue-300">
-                  ({bulkProgress.completed}/{bulkProgress.total})
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                  {Math.round((bulkProgress.completed / bulkProgress.total) * 100)}%
-                </span>
-                {!bulkOperationCancelled && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={cancelBulkTreatment}
-                    className="h-6 px-2 text-xs border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
-                  >
-                    Cancel
-                  </Button>
-                )}
-              </div>
+        <div className="relative">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/25">
+              <Users className="w-5 h-5 text-white" />
             </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 tracking-tight">Mass Treatment Analysis</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Identify and prioritize employees for retention efforts</p>
+            </div>
+          </div>
 
-            {/* Progress Bar */}
-            <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-3 mb-3">
-              <div
-                className="bg-blue-600 dark:bg-blue-400 h-3 rounded-full transition-all duration-300 flex items-center justify-end pr-2"
-                style={{ width: `${Math.max(8, (bulkProgress.completed / bulkProgress.total) * 100)}%` }}
-              >
-                {bulkProgress.completed > 0 && (
-                  <span className="text-xs text-white font-medium">
+          {/* Enhanced Progress Bar for Bulk Operations */}
+          {isApplyingBulkTreatment && bulkProgress.total > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-5 p-5 relative overflow-hidden rounded-2xl border border-cyan-200/60 dark:border-cyan-800/50 bg-gradient-to-br from-cyan-50/80 via-sky-50/50 to-cyan-50/80 dark:from-cyan-950/30 dark:via-sky-950/20 dark:to-cyan-950/30 backdrop-blur-sm"
+            >
+              {/* Decorative glow */}
+              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-cyan-400/20 via-transparent to-transparent rounded-full blur-2xl" />
+
+              <div className="relative flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-cyan-400/30 rounded-full blur-lg animate-pulse" />
+                    <div className="relative w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-sky-500 flex items-center justify-center">
+                      <Loader2 className="h-4 w-4 animate-spin text-white" />
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-sm font-semibold text-cyan-900 dark:text-cyan-100">
+                      {bulkOperationCancelled ? 'Cancelling operation...' : 'Applying Treatments'}
+                    </span>
+                    <span className="ml-2 text-sm text-cyan-700 dark:text-cyan-300 font-mono">
+                      ({bulkProgress.completed}/{bulkProgress.total})
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="text-lg font-bold text-cyan-700 dark:text-cyan-300 font-mono">
                     {Math.round((bulkProgress.completed / bulkProgress.total) * 100)}%
                   </span>
-                )}
-              </div>
-            </div>
-
-            {/* Status Details */}
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-4">
-                {(bulkProgress.successful ?? 0) > 0 && (
-                  <span className="text-green-600 dark:text-green-400 flex items-center gap-1">
-                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                    {bulkProgress.successful} successful
-                  </span>
-                )}
-                {(bulkProgress.failed ?? 0) > 0 && (
-                  <span className="text-red-600 dark:text-red-400 flex items-center gap-1">
-                    <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                    {bulkProgress.failed} failed
-                  </span>
-                )}
-              </div>
-              <div className="text-blue-700 dark:text-blue-300">
-                {bulkProgress.currentEmployee && (
-                  <span>Current: {bulkProgress.currentEmployee}</span>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
-            <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Candidates analyzed</div>
-            <div className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{candidates.length}</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{summaryMetrics.appliedCount} already applied</div>
-          </div>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
-            <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              {isPerformanceMode ? 'Potential churn reduction' : 'Potential ELTV gain'}
-            </div>
-            <div className="mt-1 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
-              {isPerformanceMode
-                ? `${(summaryMetrics.totalPotentialChurn * 100).toFixed(1)}%`
-                : formatCurrency(summaryMetrics.totalPotentialELTV)}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Selected: {isPerformanceMode
-                ? `${(summaryMetrics.selectedPotentialChurn * 100).toFixed(1)}%`
-                : formatCurrency(summaryMetrics.selectedPotentialELTV)}
-            </div>
-          </div>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
-            <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              {isPerformanceMode ? 'Realized churn drop' : 'Realized impact'}
-            </div>
-            <div className="mt-1 text-2xl font-semibold text-blue-600 dark:text-blue-400">
-              {isPerformanceMode
-                ? `${(summaryMetrics.realizedChurnDrop * 100).toFixed(1)}%`
-                : formatCurrency(summaryMetrics.realizedGainELTV)}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{selectedCandidates.size} selected</div>
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button onClick={analyzeTeamForTreatment} disabled={isLoading || isApplyingBulkTreatment}>
-            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
-            Analyze Team
-          </Button>
-
-          {/* Bulk Action Buttons */}
-          {candidates.length > 0 && (
-            <>
-              <Button
-                onClick={() => applyBulkTreatment()}
-                disabled={selectedCount === 0 || isApplyingBulkTreatment}
-                variant="default"
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              >
-                {isApplyingBulkTreatment ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Activity className="mr-2 h-4 w-4" />
-                )}
-                Apply to Selected ({selectedCount})
-              </Button>
-
-              <div className="flex gap-2">
-                <Button
-                  onClick={selectAllCandidates}
-                  variant="outline"
-                  size="sm"
-                >
-                  Select All
-                </Button>
-                <Button
-                  onClick={deselectAllCandidates}
-                  variant="outline"
-                  size="sm"
-                  disabled={selectedCount === 0}
-                >
-                  Deselect All
-                </Button>
-              </div>
-
-              {/* Template System */}
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => setShowTemplateModal(true)}
-                  variant="outline"
-                  size="sm"
-                  disabled={selectedCount === 0}
-                >
-                  Save Template
-                </Button>
-                {savedTemplates.length > 0 && (
-                  <div className="relative">
-                    <select
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          const template = savedTemplates.find(t => t.id === e.target.value);
-                          if (template) loadTemplate(template);
-                          e.target.value = '';
-                        }
-                      }}
-                      className="text-xs bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-2 py-1"
-                      defaultValue=""
+                  {!bulkOperationCancelled && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={cancelBulkTreatment}
+                      className="h-7 px-3 text-xs font-medium border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-700 rounded-lg"
                     >
-                      <option value="">Load Template ({savedTemplates.length})</option>
-                      {savedTemplates.map(template => (
-                        <option key={template.id} value={template.id}>
-                          {template.name} ({template.criteria.employeeCount} employees)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                      Cancel
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Premium Progress Bar */}
+              <div className="relative w-full h-3 bg-cyan-200/60 dark:bg-cyan-800/40 rounded-full overflow-hidden mb-4">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-cyan-500 via-sky-500 to-cyan-500 rounded-full relative"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.max(5, (bulkProgress.completed / bulkProgress.total) * 100)}%` }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+                </motion.div>
+              </div>
+
+              {/* Status Details */}
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-4">
+                  {(bulkProgress.successful ?? 0) > 0 && (
+                    <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                      <span className="w-2 h-2 bg-emerald-500 rounded-full shadow-sm shadow-emerald-500/50" />
+                      {bulkProgress.successful} successful
+                    </span>
+                  )}
+                  {(bulkProgress.failed ?? 0) > 0 && (
+                    <span className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400 font-medium">
+                      <span className="w-2 h-2 bg-rose-500 rounded-full shadow-sm shadow-rose-500/50" />
+                      {bulkProgress.failed} failed
+                    </span>
+                  )}
+                </div>
+                {bulkProgress.currentEmployee && (
+                  <span className="text-cyan-700 dark:text-cyan-300 font-medium">
+                    Processing: <span className="font-mono">{bulkProgress.currentEmployee}</span>
+                  </span>
                 )}
               </div>
-            </>
+            </motion.div>
           )}
+
+          {/* Premium Metrics Cards */}
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Candidates Card */}
+            <div className="group relative overflow-hidden rounded-2xl border border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-white via-slate-50/30 to-white dark:from-slate-900 dark:via-slate-800/50 dark:to-slate-900 p-4 transition-all duration-300 hover:shadow-lg hover:shadow-slate-200/50 dark:hover:shadow-slate-950/50">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-violet-500/10 via-transparent to-transparent rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-violet-500 via-indigo-500 to-violet-400 rounded-full" />
+              <div className="pl-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Candidates analyzed</div>
+                <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 font-mono tracking-tight">{candidates.length}</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">{summaryMetrics.appliedCount} already applied</div>
+              </div>
+            </div>
+
+            {/* Potential Gain Card */}
+            <div className="group relative overflow-hidden rounded-2xl border border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-white via-slate-50/30 to-white dark:from-slate-900 dark:via-slate-800/50 dark:to-slate-900 p-4 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-200/30 dark:hover:shadow-emerald-950/30">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-emerald-500/15 via-transparent to-transparent rounded-full blur-2xl" />
+              <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-emerald-500 via-teal-500 to-emerald-400 rounded-full" />
+              <div className="pl-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  {isPerformanceMode ? 'Potential churn reduction' : 'Potential ELTV gain'}
+                </div>
+                <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-mono tracking-tight">
+                  {isPerformanceMode
+                    ? `${(summaryMetrics.totalPotentialChurn * 100).toFixed(1)}%`
+                    : formatCurrency(summaryMetrics.totalPotentialELTV)}
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                  Selected: <span className="text-emerald-600 dark:text-emerald-400">{isPerformanceMode
+                    ? `${(summaryMetrics.selectedPotentialChurn * 100).toFixed(1)}%`
+                    : formatCurrency(summaryMetrics.selectedPotentialELTV)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Realized Impact Card */}
+            <div className="group relative overflow-hidden rounded-2xl border border-slate-200/60 dark:border-slate-700/50 bg-gradient-to-br from-white via-slate-50/30 to-white dark:from-slate-900 dark:via-slate-800/50 dark:to-slate-900 p-4 transition-all duration-300 hover:shadow-lg hover:shadow-cyan-200/30 dark:hover:shadow-cyan-950/30">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-cyan-500/15 via-transparent to-transparent rounded-full blur-2xl" />
+              <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-cyan-500 via-sky-500 to-cyan-400 rounded-full" />
+              <div className="pl-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  {isPerformanceMode ? 'Realized churn drop' : 'Realized impact'}
+                </div>
+                <div className="text-2xl font-bold text-cyan-600 dark:text-cyan-400 font-mono tracking-tight">
+                  {isPerformanceMode
+                    ? `${(summaryMetrics.realizedChurnDrop * 100).toFixed(1)}%`
+                    : formatCurrency(summaryMetrics.realizedGainELTV)}
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                  <span className="text-cyan-600 dark:text-cyan-400">{selectedCandidates.size}</span> selected
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Button
+              onClick={analyzeTeamForTreatment}
+              disabled={isLoading || isApplyingBulkTreatment}
+              className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all duration-300"
+            >
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
+              Analyze Team
+            </Button>
+
+            {/* Bulk Action Buttons */}
+            {candidates.length > 0 && (
+              <>
+                <Button
+                  onClick={() => applyBulkTreatment()}
+                  disabled={selectedCount === 0 || isApplyingBulkTreatment}
+                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all duration-300"
+                >
+                  {isApplyingBulkTreatment ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Activity className="mr-2 h-4 w-4" />
+                  )}
+                  Apply to Selected ({selectedCount})
+                </Button>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={selectAllCandidates}
+                    variant="outline"
+                    size="sm"
+                    className="border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+                  >
+                    Select All
+                  </Button>
+                  <Button
+                    onClick={deselectAllCandidates}
+                    variant="outline"
+                    size="sm"
+                    disabled={selectedCount === 0}
+                    className="border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+                  >
+                    Deselect All
+                  </Button>
+                </div>
+
+                {/* Template System */}
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setShowTemplateModal(true)}
+                    variant="outline"
+                    size="sm"
+                    disabled={selectedCount === 0}
+                    className="border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+                  >
+                    Save Template
+                  </Button>
+                  {savedTemplates.length > 0 && (
+                    <div className="relative">
+                      <select
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            const template = savedTemplates.find(t => t.id === e.target.value);
+                            if (template) loadTemplate(template);
+                            e.target.value = '';
+                          }
+                        }}
+                        className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-1.5 text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                        defaultValue=""
+                      >
+                        <option value="">Load Template ({savedTemplates.length})</option>
+                        {savedTemplates.map(template => (
+                          <option key={template.id} value={template.id}>
+                            {template.name} ({template.criteria.employeeCount} employees)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-4">
+      {/* Premium Candidates List */}
+      <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-slate-50/50 to-white dark:from-slate-900/50 dark:to-slate-900">
         {isLoading ? (
-          <div className="text-center py-12">
-            <Loader2 className="mx-auto h-12 w-12 text-gray-400 animate-spin mb-4" />
-            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Analyzing employees...</h3>
-            <p className="text-sm text-gray-500">This may take a few moments as we evaluate each employee for treatment opportunities.</p>
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="relative mb-6">
+              <div className="absolute inset-0 bg-violet-400/20 rounded-full blur-2xl animate-pulse" />
+              <Loader2 className="relative w-14 h-14 text-violet-500 animate-spin" />
+            </div>
+            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 mb-2">Analyzing employees...</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 text-center max-w-md">This may take a few moments as we evaluate each employee for treatment opportunities.</p>
           </div>
         ) : candidates.length > 0 ? (
           <div className="space-y-4">
-            {candidates.map((candidate) => {
+            {candidates.map((candidate, index) => {
               const isSelected = selectedCandidates.has(candidate.employee.hr_code);
               const realizedChurnDrop = candidate.lastResult && candidate.lastResult.pre_churn_probability != null && candidate.lastResult.post_churn_probability != null
                 ? Math.max(0, candidate.lastResult.pre_churn_probability - candidate.lastResult.post_churn_probability)
@@ -3147,205 +3491,310 @@ const MassTreatmentTab = memo(({
                   ])
                 : [];
               return (
-                <div
+                <motion.div
                   key={candidate.employee.id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05, duration: 0.25 }}
                   className={cn(
-                    'p-4 rounded-lg shadow-sm border transition-all',
+                    'group relative overflow-hidden rounded-2xl transition-all duration-300',
                     isSelected
-                      ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600'
-                      : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700',
-                    candidate.lastResult ? 'border-emerald-300 dark:border-emerald-500/60 ring-1 ring-emerald-100 dark:ring-emerald-500/30' : '',
-                    candidate.isApplying ? 'opacity-90' : ''
+                      ? 'bg-gradient-to-br from-violet-50 via-indigo-50/50 to-violet-50 dark:from-violet-950/30 dark:via-indigo-950/20 dark:to-violet-950/30 border-2 border-violet-300/70 dark:border-violet-600/50 shadow-lg shadow-violet-200/40 dark:shadow-violet-950/30'
+                      : 'bg-gradient-to-br from-white via-slate-50/30 to-white dark:from-slate-900 dark:via-slate-800/50 dark:to-slate-900 border border-slate-200/70 dark:border-slate-700/60 hover:shadow-lg hover:shadow-slate-200/50 dark:hover:shadow-slate-950/50',
+                    candidate.lastResult && 'ring-2 ring-emerald-400/40 dark:ring-emerald-500/30',
+                    candidate.isApplying && 'opacity-80'
                   )}
                 >
-                  <div className="flex justify-between items-start gap-4 mb-3">
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleCandidate(candidate.employee.hr_code)}
-                        className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-semibold text-gray-900 dark:text-gray-100">
-                            {candidate.employee.full_name || candidate.employee.name}
-                          </h4>
-                          {candidate.lastResult && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-2 py-0.5 text-xs font-medium">
-                              <CheckCircle className="h-3 w-3" /> Applied
-                            </span>
-                          )}
-                          {candidate.isApplying && (
-                            <span className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-300">
-                              <Loader2 className="h-3 w-3 animate-spin" /> Applying…
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          {candidate.employee.position} • {candidate.employee.structure_name || candidate.employee.department}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-3 mt-2 text-xs">
-                          <span className={cn(
-                            'px-2 py-1 rounded-full',
-                            candidate.riskLevel === 'High'
-                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                              : candidate.riskLevel === 'Medium'
-                                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                                : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                          )}>
-                            {candidate.riskLevel} Risk
-                          </span>
-                          <span className="text-gray-500 dark:text-gray-400">Priority {candidate.priorityScore?.toFixed(0) || 'N/A'}</span>
-                          {candidate.lastResult && (
-                            <span className="text-emerald-600 dark:text-emerald-300 font-medium">
-                              {isPerformanceMode
-                                ? `${realizedChurnDrop !== null ? (realizedChurnDrop * 100).toFixed(1) : '0.0'}% churn drop`
-                                : `+${formatCurrency(candidate.lastResult.treatment_effect_eltv ?? 0)} impact`}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <Button
-                        size="sm"
-                        disabled={!candidate.topTreatment || candidate.isApplying}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                        onClick={() => applyCandidateTreatment(candidate).catch(() => { })}
-                      >
-                        {candidate.isApplying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Apply Recommended'}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={candidate.isApplying}
-                        onClick={() => handleEmployeeSelect(candidate.employee.id, candidate.topTreatment?.id)}
-                      >
-                        View Details
-                      </Button>
-                    </div>
-                  </div>
+                  {/* Left accent bar */}
+                  <div className={cn(
+                    "absolute top-0 left-0 w-1 h-full rounded-full transition-colors duration-300",
+                    candidate.lastResult
+                      ? "bg-gradient-to-b from-emerald-500 via-teal-500 to-emerald-400"
+                      : isSelected
+                        ? "bg-gradient-to-b from-violet-500 via-indigo-500 to-violet-400"
+                        : "bg-gradient-to-b from-slate-300 via-slate-200 to-slate-300 dark:from-slate-600 dark:via-slate-700 dark:to-slate-600"
+                  )} />
 
-                  {candidate.topTreatment && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mb-3">
-                      <div className="flex items-center justify-between text-xs text-blue-700 dark:text-blue-300">
-                        <h5 className="text-sm font-medium text-blue-900 dark:text-blue-100">Recommended Treatment</h5>
-                        {isPerformanceMode ? (
-                          <div className="flex flex-col items-end">
-                            <span>Projected RVI {projectedRviCategory ?? 'N/A'}</span>
-                            {costPercentageDisplay && (
-                              <span className="text-[11px] text-blue-600/80 dark:text-blue-300/80">
-                                Cost {costPercentageDisplay} of salary
+                  {/* Decorative gradient */}
+                  <div className={cn(
+                    "absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500",
+                    candidate.lastResult
+                      ? "bg-gradient-to-bl from-emerald-400/20 via-transparent to-transparent"
+                      : isSelected
+                        ? "bg-gradient-to-bl from-violet-400/20 via-transparent to-transparent"
+                        : "bg-gradient-to-bl from-slate-300/20 via-transparent to-transparent"
+                  )} />
+
+                  <div className="relative p-5 pl-6">
+                    <div className="flex justify-between items-start gap-4 mb-4">
+                      <div className="flex items-start gap-4">
+                        {/* Premium checkbox */}
+                        <label className="relative flex items-center cursor-pointer mt-1">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleCandidate(candidate.employee.hr_code)}
+                            className="sr-only peer"
+                          />
+                          <div className={cn(
+                            "w-5 h-5 rounded-lg border-2 transition-all duration-200 flex items-center justify-center",
+                            isSelected
+                              ? "bg-violet-500 border-violet-500 shadow-lg shadow-violet-500/30"
+                              : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 peer-hover:border-violet-400 dark:peer-hover:border-violet-500"
+                          )}>
+                            {isSelected && (
+                              <motion.svg
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                className="w-3 h-3 text-white"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="3"
+                              >
+                                <polyline points="20 6 9 17 4 12" />
+                              </motion.svg>
+                            )}
+                          </div>
+                        </label>
+
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2.5 flex-wrap mb-1">
+                            <h4 className="font-semibold text-slate-900 dark:text-slate-100 tracking-tight">
+                              {candidate.employee.full_name || candidate.employee.name}
+                            </h4>
+                            {candidate.lastResult && (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-emerald-100 to-teal-100 dark:from-emerald-900/40 dark:to-teal-900/40 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 text-xs font-medium shadow-sm">
+                                <CheckCircle className="h-3.5 w-3.5" /> Applied
+                              </span>
+                            )}
+                            {candidate.isApplying && (
+                              <span className="inline-flex items-center gap-1.5 text-xs text-cyan-600 dark:text-cyan-300 font-medium">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Applying…
                               </span>
                             )}
                           </div>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            {candidate.employee.position} • {candidate.employee.structure_name || candidate.employee.department}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2.5 mt-3">
+                            <span className={cn(
+                              'px-3 py-1.5 rounded-full text-xs font-medium shadow-sm',
+                              candidate.riskLevel === 'High'
+                                ? 'bg-gradient-to-r from-rose-100 to-red-100 dark:from-rose-900/40 dark:to-red-900/40 text-rose-700 dark:text-rose-300 border border-rose-200/50 dark:border-rose-800/50'
+                                : candidate.riskLevel === 'Medium'
+                                  ? 'bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/40 dark:to-yellow-900/40 text-amber-700 dark:text-amber-300 border border-amber-200/50 dark:border-amber-800/50'
+                                  : 'bg-gradient-to-r from-emerald-100 to-green-100 dark:from-emerald-900/40 dark:to-green-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50'
+                            )}>
+                              {candidate.riskLevel} Risk
+                            </span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 rounded-full">
+                              Priority <span className="font-mono">{candidate.priorityScore?.toFixed(0) || 'N/A'}</span>
+                            </span>
+                            {candidate.lastResult && (
+                              <span className="text-xs text-emerald-600 dark:text-emerald-300 font-semibold bg-emerald-50 dark:bg-emerald-900/30 px-2.5 py-1.5 rounded-full">
+                                {isPerformanceMode
+                                  ? `${realizedChurnDrop !== null ? (realizedChurnDrop * 100).toFixed(1) : '0.0'}% churn drop`
+                                  : `+${formatCurrency(candidate.lastResult.treatment_effect_eltv ?? 0)} impact`}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-2.5">
+                        <Button
+                          size="sm"
+                          disabled={!candidate.topTreatment || candidate.isApplying}
+                          className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all duration-300 rounded-lg"
+                          onClick={() => applyCandidateTreatment(candidate).catch(() => { })}
+                        >
+                          {candidate.isApplying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Apply Recommended'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={candidate.isApplying}
+                          onClick={() => handleEmployeeSelect(candidate.employee.id, candidate.topTreatment?.id)}
+                          className="border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+                        >
+                          View Details
+                        </Button>
+                      </div>
+                    </div>
+
+                    {candidate.topTreatment && (
+                      <div className="relative overflow-hidden rounded-xl p-4 mb-4 bg-gradient-to-br from-cyan-50/80 via-sky-50/50 to-cyan-50/80 dark:from-cyan-950/30 dark:via-sky-950/20 dark:to-cyan-950/30 border border-cyan-200/60 dark:border-cyan-800/50">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-cyan-400/15 via-transparent to-transparent rounded-full blur-2xl" />
+                        <div className="relative flex items-center justify-between mb-2">
+                          <h5 className="text-sm font-semibold text-cyan-900 dark:text-cyan-100 flex items-center gap-2">
+                            <div className="w-5 h-5 rounded-md bg-gradient-to-br from-cyan-500 to-sky-500 flex items-center justify-center">
+                              <Zap className="w-3 h-3 text-white" />
+                            </div>
+                            Recommended Treatment
+                          </h5>
+                          {isPerformanceMode ? (
+                            <div className="flex flex-col items-end text-xs">
+                              <span className="text-cyan-700 dark:text-cyan-300 font-medium">Projected RVI {projectedRviCategory ?? 'N/A'}</span>
+                              {costPercentageDisplay && (
+                                <span className="text-cyan-600/70 dark:text-cyan-300/70">
+                                  Cost {costPercentageDisplay} of salary
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-cyan-700 dark:text-cyan-300 font-mono font-medium">
+                              {formatCurrency(candidate.topTreatment.cost || 0)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-cyan-800 dark:text-cyan-200 font-medium mb-2">{candidate.topTreatment.name}</p>
+                        {isPerformanceMode ? (
+                          <div className="flex flex-wrap gap-3 text-xs text-cyan-700 dark:text-cyan-300">
+                            <span className="bg-cyan-100/60 dark:bg-cyan-900/30 px-2 py-1 rounded-md">
+                              Churn drop <span className="font-mono font-medium">{(Math.max(0, candidate.potentialChurnReduction || 0) * 100).toFixed(1)}%</span>
+                            </span>
+                            {costPercentageDisplay && (
+                              <span className="bg-cyan-100/60 dark:bg-cyan-900/30 px-2 py-1 rounded-md">
+                                Cost share <span className="font-mono font-medium">{costPercentageDisplay}</span>
+                              </span>
+                            )}
+                            <span className="bg-cyan-100/60 dark:bg-cyan-900/30 px-2 py-1 rounded-md">
+                              Effect: <span className="font-medium">{candidate.topTreatment.timeToEffect || 'N/A'}</span>
+                            </span>
+                          </div>
                         ) : (
-                          <span>Cost {formatCurrency(candidate.topTreatment.cost || 0)}</span>
+                          <div className="flex justify-between text-xs text-cyan-700 dark:text-cyan-300">
+                            <span>Expected Gain <span className="font-mono font-medium">{formatCurrency(candidate.potentialELTVGain)}</span></span>
+                            <span>Effect: <span className="font-medium">{candidate.topTreatment.timeToEffect || 'N/A'}</span></span>
+                          </div>
                         )}
                       </div>
-                      <p className="text-sm text-blue-800 dark:text-blue-200 mt-1">{candidate.topTreatment.name}</p>
-                      {isPerformanceMode ? (
-                        <div className="text-xs text-blue-700 dark:text-blue-300 mt-1 space-y-1">
-                          <div>Churn drop {(Math.max(0, candidate.potentialChurnReduction || 0) * 100).toFixed(1)}%</div>
-                          {costPercentageDisplay ? (
-                            <div>Cost share {costPercentageDisplay} of salary</div>
-                          ) : null}
-                          <div>Time to impact: {candidate.topTreatment.timeToEffect || 'N/A'}</div>
-                        </div>
-                      ) : (
-                        <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300 mt-1">
-                          <span>Expected Gain {formatCurrency(candidate.potentialELTVGain)}</span>
-                          <span>Time to impact: {candidate.topTreatment.timeToEffect || 'N/A'}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                    )}
 
-                  {!candidate.topTreatment && (
-                    <div className="rounded-lg border border-dashed border-gray-200 dark:border-gray-700 p-3 mb-3 text-xs text-gray-600 dark:text-gray-400">
-                      This employee does not currently have an AI-recommended treatment. Consider reviewing their profile manually.
-                    </div>
-                  )}
+                    {!candidate.topTreatment && (
+                      <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-600 p-4 mb-4 text-xs text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-800/30">
+                        This employee does not currently have an AI-recommended treatment. Consider reviewing their profile manually.
+                      </div>
+                    )}
 
-                  {candidate.lastResult && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-gray-600 dark:text-gray-300 mb-3">
-                      {resultMetrics.map((metric, idx) => (
-                        <div key={`${candidate.employee.hr_code}-metric-${idx}`}>
-                          <span className="font-medium text-gray-700 dark:text-gray-200">{metric.label}</span>
-                          <div>{metric.value}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {candidate.selectionCriteria && candidate.selectionCriteria.length > 0 && (
-                    <div className="text-xs text-gray-600 dark:text-gray-400">
-                      <span className="font-medium">Why selected:</span>
-                      <ul className="list-disc list-inside ml-2 mt-1 space-y-1">
-                        {candidate.selectionCriteria.slice(0, isPerformanceMode ? 4 : 3).map((criteria, idx) => (
-                          <li key={idx}>{criteria}</li>
+                    {candidate.lastResult && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                        {resultMetrics.map((metric, idx) => (
+                          <div key={`${candidate.employee.hr_code}-metric-${idx}`} className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3">
+                            <span className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">{metric.label}</span>
+                            <div className="text-sm font-bold text-slate-800 dark:text-slate-200 font-mono mt-0.5">{metric.value}</div>
+                          </div>
                         ))}
-                      </ul>
-                    </div>
-                  )}
+                      </div>
+                    )}
 
-                  {candidate.lastError && (
-                    <div className="mt-3 text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4" />
-                      {candidate.lastError}
-                    </div>
-                  )}
-                </div>
+                    {candidate.selectionCriteria && candidate.selectionCriteria.length > 0 && (
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        <span className="font-semibold text-slate-600 dark:text-slate-300">Why selected:</span>
+                        <ul className="list-none ml-3 mt-2 space-y-1.5">
+                          {candidate.selectionCriteria.slice(0, isPerformanceMode ? 4 : 3).map((criteria, idx) => (
+                            <li key={idx} className="flex items-center gap-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500" />
+                              {criteria}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {candidate.lastError && (
+                      <div className="mt-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200/60 dark:border-rose-800/50 text-sm text-rose-600 dark:text-rose-400 flex items-center gap-2.5">
+                        <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                        {candidate.lastError}
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
               );
             })}
           </div>
         ) : (
-          <div className="text-center py-12">
-            <Users className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">No candidates analyzed</h3>
-            <p className="mt-1 text-sm text-gray-500">Click "Analyze Team" to get started.</p>
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="relative mb-6">
+              <div className="absolute inset-0 bg-slate-300/20 rounded-full blur-2xl" />
+              <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center">
+                <Users className="w-8 h-8 text-slate-400 dark:text-slate-500" />
+              </div>
+            </div>
+            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 mb-2">No candidates analyzed</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 text-center max-w-md mb-4">Click "Analyze Team" to identify employees who would benefit most from retention interventions.</p>
+            <Button
+              onClick={analyzeTeamForTreatment}
+              disabled={isLoading}
+              className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white shadow-lg shadow-violet-500/25"
+            >
+              <Zap className="mr-2 h-4 w-4" />
+              Analyze Team
+            </Button>
           </div>
         )}
       </div>
 
-      {/* Template Save Modal */}
+      {/* Premium Template Save Modal */}
       {showTemplateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-              Save Template
-            </h3>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Template Name
-              </label>
-              <input
-                type="text"
-                value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-                placeholder="e.g., High Risk Engineering Team"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-gray-100"
-              />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                This will save your current selection ({selectedCount} employees) and filters
-              </p>
+        <div className="fixed inset-0 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            className="relative overflow-hidden bg-gradient-to-br from-white via-slate-50/50 to-white dark:from-slate-900 dark:via-slate-800/60 dark:to-slate-900 rounded-2xl p-6 max-w-md w-full mx-4 border border-slate-200/60 dark:border-slate-700/50 shadow-2xl shadow-slate-900/20"
+          >
+            {/* Decorative elements */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-violet-500/10 via-indigo-500/5 to-transparent rounded-full blur-3xl" />
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-emerald-500/10 via-teal-500/5 to-transparent rounded-full blur-2xl" />
+
+            <div className="relative">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/25">
+                  <FlaskConical className="w-5 h-5 text-white" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 tracking-tight">
+                  Save Template
+                </h3>
+              </div>
+
+              <div className="mb-5">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Template Name
+                </label>
+                <input
+                  type="text"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="e.g., High Risk Engineering Team"
+                  className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 transition-all duration-200"
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                  This will save your current selection (<span className="font-semibold text-violet-600 dark:text-violet-400">{selectedCount} employees</span>) and filters
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <Button
+                  onClick={saveTemplate}
+                  disabled={!templateName.trim()}
+                  className="flex-1 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all duration-300"
+                >
+                  Save Template
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowTemplateModal(false);
+                    setTemplateName('');
+                  }}
+                  variant="outline"
+                  className="flex-1 border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+                >
+                  Cancel
+                </Button>
+              </div>
             </div>
-            <div className="flex gap-3">
-              <Button onClick={saveTemplate} disabled={!templateName.trim()}>
-                Save Template
-              </Button>
-              <Button
-                onClick={() => {
-                  setShowTemplateModal(false);
-                  setTemplateName('');
-                }}
-                variant="outline"
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
+          </motion.div>
         </div>
       )}
     </div>

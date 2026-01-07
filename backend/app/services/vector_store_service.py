@@ -143,8 +143,10 @@ class VectorStoreService:
                     for key, value in chunk_meta.items():
                         if isinstance(value, (str, int, float, bool)):
                             metadata[f"source_{key}"] = value
-                except:
-                    pass
+                except (json.JSONDecodeError, TypeError, KeyError) as e:
+                    logger.debug(f"Could not parse chunk metadata: {e}")
+                except Exception as e:
+                    logger.warning(f"Unexpected error parsing chunk metadata: {type(e).__name__}: {e}")
 
             metadatas.append(metadata)
 

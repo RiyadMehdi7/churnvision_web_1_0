@@ -311,7 +311,11 @@ class SurvivalAnalysisService:
         try:
             median_surv = self._model.predict_median(features)
             median_days = float(median_surv.iloc[0]) * days_per_year
-        except:
+        except (ValueError, IndexError, AttributeError) as e:
+            logger.debug(f"Could not calculate median survival time: {e}")
+            median_days = None
+        except Exception as e:
+            logger.warning(f"Unexpected error calculating median survival: {type(e).__name__}: {e}")
             median_days = None
 
         # Determine departure window and urgency

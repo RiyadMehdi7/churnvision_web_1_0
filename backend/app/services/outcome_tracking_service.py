@@ -144,8 +144,8 @@ class OutcomeTrackingService:
                     pred_date = p.generated_at.date() if hasattr(p.generated_at, 'date') else p.generated_at
                     days_to_outcome = (term_date - pred_date).days
                     outcome_date = str(term_date)
-                except:
-                    pass
+                except (ValueError, TypeError, AttributeError) as e:
+                    logger.debug(f"Could not calculate days to outcome for {p.hr_code}: {e}")
 
             outcomes.append(PredictionOutcome(
                 hr_code=p.hr_code,
@@ -236,8 +236,8 @@ class OutcomeTrackingService:
                             days_list.append(days)
                             if days <= 90:
                                 predictions_within_90 += 1
-                    except:
-                        pass
+                    except (ValueError, TypeError, AttributeError) as e:
+                        logger.debug(f"Could not calculate days to departure for {p.hr_code}: {e}")
 
             # Count correct predictions
             if actually_left and risk_score >= 0.5:

@@ -121,8 +121,10 @@ class ActionGenerationService:
                     "environment_satisfaction": add_data.get("environment_satisfaction"),
                     "relationship_satisfaction": add_data.get("relationship_satisfaction"),
                 })
-            except:
-                pass
+            except (json.JSONDecodeError, TypeError, KeyError) as e:
+                logger.debug(f"Could not parse additional_data: {e}")
+            except Exception as e:
+                logger.warning(f"Unexpected error parsing additional_data: {type(e).__name__}: {e}")
 
         # 2. Churn prediction data
         churn_data = await self._get_churn_data(hr_code)
@@ -144,8 +146,10 @@ class ActionGenerationService:
                             {"feature": f[0].replace("_", " ").title(), "impact": float(f[1]) if f[1] else 0}
                             for f in sorted_features
                         ]
-                except:
-                    pass
+                except (json.JSONDecodeError, TypeError, ValueError) as e:
+                    logger.debug(f"Could not parse SHAP values: {e}")
+                except Exception as e:
+                    logger.warning(f"Unexpected error parsing SHAP values: {type(e).__name__}: {e}")
 
         # 3. Churn reasoning (detailed analysis)
         reasoning = await self._get_churn_reasoning(hr_code)
@@ -162,21 +166,29 @@ class ActionGenerationService:
                 try:
                     contributors = json.loads(reasoning.ml_contributors) if isinstance(reasoning.ml_contributors, str) else reasoning.ml_contributors
                     context["reasoning"]["ml_contributors"] = contributors[:5] if isinstance(contributors, list) else []
-                except:
-                    pass
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.debug(f"Could not parse ML contributors: {e}")
+                except Exception as e:
+                    logger.warning(f"Unexpected error parsing ML contributors: {type(e).__name__}: {e}")
             # Parse heuristic alerts
             if reasoning.heuristic_alerts:
                 try:
                     alerts = json.loads(reasoning.heuristic_alerts) if isinstance(reasoning.heuristic_alerts, str) else reasoning.heuristic_alerts
                     context["reasoning"]["alerts"] = alerts[:5] if isinstance(alerts, list) else []
-                except:
-                    pass
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.debug(f"Could not parse heuristic alerts: {e}")
+                except Exception as e:
+                    logger.warning(f"Unexpected error parsing heuristic alerts: {type(e).__name__}: {e}")
             # Parse recommendations
             if reasoning.recommendations:
                 try:
                     recs = json.loads(reasoning.recommendations) if isinstance(reasoning.recommendations, str) else reasoning.recommendations
                     context["reasoning"]["recommendations"] = recs[:3] if isinstance(recs, list) else []
-                except:
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.debug(f"Could not parse recommendations as JSON, using as text: {e}")
+                    context["reasoning"]["recommendations_text"] = reasoning.recommendations
+                except Exception as e:
+                    logger.warning(f"Unexpected error parsing recommendations: {type(e).__name__}: {e}")
                     context["reasoning"]["recommendations_text"] = reasoning.recommendations
 
         # 4. ELTV data (Employee Lifetime Value)
@@ -792,8 +804,10 @@ Return ONLY a JSON object:
                 alerts = json.loads(reasoning.heuristic_alerts) if isinstance(reasoning.heuristic_alerts, str) else reasoning.heuristic_alerts
                 if isinstance(alerts, list):
                     factors.extend([a.get('message', '')[:50] for a in alerts[:2]])
-        except:
-            pass
+        except (json.JSONDecodeError, TypeError, KeyError) as e:
+            logger.debug(f"Could not extract risk factors from reasoning: {e}")
+        except Exception as e:
+            logger.warning(f"Unexpected error extracting risk factors: {type(e).__name__}: {e}")
 
         return factors
 

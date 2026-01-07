@@ -272,7 +272,11 @@ class RiskAlertService:
                 # Avoid duplicates
                 if not any(a.hr_code == alert.hr_code and a.alert_type == alert.alert_type for a in alerts):
                     alerts.append(alert)
-            except:
+            except (KeyError, TypeError, AttributeError) as e:
+                logger.debug(f"Could not parse alert {db_alert.id}: {e}")
+                continue
+            except Exception as e:
+                logger.warning(f"Unexpected error parsing alert {db_alert.id}: {type(e).__name__}: {e}")
                 continue
 
         # Sort and limit

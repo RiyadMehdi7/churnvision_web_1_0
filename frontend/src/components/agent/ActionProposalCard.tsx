@@ -53,7 +53,14 @@ export const ActionProposalCard = memo<ActionProposalCardProps>(({
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
-  const [editedContent, setEditedContent] = useState(proposal.metadata.body || proposal.metadata.agenda || '');
+  // Initialize editedContent based on proposal type
+  const getInitialContent = () => {
+    if (proposal.type === 'email') return proposal.metadata.body || '';
+    if (proposal.type === 'meeting') return proposal.metadata.agenda || '';
+    if (proposal.type === 'task') return proposal.description || '';
+    return proposal.metadata.body || proposal.metadata.agenda || '';
+  };
+  const [editedContent, setEditedContent] = useState(getInitialContent);
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [showTeamsComposer, setShowTeamsComposer] = useState(false);
 
@@ -137,9 +144,20 @@ export const ActionProposalCard = memo<ActionProposalCardProps>(({
           </div>
           {duration && <span className="text-gray-400">({duration} min)</span>}
         </div>
-        {agenda && (
-          <p className="text-gray-500 dark:text-gray-400 line-clamp-2">{agenda}</p>
-        )}
+        <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
+          {isEditing ? (
+            <textarea
+              value={editedContent}
+              onChange={(e) => setEditedContent(e.target.value)}
+              placeholder="Meeting agenda..."
+              className="w-full h-24 text-xs text-gray-600 dark:text-gray-300 bg-transparent resize-none focus:outline-none"
+            />
+          ) : (
+            <p className="text-gray-500 dark:text-gray-400 whitespace-pre-wrap line-clamp-3">
+              {agenda || 'No agenda specified'}
+            </p>
+          )}
+        </div>
       </div>
     );
   };
@@ -148,7 +166,18 @@ export const ActionProposalCard = memo<ActionProposalCardProps>(({
     const { assignee, dueDate, priority } = proposal.metadata;
     return (
       <div className="space-y-2 text-xs">
-        <p className="text-gray-600 dark:text-gray-300">{proposal.description}</p>
+        <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
+          {isEditing ? (
+            <textarea
+              value={editedContent}
+              onChange={(e) => setEditedContent(e.target.value)}
+              placeholder="Task description..."
+              className="w-full h-20 text-xs text-gray-600 dark:text-gray-300 bg-transparent resize-none focus:outline-none"
+            />
+          ) : (
+            <p className="text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{proposal.description}</p>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           {assignee && (
             <span className="flex items-center gap-1 text-gray-500">
@@ -285,7 +314,12 @@ export const ActionProposalCard = memo<ActionProposalCardProps>(({
                         <button
                           onClick={() => {
                             if (isEditing) {
-                              onEdit({ ...proposal, metadata: { ...proposal.metadata, body: editedContent } });
+                              // For tasks, update description; for others, update metadata.body
+                              if (proposal.type === 'task') {
+                                onEdit({ ...proposal, description: editedContent });
+                              } else {
+                                onEdit({ ...proposal, metadata: { ...proposal.metadata, body: editedContent } });
+                              }
                             }
                             setIsEditing(!isEditing);
                           }}

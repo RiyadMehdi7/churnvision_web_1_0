@@ -306,8 +306,10 @@ If no specific policy applies, set to "General HR best practice - requires polic
                         importance = c.get('importance', 0)
                         risk_factors_list.append(feature)
                         ml_factors += f"  - {feature}: contributes {importance:.1%} to churn risk\n"
-            except:
-                pass
+            except (json.JSONDecodeError, TypeError, KeyError) as e:
+                logger.debug(f"Could not parse ML contributors: {e}")
+            except Exception as e:
+                logger.warning(f"Unexpected error parsing ML contributors: {type(e).__name__}: {e}")
 
         # Format heuristic alerts if available
         alerts_text = ""
@@ -316,8 +318,10 @@ If no specific policy applies, set to "General HR best practice - requires polic
                 alerts = json.loads(reasoning.heuristic_alerts) if isinstance(reasoning.heuristic_alerts, str) else reasoning.heuristic_alerts
                 if isinstance(alerts, list) and alerts:
                     alerts_text = "Behavioral Alerts:\n" + "\n".join([f"  - {a}" for a in alerts[:3]])
-            except:
-                pass
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.debug(f"Could not parse heuristic alerts: {e}")
+            except Exception as e:
+                logger.warning(f"Unexpected error parsing heuristic alerts: {type(e).__name__}: {e}")
 
         # Calculate salary context
         salary = float(employee.employee_cost) if employee.employee_cost else 50000

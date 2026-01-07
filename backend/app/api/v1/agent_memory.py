@@ -285,7 +285,7 @@ async def get_organizational_patterns(
     current_user: UserAccount = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """
+    """````````
     Get organizational patterns discovered across all users.
     Used for advanced recommendations.
     """

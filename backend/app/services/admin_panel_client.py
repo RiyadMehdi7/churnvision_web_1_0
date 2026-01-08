@@ -73,10 +73,27 @@ class AdminPanelClient:
     ):
         self.base_url = (base_url or settings.ADMIN_API_URL or "").rstrip("/")
         self.api_key = api_key or settings.ADMIN_API_KEY
-        self.tenant_slug = tenant_slug or settings.TENANT_SLUG
+        self.tenant_slug = tenant_slug or settings.TENANT_SLUG or self._extract_tenant_from_license()
         self.timeout = timeout
         self.max_retries = max_retries
         self._client: Optional[httpx.AsyncClient] = None
+
+    def _extract_tenant_from_license(self) -> Optional[str]:
+        """Extract tenant slug from the license key JWT subject claim."""
+        try:
+            import jwt
+            license_key = settings.LICENSE_KEY
+            if not license_key or license_key == "dev-license-key":
+                return None
+            # Decode without verification to extract subject (tenant)
+            payload = jwt.decode(license_key, options={"verify_signature": False})
+            subject = payload.get("sub", "")
+            # Admin panel encodes as "tenant_{slug}"
+            if subject.startswith("tenant_"):
+                return subject[7:]  # Remove "tenant_" prefix
+            return subject or None
+        except Exception:
+            return None
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client."""

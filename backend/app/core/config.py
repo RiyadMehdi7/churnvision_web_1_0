@@ -114,22 +114,19 @@ class Settings(BaseSettings):
     INSTALLATION_ID_PATH: str = "/app/churnvision_data/installation.id"
 
     # Admin Panel Integration (External License Management)
-    ADMIN_API_URL: Optional[str] = Field(
-        default=None,
-        description="Base URL for external Admin Panel API (e.g., https://admin.company.com/api/v1)"
-    )
-    ADMIN_API_KEY: Optional[str] = Field(
-        default=None,
-        description="API key for Admin Panel authentication (X-API-Key header)"
-    )
+    # HARDCODED - customers cannot change these settings
+    ADMIN_API_URL: str = "https://churnvision-admin-api.onrender.com/api/v1"
+    ADMIN_API_KEY: str = "xCXX6R5Z/ZzCdRPrLkVLo+ok5i+a74qKCHPpMbHIFPg="
+
+    # Tenant slug is set per customer installation via LICENSE_KEY JWT claims
     TENANT_SLUG: Optional[str] = Field(
         default=None,
-        description="Tenant identifier for multi-tenant Admin Panel"
+        description="Tenant identifier - extracted from license key if not set"
     )
 
     # License Validation Mode
     LICENSE_VALIDATION_MODE: str = Field(
-        default="local",
+        default="hybrid",
         description="License validation mode: 'local' (JWT only), 'external' (Admin Panel only), 'hybrid' (Admin Panel with local fallback)"
     )
 
@@ -323,19 +320,8 @@ class Settings(BaseSettings):
             errors.append("LICENSE_SIGNING_ALG must be RS256 in production.")
 
         # Validate Admin Panel config for external/hybrid license modes
-        if is_prod and self.LICENSE_VALIDATION_MODE.lower() in ("external", "hybrid"):
-            if not self.ADMIN_API_URL:
-                errors.append(
-                    "ADMIN_API_URL is required for external/hybrid license validation mode."
-                )
-            if not self.ADMIN_API_KEY:
-                errors.append(
-                    "ADMIN_API_KEY is required for external/hybrid license validation mode."
-                )
-            if not self.TENANT_SLUG:
-                errors.append(
-                    "TENANT_SLUG is required for external/hybrid license validation mode."
-                )
+        # Note: ADMIN_API_URL and ADMIN_API_KEY are now hardcoded to ChurnVision's central panel
+        # TENANT_SLUG is extracted from the license key JWT claims at runtime
 
         # Validate LICENSE_VALIDATION_MODE value
         valid_modes = ("local", "external", "hybrid")

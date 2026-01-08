@@ -42,6 +42,7 @@ import {
   Pie
 } from 'recharts';
 import api from '@/services/apiService';
+import { ExecutiveSummaryCard } from '@/components/playground/redesigned/ExecutiveSummaryCard';
 
 // Types matching backend schemas
 interface PortfolioSummary {
@@ -359,6 +360,18 @@ export function ROIDashboardTab({ className }: ROIDashboardTabProps) {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-6"
         >
+          {/* Executive Summary Hero Card - NEW */}
+          <ExecutiveSummaryCard
+            totalEmployees={portfolio_summary.total_employees}
+            highRiskCount={portfolio_summary.high_risk_count}
+            mediumRiskCount={portfolio_summary.medium_risk_count}
+            totalEltvAtRisk={portfolio_summary.total_eltv_at_risk}
+            recoveryPotential={portfolio_summary.recovery_potential}
+            aggregateRoi={portfolio_summary.aggregate_roi}
+            avgChurnProbability={portfolio_summary.avg_churn_probability}
+            treatmentsApplied={portfolio_summary.treatments_applied}
+          />
+
           {/* KPI Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <MetricCard

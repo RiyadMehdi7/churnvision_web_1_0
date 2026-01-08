@@ -13,16 +13,13 @@ from app.models.app_settings import AppSettings
 AI_PROVIDER_IDS = {
     "local",
     "openai",
+    "anthropic",
+    "google",
     "auto",
-    "microsoft",
-    "qwen",
-    "mistral",
-    "ibm",
 }
 
 _DEFAULT_PROVIDER_MAP = {
     "ollama": "local",
-    "azure": "microsoft",
 }
 
 

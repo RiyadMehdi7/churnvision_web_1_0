@@ -2,10 +2,13 @@ from typing import List, Optional, Dict, Any, Literal, Tuple, Union
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from openai import AsyncOpenAI, AsyncAzureOpenAI
+from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
+from google import genai
+from google.genai import types as genai_types
 from ollama import AsyncClient
-import httpx
 import asyncio
+import json
 
 from app.core.config import settings
 from app.models.chatbot import Conversation, Message
@@ -25,36 +28,24 @@ from app.services.compliance.pii_masking_service import (
 )
 
 # Provider type for routing
-ProviderType = Literal["ollama", "openai", "azure", "qwen", "mistral", "ibm"]
+ProviderType = Literal["ollama", "openai", "anthropic", "google"]
 
 # Cloud providers that require PII masking (data leaves on-premise)
-CLOUD_PROVIDERS: set = {"openai", "azure", "qwen", "mistral", "ibm"}
+CLOUD_PROVIDERS: set = {"openai", "anthropic", "google"}
 
 # Local providers where data stays on-premise (no masking needed)
 LOCAL_PROVIDERS: set = {"ollama"}
 
-# Model to provider mapping
+# Model to provider mapping - one model per provider
 MODEL_PROVIDER_MAP: Dict[str, ProviderType] = {
-    # Local (Ollama)
-    "qwen3:4b": "ollama",
-    "qwen3:8b": "ollama",
-    "llama3": "ollama",
-    # OpenAI
-    "gpt-5.1": "openai",
-    "gpt-4": "openai",
-    "gpt-4-turbo": "openai",
-    "gpt-3.5-turbo": "openai",
-    # Azure OpenAI
-    "azure-gpt-5.1": "azure",
-    "azure-gpt-4": "azure",
-    # Qwen Cloud
-    "qwen3-max": "qwen",
-    "qwen-turbo": "qwen",
-    # Mistral
-    "mistral-large-latest": "mistral",
-    "mistral-large-3": "mistral",
-    # IBM
-    "granite-3.0-8b-instruct": "ibm",
+    # Local (Ollama) - on-premise, data stays local
+    "gemma3:4b": "ollama",
+    # OpenAI - most capable general-purpose model
+    "gpt-5-mini-2025-08-07": "openai",
+    # Anthropic Claude - fast and cost-effective for enterprise
+    "claude-haiku-4-5-20251015": "anthropic",
+    # Google Gemini - multimodal with strong reasoning
+    "gemini-3-flash": "google",
 }
 
 
@@ -91,25 +82,15 @@ class ChatbotService:
             return MODEL_PROVIDER_MAP[model]
 
         # Fallback to pattern matching
-        if model.startswith("gpt-") or model.startswith("o1-"):
+        if model.startswith("gpt-"):
             return "openai"
-        elif model.startswith("azure-"):
-            return "azure"
-        elif model.startswith("qwen") and ":" in model:
-            # Local Ollama model (e.g., qwen3:4b)
-            return "ollama"
-        elif model.startswith("qwen"):
-            # Cloud Qwen model (e.g., qwen3-max)
-            return "qwen"
-        elif model.startswith("mistral"):
-            return "mistral"
-        elif model.startswith("granite"):
-            return "ibm"
-        elif "/" in model:
-            # Ollama format with namespace
-            return "ollama"
+        elif model.startswith("claude"):
+            return "anthropic"
+        elif model.startswith("gemini"):
+            return "google"
 
-        return settings.DEFAULT_LLM_PROVIDER
+        # Default to local Ollama
+        return "ollama"
 
     async def _call_openai(
         self,
@@ -164,7 +145,7 @@ class ChatbotService:
             "completion_tokens": usage.completion_tokens if usage else None
         }, tool_calls
 
-    async def _call_azure(
+    async def _call_claude(
         self,
         messages: List[Dict[str, str]],
         model: str,
@@ -172,160 +153,273 @@ class ChatbotService:
         max_tokens: Optional[int],
         tools: Optional[List[Dict[str, Any]]] = None
     ) -> tuple[str, Dict[str, Any], Optional[List[Dict[str, Any]]]]:
-        """Call Azure OpenAI API with optional function calling support"""
-        if not settings.AZURE_OPENAI_API_KEY or not settings.AZURE_OPENAI_ENDPOINT:
-            raise ValueError("AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT must be configured")
+        """
+        Call Claude (Anthropic) API with native tool calling support.
 
-        # Remove azure- prefix for the actual model name
-        actual_model = model.replace("azure-", "") if model.startswith("azure-") else settings.AZURE_OPENAI_MODEL
+        Anthropic uses a different message format than OpenAI:
+        - System message is a separate parameter, not in messages array
+        - Tool definitions use a slightly different schema
+        """
+        if not settings.ANTHROPIC_API_KEY:
+            raise ValueError("ANTHROPIC_API_KEY not configured")
 
-        client = AsyncAzureOpenAI(
-            api_key=settings.AZURE_OPENAI_API_KEY,
-            azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
-            api_version=settings.AZURE_OPENAI_API_VERSION,
+        client = AsyncAnthropic(
+            api_key=settings.ANTHROPIC_API_KEY,
             timeout=settings.LLM_REQUEST_TIMEOUT
         )
+
+        # Anthropic requires system message as separate parameter
+        system_content = None
+        filtered_messages = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_content = msg.get("content", "")
+            else:
+                filtered_messages.append({
+                    "role": msg.get("role"),
+                    "content": msg.get("content")
+                })
 
         # Build request kwargs
         request_kwargs = {
-            "model": actual_model,
-            "messages": messages,
-            "temperature": temperature,
+            "model": model or settings.CLAUDE_MODEL,
+            "max_tokens": max_tokens or 1024,
+            "messages": filtered_messages,
         }
-        if max_tokens:
-            request_kwargs["max_tokens"] = max_tokens
+
+        # Add temperature (Claude uses 0-1 range like OpenAI)
+        if temperature is not None:
+            request_kwargs["temperature"] = temperature
+
+        if system_content:
+            request_kwargs["system"] = system_content
+
+        # Convert OpenAI tool format to Anthropic format if tools provided
         if tools:
-            request_kwargs["tools"] = tools
-            request_kwargs["tool_choice"] = "auto"
+            anthropic_tools = self._convert_tools_to_anthropic_format(tools)
+            request_kwargs["tools"] = anthropic_tools
 
-        response = await client.chat.completions.create(**request_kwargs)
+        response = await client.messages.create(**request_kwargs)
 
-        message = response.choices[0].message
-        content = message.content or ""
-        usage = response.usage
-
-        # Extract tool calls if present
+        # Extract content
+        content = ""
         tool_calls = None
-        if message.tool_calls:
-            tool_calls = [
-                {
-                    "id": tc.id,
+
+        for block in response.content:
+            if block.type == "text":
+                content = block.text
+            elif block.type == "tool_use":
+                if tool_calls is None:
+                    tool_calls = []
+                tool_calls.append({
+                    "id": block.id,
                     "type": "function",
                     "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments
+                        "name": block.name,
+                        "arguments": json.dumps(block.input)
+                        if isinstance(block.input, dict) else block.input
                     }
-                }
-                for tc in message.tool_calls
-            ]
+                })
 
-        return content, {
-            "tokens_used": usage.total_tokens if usage else None,
-            "prompt_tokens": usage.prompt_tokens if usage else None,
-            "completion_tokens": usage.completion_tokens if usage else None
-        }, tool_calls
-
-    async def _call_qwen(
-        self,
-        messages: List[Dict[str, str]],
-        model: str,
-        temperature: float,
-        max_tokens: Optional[int]
-    ) -> tuple[str, Dict[str, Any]]:
-        """Call Qwen Cloud API (OpenAI-compatible)"""
-        if not settings.QWEN_API_KEY:
-            raise ValueError("QWEN_API_KEY not configured")
-
-        client = AsyncOpenAI(
-            api_key=settings.QWEN_API_KEY,
-            base_url=settings.QWEN_BASE_URL,
-            timeout=settings.LLM_REQUEST_TIMEOUT
-        )
-        response = await client.chat.completions.create(
-            model=model or settings.QWEN_MODEL,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-
-        content = response.choices[0].message.content or ""
+        # Extract usage
         usage = response.usage
-        return content, {
-            "tokens_used": usage.total_tokens if usage else None,
-            "prompt_tokens": usage.prompt_tokens if usage else None,
-            "completion_tokens": usage.completion_tokens if usage else None
+        metadata = {
+            "tokens_used": (usage.input_tokens + usage.output_tokens) if usage else None,
+            "prompt_tokens": usage.input_tokens if usage else None,
+            "completion_tokens": usage.output_tokens if usage else None
         }
 
-    async def _call_mistral(
+        return content, metadata, tool_calls
+
+    def _convert_tools_to_anthropic_format(
         self,
-        messages: List[Dict[str, str]],
-        model: str,
-        temperature: float,
-        max_tokens: Optional[int]
-    ) -> tuple[str, Dict[str, Any]]:
-        """Call Mistral API (OpenAI-compatible)"""
-        if not settings.MISTRAL_API_KEY:
-            raise ValueError("MISTRAL_API_KEY not configured")
+        openai_tools: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Convert OpenAI tool format to Anthropic format.
 
-        client = AsyncOpenAI(
-            api_key=settings.MISTRAL_API_KEY,
-            base_url=settings.MISTRAL_BASE_URL,
-            timeout=settings.LLM_REQUEST_TIMEOUT
-        )
-        response = await client.chat.completions.create(
-            model=model or settings.MISTRAL_MODEL,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-
-        content = response.choices[0].message.content or ""
-        usage = response.usage
-        return content, {
-            "tokens_used": usage.total_tokens if usage else None,
-            "prompt_tokens": usage.prompt_tokens if usage else None,
-            "completion_tokens": usage.completion_tokens if usage else None
+        OpenAI format:
+        {
+            "type": "function",
+            "function": {
+                "name": "...",
+                "description": "...",
+                "parameters": {...}
+            }
         }
 
-    async def _call_ibm(
+        Anthropic format:
+        {
+            "name": "...",
+            "description": "...",
+            "input_schema": {...}
+        }
+        """
+        anthropic_tools = []
+        for tool in openai_tools:
+            if tool.get("type") == "function":
+                func = tool.get("function", {})
+                anthropic_tools.append({
+                    "name": func.get("name"),
+                    "description": func.get("description", ""),
+                    "input_schema": func.get(
+                        "parameters", {"type": "object", "properties": {}}
+                    )
+                })
+        return anthropic_tools
+
+    async def _call_gemini(
         self,
         messages: List[Dict[str, str]],
         model: str,
         temperature: float,
-        max_tokens: Optional[int]
-    ) -> tuple[str, Dict[str, Any]]:
-        """Call IBM Granite API"""
-        if not settings.IBM_API_KEY:
-            raise ValueError("IBM_API_KEY not configured")
+        max_tokens: Optional[int],
+        tools: Optional[List[Dict[str, Any]]] = None
+    ) -> tuple[str, Dict[str, Any], Optional[List[Dict[str, Any]]]]:
+        """
+        Call Gemini (Google) API with tool calling support.
 
-        # Convert messages to IBM format (prompt string)
-        prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+        Uses the new google-genai SDK with async support via client.aio namespace.
+        """
+        if not settings.GOOGLE_API_KEY:
+            raise ValueError("GOOGLE_API_KEY not configured")
 
-        async with httpx.AsyncClient(timeout=settings.LLM_REQUEST_TIMEOUT) as client:
-            response = await client.post(
-                settings.IBM_BASE_URL,
-                headers={
-                    "Authorization": f"Bearer {settings.IBM_API_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model_id": model or settings.IBM_MODEL,
-                    "input": prompt,
-                    "parameters": {
-                        "temperature": temperature,
-                        "max_new_tokens": max_tokens or 1024
-                    }
-                }
+        # Create client with API key
+        client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+
+        # Convert messages to Gemini format
+        gemini_contents, system_instruction = self._convert_messages_to_gemini_format(
+            messages
+        )
+
+        # Build generation config
+        config_kwargs = {
+            "temperature": temperature,
+            "max_output_tokens": max_tokens or 1024,
+        }
+
+        if system_instruction:
+            config_kwargs["system_instruction"] = system_instruction
+
+        # Convert tools if provided (disable auto function calling)
+        if tools:
+            config_kwargs["tools"] = self._convert_tools_to_gemini_format(tools)
+            # Disable automatic function calling - we handle tool calls manually
+            config_kwargs["automatic_function_calling"] = {"disable": True}
+
+        config = genai_types.GenerateContentConfig(**config_kwargs)
+
+        # Use async API
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=model or settings.GEMINI_MODEL,
+                contents=gemini_contents,
+                config=config
+            ),
+            timeout=settings.LLM_REQUEST_TIMEOUT
+        )
+
+        # Parse response
+        content = ""
+        tool_calls = None
+
+        # Extract text and function calls from response
+        if response.candidates and response.candidates[0].content:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, 'text') and part.text:
+                    content = part.text
+                elif hasattr(part, 'function_call') and part.function_call:
+                    if tool_calls is None:
+                        tool_calls = []
+                    fc = part.function_call
+                    tool_calls.append({
+                        "id": f"gemini_{hash(fc.name)}",
+                        "type": "function",
+                        "function": {
+                            "name": fc.name,
+                            "arguments": json.dumps(dict(fc.args))
+                            if fc.args else "{}"
+                        }
+                    })
+
+        # Also check response.text as a shortcut
+        if not content and hasattr(response, 'text') and response.text:
+            content = response.text
+
+        # Token usage
+        usage_metadata = getattr(response, 'usage_metadata', None)
+        prompt_tokens = getattr(
+            usage_metadata, 'prompt_token_count', None
+        ) if usage_metadata else None
+        completion_tokens = getattr(
+            usage_metadata, 'candidates_token_count', None
+        ) if usage_metadata else None
+
+        metadata = {
+            "tokens_used": (prompt_tokens + completion_tokens)
+            if prompt_tokens and completion_tokens else None,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens
+        }
+
+        return content, metadata, tool_calls
+
+    def _convert_messages_to_gemini_format(
+        self,
+        messages: List[Dict[str, str]]
+    ) -> tuple[List[genai_types.Content], Optional[str]]:
+        """
+        Convert OpenAI-style messages to Gemini format.
+
+        Returns (contents, system_instruction) tuple.
+        """
+        gemini_contents = []
+        system_instruction = None
+
+        for msg in messages:
+            role = msg.get("role", "user")
+            content_text = msg.get("content", "")
+
+            if role == "system":
+                # Gemini handles system via system_instruction in config
+                system_instruction = content_text
+                continue
+
+            # Map roles: assistant -> model
+            gemini_role = "model" if role == "assistant" else "user"
+
+            gemini_contents.append(
+                genai_types.Content(
+                    role=gemini_role,
+                    parts=[genai_types.Part(text=content_text)]
+                )
             )
-            response.raise_for_status()
-            data = response.json()
 
-        content = data.get("results", [{}])[0].get("generated_text", "")
-        return content, {
-            "tokens_used": data.get("results", [{}])[0].get("generated_token_count"),
-            "prompt_tokens": data.get("results", [{}])[0].get("input_token_count"),
-            "completion_tokens": data.get("results", [{}])[0].get("generated_token_count")
-        }
+        return gemini_contents, system_instruction
+
+    def _convert_tools_to_gemini_format(
+        self,
+        openai_tools: List[Dict[str, Any]]
+    ) -> List[genai_types.Tool]:
+        """Convert OpenAI tool format to Gemini Tool format."""
+        function_declarations = []
+
+        for tool in openai_tools:
+            if tool.get("type") == "function":
+                func = tool.get("function", {})
+                params = func.get("parameters", {})
+
+                function_declarations.append(
+                    genai_types.FunctionDeclaration(
+                        name=func.get("name"),
+                        description=func.get("description", ""),
+                        parameters=params  # Pass schema directly
+                    )
+                )
+
+        if function_declarations:
+            return [genai_types.Tool(function_declarations=function_declarations)]
+        return None
 
     async def _call_ollama(
         self,
@@ -451,17 +545,21 @@ class ChatbotService:
 
         try:
             if provider == "openai":
-                content, usage, _ = await self._call_openai(messages_to_send, model, temperature, max_tokens)
-            elif provider == "azure":
-                content, usage, _ = await self._call_azure(messages_to_send, model, temperature, max_tokens)
-            elif provider == "qwen":
-                content, usage = await self._call_qwen(messages_to_send, model, temperature, max_tokens)
-            elif provider == "mistral":
-                content, usage = await self._call_mistral(messages_to_send, model, temperature, max_tokens)
-            elif provider == "ibm":
-                content, usage = await self._call_ibm(messages_to_send, model, temperature, max_tokens)
+                content, usage, _ = await self._call_openai(
+                    messages_to_send, model, temperature, max_tokens
+                )
+            elif provider == "anthropic":
+                content, usage, _ = await self._call_claude(
+                    messages_to_send, model, temperature, max_tokens
+                )
+            elif provider == "google":
+                content, usage, _ = await self._call_gemini(
+                    messages_to_send, model, temperature, max_tokens
+                )
             else:  # ollama (default)
-                content, usage = await self._call_ollama(messages_to_send, model, temperature, max_tokens)
+                content, usage = await self._call_ollama(
+                    messages_to_send, model, temperature, max_tokens
+                )
 
             # Unmask response for cloud providers
             if should_mask and masking_context:
@@ -471,7 +569,10 @@ class ChatbotService:
             return content, metadata
 
         except asyncio.TimeoutError:
-            raise Exception(f"LLM API error ({provider}): Request timed out after {settings.LLM_REQUEST_TIMEOUT}s")
+            raise Exception(
+                f"LLM API error ({provider}): "
+                f"Request timed out after {settings.LLM_REQUEST_TIMEOUT}s"
+            )
         except Exception as e:
             error_type = type(e).__name__
             raise Exception(f"LLM API error ({provider}): [{error_type}] {str(e)}")
@@ -506,11 +607,14 @@ class ChatbotService:
         """
         provider = self._determine_provider(model)
 
+        # Providers with native function calling support
+        native_tool_providers = {"openai", "anthropic", "google"}
+
         metadata = {
             "model": model,
             "provider": provider,
             "temperature": temperature,
-            "supports_native_tools": provider in {"openai", "azure", "mistral"}
+            "supports_native_tools": provider in native_tool_providers
         }
 
         try:
@@ -518,12 +622,16 @@ class ChatbotService:
                 content, usage, tool_calls = await self._call_openai(
                     messages, model, temperature, max_tokens, tools
                 )
-            elif provider == "azure":
-                content, usage, tool_calls = await self._call_azure(
+            elif provider == "anthropic":
+                content, usage, tool_calls = await self._call_claude(
+                    messages, model, temperature, max_tokens, tools
+                )
+            elif provider == "google":
+                content, usage, tool_calls = await self._call_gemini(
                     messages, model, temperature, max_tokens, tools
                 )
             else:
-                # Provider doesn't support native tools
+                # Ollama doesn't support native tools
                 # Agent will handle parsing tool calls from text
                 content, usage = await self._get_llm_response(
                     messages, model, temperature, max_tokens

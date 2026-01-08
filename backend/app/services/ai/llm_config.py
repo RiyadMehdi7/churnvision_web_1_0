@@ -9,28 +9,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.services.settings.app_settings_service import AppSettingsService, normalize_ai_provider
 
-_PROVIDER_PREFERENCE = ["openai", "microsoft", "qwen", "mistral", "ibm", "local"]
+_PROVIDER_PREFERENCE = ["openai", "anthropic", "google", "local"]
 
 
 def _provider_id_to_runtime(provider_id: str) -> str:
     if provider_id == "local":
         return "ollama"
-    if provider_id == "microsoft":
-        return "azure"
     return provider_id
 
 
 def provider_is_configured(runtime_provider: str) -> bool:
     if runtime_provider == "openai":
         return bool(settings.OPENAI_API_KEY)
-    if runtime_provider == "azure":
-        return bool(settings.AZURE_OPENAI_API_KEY and settings.AZURE_OPENAI_ENDPOINT)
-    if runtime_provider == "qwen":
-        return bool(settings.QWEN_API_KEY)
-    if runtime_provider == "mistral":
-        return bool(settings.MISTRAL_API_KEY)
-    if runtime_provider == "ibm":
-        return bool(settings.IBM_API_KEY)
+    if runtime_provider == "anthropic":
+        return bool(settings.ANTHROPIC_API_KEY)
+    if runtime_provider == "google":
+        return bool(settings.GOOGLE_API_KEY)
     if runtime_provider == "ollama":
         return True
     return False
@@ -39,14 +33,10 @@ def provider_is_configured(runtime_provider: str) -> bool:
 def model_for_provider(runtime_provider: str) -> str:
     if runtime_provider == "openai":
         return settings.OPENAI_MODEL
-    if runtime_provider == "azure":
-        return f"azure-{settings.AZURE_OPENAI_MODEL}"
-    if runtime_provider == "qwen":
-        return settings.QWEN_MODEL
-    if runtime_provider == "mistral":
-        return settings.MISTRAL_MODEL
-    if runtime_provider == "ibm":
-        return settings.IBM_MODEL
+    if runtime_provider == "anthropic":
+        return settings.CLAUDE_MODEL
+    if runtime_provider == "google":
+        return settings.GEMINI_MODEL
     return settings.OLLAMA_MODEL
 
 
@@ -77,36 +67,25 @@ async def resolve_llm_provider_and_model(db: AsyncSession) -> Tuple[str, str, st
     return provider_id, runtime_provider, model_for_provider(runtime_provider)
 
 
-# Model aliases for convenience
+# Model aliases for convenience - maps short names to full model IDs
 _MODEL_ALIASES = {
-    "gpt4": "gpt-4o",
-    "gpt4o": "gpt-4o",
-    "gpt-4": "gpt-4o",
-    "gpt-4-turbo": "gpt-4-turbo",
-    "gpt35": "gpt-3.5-turbo",
-    "gpt-3.5": "gpt-3.5-turbo",
-    "claude": "claude-3-5-sonnet-20241022",
-    "claude-sonnet": "claude-3-5-sonnet-20241022",
-    "claude-opus": "claude-3-opus-20240229",
+    "gpt": "gpt-5-mini-2025-08-07",
+    "openai": "gpt-5-mini-2025-08-07",
+    "claude": "claude-haiku-4-5-20251015",
+    "anthropic": "claude-haiku-4-5-20251015",
+    "gemini": "gemini-3-flash",
+    "google": "gemini-3-flash",
     "gemma": "gemma3:4b",
-    "llama": "llama3.2:3b",
-    "mistral": "mistral-large-latest",
-    "qwen": "qwen-plus",
-    "o1": "o1-preview",
-    "o1-mini": "o1-mini",
+    "ollama": "gemma3:4b",
+    "local": "gemma3:4b",
 }
 
 # Models that support reasoning/chain-of-thought
 _REASONING_MODELS = {
-    "o1-preview",
-    "o1-mini",
-    "o1",
-    "gpt-4o",
-    "gpt-4-turbo",
-    "claude-3-5-sonnet-20241022",
-    "claude-3-opus-20240229",
-    "mistral-large-latest",
-    "qwen-plus",
+    "gpt-5-mini-2025-08-07",
+    "claude-haiku-4-5-20251015",
+    "gemini-3-flash",
+    "gemma3:4b",
 }
 
 
@@ -142,44 +121,36 @@ def get_available_providers() -> list[dict]:
     Get list of available (configured) LLM providers.
 
     Returns:
-        List of provider info dicts with id, name, and configured status
+        List of provider info dicts with id, name, model, description, and configured status
     """
     providers = [
         {
             "id": "openai",
             "name": "OpenAI",
+            "model": "gpt-5-mini-2025-08-07",
+            "description": "Most capable general-purpose model",
             "configured": provider_is_configured("openai"),
-            "models": ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo", "o1-preview", "o1-mini"],
         },
         {
-            "id": "microsoft",
-            "name": "Azure OpenAI",
-            "configured": provider_is_configured("azure"),
-            "models": ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
+            "id": "anthropic",
+            "name": "Anthropic Claude",
+            "model": "claude-haiku-4-5-20251015",
+            "description": "Fast and cost-effective for enterprise",
+            "configured": provider_is_configured("anthropic"),
         },
         {
-            "id": "qwen",
-            "name": "Alibaba Qwen",
-            "configured": provider_is_configured("qwen"),
-            "models": ["qwen-plus", "qwen-turbo", "qwen-max"],
-        },
-        {
-            "id": "mistral",
-            "name": "Mistral AI",
-            "configured": provider_is_configured("mistral"),
-            "models": ["mistral-large-latest", "mistral-medium", "mistral-small"],
-        },
-        {
-            "id": "ibm",
-            "name": "IBM WatsonX",
-            "configured": provider_is_configured("ibm"),
-            "models": ["granite-13b-chat-v2", "llama-2-70b-chat"],
+            "id": "google",
+            "name": "Google Gemini",
+            "model": "gemini-3-flash",
+            "description": "Multimodal with strong reasoning",
+            "configured": provider_is_configured("google"),
         },
         {
             "id": "local",
             "name": "Local (Ollama)",
+            "model": "gemma3:4b",
+            "description": "On-premise, data stays local",
             "configured": True,
-            "models": ["gemma3:4b", "llama3.2:3b", "mistral:7b"],
         },
     ]
     return providers
@@ -200,12 +171,8 @@ def get_available_models(provider_id: str = None) -> list[str]:
     if provider_id:
         for p in providers:
             if p["id"] == provider_id and p["configured"]:
-                return p["models"]
+                return [p["model"]]
         return []
 
     # Return all models from configured providers
-    models = []
-    for p in providers:
-        if p["configured"]:
-            models.extend(p["models"])
-    return list(set(models))
+    return [p["model"] for p in providers if p["configured"]]

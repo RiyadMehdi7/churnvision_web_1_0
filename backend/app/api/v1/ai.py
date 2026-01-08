@@ -39,7 +39,7 @@ class ProvisionProviderResponse(BaseModel):
     success: bool
     message: str
 
-_PROVIDER_IDS = ["local", "openai", "auto", "microsoft", "qwen", "mistral", "ibm"]
+_PROVIDER_IDS = ["local", "openai", "anthropic", "google", "auto"]
 
 
 async def _ollama_ready() -> bool:
@@ -56,13 +56,8 @@ async def _build_provider_status() -> Dict[str, dict]:
     status = {
         "local": {"installed": True, "ready": local_ready},
         "openai": {"installed": bool(settings.OPENAI_API_KEY), "ready": provider_is_configured("openai")},
-        "microsoft": {
-            "installed": bool(settings.AZURE_OPENAI_API_KEY and settings.AZURE_OPENAI_ENDPOINT),
-            "ready": provider_is_configured("azure"),
-        },
-        "qwen": {"installed": bool(settings.QWEN_API_KEY), "ready": provider_is_configured("qwen")},
-        "mistral": {"installed": bool(settings.MISTRAL_API_KEY), "ready": provider_is_configured("mistral")},
-        "ibm": {"installed": bool(settings.IBM_API_KEY), "ready": provider_is_configured("ibm")},
+        "anthropic": {"installed": bool(settings.ANTHROPIC_API_KEY), "ready": provider_is_configured("anthropic")},
+        "google": {"installed": bool(settings.GOOGLE_API_KEY), "ready": provider_is_configured("google")},
     }
     status["auto"] = {
         "installed": True,
@@ -105,13 +100,11 @@ async def get_ai_providers(
     Get list of available AI providers and current selection.
     """
     available_providers = [
-        {'id': 'local', 'name': 'Local LLM', 'description': 'Self-hosted models (Ollama)'},
-        {'id': 'openai', 'name': 'OpenAI', 'description': 'GPT-5.1'},
-        {'id': 'microsoft', 'name': 'Microsoft Azure', 'description': 'Azure OpenAI Service'},
-        {'id': 'qwen', 'name': 'Qwen', 'description': 'Qwen3-Max'},
-        {'id': 'mistral', 'name': 'Mistral', 'description': 'Mistral Large'},
-        {'id': 'ibm', 'name': 'IBM', 'description': 'Granite 3.0'},
-        {'id': 'auto', 'name': 'Auto', 'description': 'Auto-select based on availability'},
+        {'id': 'local', 'name': 'Local (Ollama)', 'description': 'On-premise, data stays local'},
+        {'id': 'openai', 'name': 'OpenAI', 'description': 'Most capable general-purpose model'},
+        {'id': 'anthropic', 'name': 'Anthropic Claude', 'description': 'Fast and cost-effective for enterprise'},
+        {'id': 'google', 'name': 'Google Gemini', 'description': 'Multimodal with strong reasoning'},
+        {'id': 'auto', 'name': 'Auto-Select', 'description': 'Smart selection based on preferences'},
     ]
 
     service = AppSettingsService(db)
@@ -194,28 +187,16 @@ async def provision_provider(
             message="OpenAI provider is ready"
         )
 
-    if provider_id == "microsoft" and provider_is_configured("azure"):
+    if provider_id == "anthropic" and provider_is_configured("anthropic"):
         return ProvisionProviderResponse(
             success=True,
-            message="Azure OpenAI provider is ready"
+            message="Anthropic Claude provider is ready"
         )
 
-    if provider_id == "qwen" and provider_is_configured("qwen"):
+    if provider_id == "google" and provider_is_configured("google"):
         return ProvisionProviderResponse(
             success=True,
-            message="Qwen provider is ready"
-        )
-
-    if provider_id == "mistral" and provider_is_configured("mistral"):
-        return ProvisionProviderResponse(
-            success=True,
-            message="Mistral provider is ready"
-        )
-
-    if provider_id == "ibm" and provider_is_configured("ibm"):
-        return ProvisionProviderResponse(
-            success=True,
-            message="IBM provider is ready"
+            message="Google Gemini provider is ready"
         )
 
     return ProvisionProviderResponse(

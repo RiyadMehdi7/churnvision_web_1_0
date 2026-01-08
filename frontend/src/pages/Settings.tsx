@@ -50,11 +50,9 @@ import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import churnVisionIcon from '@/assets/providers/churnvision.svg';
-import microsoftIcon from '@/assets/providers/microsoft.svg';
-import qwenIcon from '@/assets/providers/qwen.svg';
 import openaiIcon from '@/assets/providers/openai.svg';
-import mistralIcon from '@/assets/providers/mistral.svg';
-import ibmIcon from '@/assets/providers/ibm.svg';
+import anthropicIcon from '@/assets/providers/anthropic.svg';
+import googleIcon from '@/assets/providers/google.svg';
 import { Progress } from '@/components/ui/progress';
 
 // Settings section types
@@ -283,7 +281,6 @@ export function Settings() {
   const providerOptions = useMemo<ProviderOption[]>(() => {
     return manifestProviders.map(entry => {
       const icon = iconLookup[entry.id] ?? 'churnvision';
-      const accent = accentLookup[entry.id] ?? 'bg-emerald-500';
       const status = providerStatus[entry.id];
       const isProvisioning = !!pendingProvision[entry.id] || status?.status === 'downloading' || status?.status === 'verifying';
       const isInstalled = Boolean(status?.path) || ['ready', 'completed'].includes(status?.status ?? '');
@@ -297,8 +294,6 @@ export function Settings() {
         badge: entry.badge,
         icon,
         deployment: entry.deployment,
-        accent,
-        metrics: entry.metrics,
         artifact: entry.artifact,
         requiresOnline,
         requiresApiKey: entry.requiresApiKey,
@@ -530,11 +525,6 @@ export function Settings() {
               const isProvisioning = option.isProvisioning ?? false;
               const optionDisabled =
                 controlsDisabled || !!option.disabled || (!!option.requiresOnline && strictOffline) || isProvisioning;
-              const metricItems = [
-                { key: 'speed', label: 'Speed', score: option.metrics.speed },
-                { key: 'performance', label: 'Performance', score: option.metrics.performance },
-                { key: 'intelligence', label: 'Intelligence', score: option.metrics.intelligence },
-              ];
 
               let statusLabel = '';
               let statusTone = 'text-neutral-muted';
@@ -620,22 +610,6 @@ export function Settings() {
                         <p className="mt-2 text-xs text-red-600 dark:text-red-400 line-clamp-2">{status.error}</p>
                       )}
                     </div>
-                  </div>
-
-                  <div className="grid gap-2 text-xs uppercase tracking-wide text-neutral-muted">
-                    {metricItems.map((metric) => (
-                      <div key={metric.key}>
-                        <div className="flex items-center justify-between text-[11px] font-medium">
-                          <span>{metric.label}</span>
-                          <span>{metric.score}/100</span>
-                        </div>
-                        <MetricBars
-                          score={metric.score}
-                          accent={option.accent}
-                          disabled={optionDisabled}
-                        />
-                      </div>
-                    ))}
                   </div>
 
                   {option.requiresOnline && (
@@ -1176,11 +1150,6 @@ interface ProviderCatalogEntry {
   deployment: 'local' | 'cloud';
   version?: string;
   badge?: string;
-  metrics: {
-    speed: number;
-    performance: number;
-    intelligence: number;
-  };
   artifact?: ProviderArtifact;
   requiresApiKey?: boolean;
   requiresOnline?: boolean;
@@ -1213,14 +1182,8 @@ interface ProviderOption {
   label: string;
   description: string;
   badge?: string;
-  icon: 'churnvision' | 'microsoft' | 'qwen' | 'openai' | 'mistral' | 'ibm';
+  icon: 'churnvision' | 'openai' | 'anthropic' | 'google';
   deployment: 'local' | 'cloud';
-  accent: string;
-  metrics: {
-    speed: number;
-    performance: number;
-    intelligence: number;
-  };
   artifact?: ProviderArtifact;
   requiresOnline: boolean;
   requiresApiKey?: boolean;
@@ -1231,21 +1194,9 @@ interface ProviderOption {
 
 const providerIconMap: Record<ProviderOption['icon'], string> = {
   churnvision: churnVisionIcon,
-  microsoft: microsoftIcon,
-  qwen: qwenIcon,
   openai: openaiIcon,
-  mistral: mistralIcon,
-  ibm: ibmIcon,
-};
-
-const accentLookup: Record<string, string> = {
-  local: 'bg-emerald-500',
-  microsoft: 'bg-blue-500',
-  qwen: 'bg-purple-500',
-  mistral: 'bg-orange-500',
-  ibm: 'bg-sky-500',
-  openai: 'bg-indigo-500',
-  auto: 'bg-slate-500',
+  anthropic: anthropicIcon,
+  google: googleIcon,
 };
 
 const renderProviderIcon = (brand: ProviderOption['icon']) => (
@@ -1257,101 +1208,51 @@ const renderProviderIcon = (brand: ProviderOption['icon']) => (
   />
 );
 
-const MetricBars: React.FC<{ score: number; accent: string; disabled?: boolean }> = ({ score, accent, disabled }) => {
-  // Convert 0-100 score to 0-10 bars (each bar represents 10 points)
-  const filledBars = Math.round(score / 10);
-  return (
-    <div className="mt-1 flex gap-0.5">
-      {Array.from({ length: 10 }).map((_, idx) => (
-        <div
-          key={idx}
-          className={cn(
-            'h-1.5 flex-1 rounded-full transition-colors',
-            idx < filledBars ? accent : 'bg-border/60',
-            disabled && 'opacity-40'
-          )}
-        />
-      ))}
-    </div>
-  );
-};
-
 type AIProviderType =
   | 'local'
   | 'openai'
-  | 'auto'
-  | 'microsoft'
-  | 'qwen'
-  | 'mistral'
-  | 'ibm';
+  | 'anthropic'
+  | 'google'
+  | 'auto';
 
 const AI_PROVIDER_VALUES: readonly AIProviderType[] = (
-  ['local', 'openai', 'auto', 'microsoft', 'qwen', 'mistral', 'ibm'] as const
+  ['local', 'openai', 'anthropic', 'google', 'auto'] as const
 );
 
 const isValidAIProvider = (value: unknown): value is AIProviderType =>
   typeof value === 'string' && (AI_PROVIDER_VALUES as readonly string[]).includes(value as string);
 
-// Inline provider catalog (previously imported from @shared/providerCatalog.json)
-// Model tiers:
-// - Default (local): Qwen 3 4B - privacy-focused, offline operation
-// - Standard cloud: OpenAI GPT-5.1, Azure OpenAI, Qwen3-Max, Mistral Large 3
-// - Enterprise: IBM Granite 3.0 for Trust/Safety/RAG faithfulness
+// Inline provider catalog - 4 providers: local, openai, anthropic, google
 const manifestProviders: ProviderCatalogEntry[] = [
   {
     id: 'local',
-    label: 'ChurnVision Local',
-    description: 'Privacy-focused, offline operation, no external calls',
+    label: 'Local (Ollama)',
+    description: 'On-premise, data stays local',
     deployment: 'local',
-    badge: 'Default',
-    metrics: { speed: 85, performance: 88, intelligence: 86 }
   },
   {
     id: 'openai',
     label: 'OpenAI',
-    description: 'GPT-5.1 - Highest intelligence and speed',
+    description: 'Most capable general-purpose model',
     deployment: 'cloud',
-    badge: 'Most Advanced',
-    metrics: { speed: 98, performance: 98, intelligence: 100 }
   },
   {
-    id: 'microsoft',
-    label: 'Azure OpenAI',
-    description: 'GPT-5.1 via Azure - Enterprise-grade with Azure compliance',
+    id: 'anthropic',
+    label: 'Anthropic Claude',
+    description: 'Fast and cost-effective for enterprise',
     deployment: 'cloud',
-    badge: 'Enterprise',
-    metrics: { speed: 97, performance: 98, intelligence: 100 }
   },
   {
-    id: 'qwen',
-    label: 'Qwen3-Max',
-    description: 'Alibaba Cloud - Excellent cost/performance, strong in Asian markets',
+    id: 'google',
+    label: 'Google Gemini',
+    description: 'Multimodal with strong reasoning',
     deployment: 'cloud',
-    metrics: { speed: 94, performance: 93, intelligence: 94 }
-  },
-  {
-    id: 'mistral',
-    label: 'Mistral Large 3',
-    description: 'European AI - Very high intelligence, open-weight model',
-    deployment: 'cloud',
-    badge: 'European',
-    metrics: { speed: 93, performance: 95, intelligence: 97 }
-  },
-  {
-    id: 'ibm',
-    label: 'IBM Granite 3.0',
-    description: 'Enterprise AI - Top-tier Trust, Safety & RAG faithfulness',
-    deployment: 'cloud',
-    badge: 'Trust & Safety',
-    metrics: { speed: 88, performance: 92, intelligence: 91 }
   },
   {
     id: 'auto',
     label: 'Auto-Select',
-    description: 'Smart selection based on tenant preferences and query complexity',
+    description: 'Smart selection based on preferences',
     deployment: 'local',
-    badge: 'Smart',
-    metrics: { speed: 95, performance: 95, intelligence: 96 }
   }
 ];
 
@@ -1364,11 +1265,9 @@ const providerLabelLookup: Record<string, string> = manifestProviders.reduce((ac
 
 const iconLookup: Record<string, ProviderOption['icon']> = {
   local: 'churnvision',
-  microsoft: 'microsoft',
-  qwen: 'qwen',
-  mistral: 'mistral',
-  ibm: 'ibm',
   openai: 'openai',
+  anthropic: 'anthropic',
+  google: 'google',
   auto: 'churnvision',
 };
 

@@ -65,6 +65,10 @@ dependencies = [
     "structlog>=24.1.0",
     # Background tasks
     "celery[redis]>=5.3.0",
+    # Claude (Anthropic) - native async support
+    "anthropic>=0.40.0",
+    # Gemini (Google) - unified GenAI SDK (replaces deprecated google-generativeai)
+    "google-genai>=1.0.0",
 ]
 
 [build-system]

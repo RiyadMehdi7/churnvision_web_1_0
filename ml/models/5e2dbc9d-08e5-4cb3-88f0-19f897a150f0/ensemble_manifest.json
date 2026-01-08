@@ -1,0 +1,15 @@
+{
+  "models": [
+    "xgboost",
+    "lightgbm"
+  ],
+  "weights": {
+    "xgboost": 0.5,
+    "lightgbm": 0.5
+  },
+  "method": "weighted_voting",
+  "training_samples": 9296,
+  "cv_scores": {
+    "xgboost": 0.8519
+  }
+}

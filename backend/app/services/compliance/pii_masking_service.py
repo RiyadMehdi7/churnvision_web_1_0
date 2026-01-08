@@ -13,8 +13,11 @@ GDPR/Privacy Compliance:
 """
 
 import re
+import logging
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -425,6 +428,46 @@ def get_pii_masking_service(
         # Update percentiles if provided
         _default_masking_service.set_salary_percentiles(salary_percentiles)
     return _default_masking_service
+
+
+def mask_pii_in_text(
+    text: str,
+    context: Optional[MaskingContext] = None,
+    additional_names: Optional[List[str]] = None
+) -> str:
+    """
+    Convenience function to mask PII in text.
+
+    Args:
+        text: Text to mask
+        context: Optional existing MaskingContext (creates new if None)
+        additional_names: Additional names to mask
+
+    Returns:
+        Masked text
+    """
+    service = get_pii_masking_service()
+    ctx = context or MaskingContext()
+    return service.mask_text(text, ctx, additional_names)
+
+
+def mask_pii_in_dict(
+    data: Dict[str, Any],
+    context: Optional[MaskingContext] = None
+) -> Dict[str, Any]:
+    """
+    Convenience function to mask PII in a dictionary (employee data).
+
+    Args:
+        data: Dictionary containing employee data
+        context: Optional existing MaskingContext (creates new if None)
+
+    Returns:
+        Dictionary with masked PII
+    """
+    service = get_pii_masking_service()
+    ctx = context or MaskingContext()
+    return service.mask_employee_data(data, ctx)
 
 
 async def calculate_salary_percentiles_from_db(db) -> SalaryPercentiles:

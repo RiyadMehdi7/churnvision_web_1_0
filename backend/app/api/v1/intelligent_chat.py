@@ -720,10 +720,10 @@ Respond in this exact JSON format:
 
         # Check for empty response
         if not response or not response.strip():
-            logger.error(f"LLM returned empty response. Provider={provider}, Model={model}")
+            logger.error(f"LLM returned empty response. Provider={provider_id}, Model={model}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"AI returned empty response (provider: {provider}, model: {model}). Check if the LLM service is running."
+                detail=f"AI returned empty response (provider: {provider_id}, model: {model}). Check if the LLM service is running."
             )
 
         # Extract JSON from response

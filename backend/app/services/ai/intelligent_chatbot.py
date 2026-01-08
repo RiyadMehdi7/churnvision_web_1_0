@@ -2247,7 +2247,7 @@ Provide a helpful response using the company and workforce data available."""
         dataset_id = await self._resolve_dataset_id(dataset_id)
 
         # Resolve LLM provider and model
-        _, provider, resolved_model = await resolve_llm_provider_and_model()
+        _, provider, resolved_model = await resolve_llm_provider_and_model(self.db)
         model = model or resolved_model
 
         print(f"[CHAT_TOOLS] Using provider: {provider}, model: {model}", flush=True)
@@ -2343,7 +2343,7 @@ Provide a helpful response using the company and workforce data available."""
 
         # Resolve dataset and model
         dataset_id = await self._resolve_dataset_id(dataset_id)
-        _, provider, resolved_model = await resolve_llm_provider_and_model()
+        _, provider, resolved_model = await resolve_llm_provider_and_model(self.db)
         model = model or resolved_model
 
         # Build employee context

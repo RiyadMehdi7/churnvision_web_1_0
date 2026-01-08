@@ -160,6 +160,7 @@ class ChurnPredictionService:
         # Optimal classification threshold (learned from training data)
         self.optimal_threshold: float = 0.5  # Default, updated during training
         self.optimal_threshold_by_dataset: Dict[str, float] = {}
+        self.thresholds_by_dataset: Dict[str, Dict[str, float]] = {}  # Stores {'high': x, 'medium': y}
 
         # SHAP explainer for model interpretability
         self.shap_explainer = None

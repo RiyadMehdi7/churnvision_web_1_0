@@ -63,7 +63,9 @@ from app.services.compliance.admin_panel_client import get_admin_panel_client, A
 from app.services.reasoning.churn_reasoning_orchestrator import (
     churn_reasoning_orchestrator,
     ChurnReasoningOrchestrator,
-    OrchestratedReasoning,
+    ChurnReasoningResult,
+    ReasoningBreakdown,
+    MLScoreResult,
 )
 from app.services.reasoning.interview_insight_service import interview_insight_service, InterviewAnalysisResult
 
@@ -156,7 +158,9 @@ __all__ = [
     # Reasoning
     "churn_reasoning_orchestrator",
     "ChurnReasoningOrchestrator",
-    "OrchestratedReasoning",
+    "ChurnReasoningResult",
+    "ReasoningBreakdown",
+    "MLScoreResult",
     "interview_insight_service",
     "InterviewAnalysisResult",
     # Settings

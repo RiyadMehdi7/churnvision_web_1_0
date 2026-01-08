@@ -570,8 +570,8 @@ export function ROIDashboardTab({ className }: ROIDashboardTabProps) {
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {department_breakdown.map((dept) => (
+                    <React.Fragment key={dept.department}>
                     <tr
-                      key={dept.department}
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer transition-colors"
                       onClick={() => setExpandedDepartment(expandedDepartment === dept.department ? null : dept.department)}
                     >
@@ -621,6 +621,77 @@ export function ROIDashboardTab({ className }: ROIDashboardTabProps) {
                         </div>
                       </td>
                     </tr>
+                    {/* Expanded Department Details */}
+                    {expandedDepartment === dept.department && (
+                      <tr className="bg-gray-50/50 dark:bg-gray-800/50">
+                        <td colSpan={7} className="px-5 py-4">
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                              {/* Avg Churn Probability */}
+                              <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Avg Churn Probability</p>
+                                <p className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                                  {(dept.avg_churn_probability * 100).toFixed(1)}%
+                                </p>
+                              </div>
+                              {/* Risk Concentration */}
+                              <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Risk Concentration</p>
+                                <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                                  {dept.risk_concentration.toFixed(1)}%
+                                </p>
+                                <p className="text-[10px] text-gray-400">of total ELTV at risk</p>
+                              </div>
+                              {/* Potential ROI */}
+                              <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Potential ROI</p>
+                                <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                                  {dept.recommended_budget > 0
+                                    ? `${((dept.recovery_potential - dept.recommended_budget) / dept.recommended_budget * 100).toFixed(0)}%`
+                                    : 'N/A'
+                                  }
+                                </p>
+                                <p className="text-[10px] text-gray-400">if treatments applied</p>
+                              </div>
+                              {/* Cost per High-Risk Employee */}
+                              <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Cost per High-Risk</p>
+                                <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                                  {dept.high_risk_count > 0
+                                    ? formatCurrency(dept.recommended_budget / dept.high_risk_count)
+                                    : '$0'
+                                  }
+                                </p>
+                                <p className="text-[10px] text-gray-400">avg treatment cost</p>
+                              </div>
+                            </div>
+                            {/* Action Recommendation */}
+                            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800/50">
+                              <div className="flex items-start gap-2">
+                                <Target className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                                <div>
+                                  <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                                    Recommendation
+                                  </p>
+                                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                                    {dept.high_risk_count > 0
+                                      ? `Target ${dept.high_risk_count} high-risk employee${dept.high_risk_count > 1 ? 's' : ''} with an estimated budget of ${formatCurrency(dept.recommended_budget)} to potentially recover ${formatCurrency(dept.recovery_potential)} in ELTV.`
+                                      : `No high-risk employees in this department. Continue monitoring for early warning signs.`
+                                    }
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </motion.div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>

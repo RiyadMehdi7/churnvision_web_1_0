@@ -204,7 +204,7 @@ class AdminPanelClient:
 
                 return ValidationResult(
                     valid=data.get("valid", False),
-                    license_tier=data.get("tier"),
+                    license_tier=data.get("license_tier") or data.get("tier"),
                     company_name=data.get("company_name"),
                     max_employees=data.get("max_employees"),
                     features=data.get("features", []),

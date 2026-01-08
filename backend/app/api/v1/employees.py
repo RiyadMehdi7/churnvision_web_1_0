@@ -13,7 +13,7 @@ from app.api.deps import get_current_user, get_db
 from app.models.churn import ChurnOutput, ChurnReasoning
 from app.models.hr_data import HRDataInput
 from app.models.user import User
-from app.services.dataset_service import get_active_dataset_entry
+from app.services.data.dataset_service import get_active_dataset_entry
 
 router = APIRouter()
 
@@ -269,7 +269,7 @@ async def generate_treatments(
     Generate personalized treatments for an employee using AI.
     """
     try:
-        from app.services.treatment_generation_service import TreatmentGenerationService
+        from app.services.ai.treatment_generation_service import TreatmentGenerationService
         service = TreatmentGenerationService(db)
         treatments = await service.generate_personalized_treatments(hr_code)
         return treatments

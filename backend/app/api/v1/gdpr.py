@@ -32,7 +32,7 @@ from app.models.gdpr import (
     ErasureLog,
 )
 from app.core.audit import AuditLogger
-from app.services.gdpr_service import get_gdpr_service, DATA_CATEGORIES
+from app.services.compliance.gdpr_service import get_gdpr_service, DATA_CATEGORIES
 from app.schemas.gdpr import (
     ConsentRecordCreate,
     ConsentRecordUpdate,

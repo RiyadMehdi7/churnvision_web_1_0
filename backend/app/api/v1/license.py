@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.license import LicenseValidator
 from app.core.installation import get_installation_id as load_installation_id
-from app.core.config import settings
+from app.core.config import settings, ADMIN_API_URL
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
 
@@ -182,7 +182,7 @@ async def get_sync_status(
     Get the current license sync status including offline state, grace periods,
     and recent sync logs. Requires authentication.
     """
-    from app.services.license_sync_service import get_license_sync_service
+    from app.services.compliance.license_sync_service import get_license_sync_service
 
     # Get sync service status
     sync_service = get_license_sync_service()
@@ -249,7 +249,7 @@ async def get_sync_status(
 
     return SyncStatusResponse(
         validation_mode=settings.LICENSE_VALIDATION_MODE,
-        admin_panel_configured=bool(settings.ADMIN_API_URL),
+        admin_panel_configured=bool(ADMIN_API_URL),
         sync_service_running=is_running,
         last_successful_validation=last_successful,
         last_sync_attempt=last_attempt,
@@ -273,10 +273,10 @@ async def force_sync(
     Triggers validation, health reporting, and telemetry.
     Requires authentication.
     """
-    from app.services.license_sync_service import get_license_sync_service
+    from app.services.compliance.license_sync_service import get_license_sync_service
     from app.core.license_middleware import invalidate_license_cache
 
-    if not settings.ADMIN_API_URL:
+    if not ADMIN_API_URL:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Admin Panel not configured. Cannot perform sync.",

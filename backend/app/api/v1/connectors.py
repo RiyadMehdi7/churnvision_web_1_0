@@ -24,7 +24,7 @@ from app.connectors.base import (
     AVAILABLE_CONNECTORS,
     SyncStatus,
 )
-from app.services.data_quality_service import assess_data_quality
+from app.services.data.data_quality_service import assess_data_quality
 import pandas as pd
 
 # Import connectors to ensure they register themselves

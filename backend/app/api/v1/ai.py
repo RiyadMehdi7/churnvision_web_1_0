@@ -5,8 +5,8 @@ from pydantic import BaseModel
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
-from app.services.app_settings_service import AppSettingsService, normalize_ai_provider
-from app.services.llm_config import (
+from app.services.settings.app_settings_service import AppSettingsService, normalize_ai_provider
+from app.services.ai.llm_config import (
     resolve_llm_provider_and_model,
     provider_is_configured,
 )

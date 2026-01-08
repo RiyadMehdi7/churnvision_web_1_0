@@ -18,7 +18,7 @@ from app.models.monitoring import (
     ModelPerformanceMonitoring,
     ModelAlert,
 )
-from app.services.model_drift_service import (
+from app.services.ml.model_drift_service import (
     model_drift_service,
     DriftReport,
     DriftSeverity,
@@ -141,7 +141,7 @@ async def check_drift(
     # Get current data from recent predictions
     # This would typically pull from your prediction logs or employee data
     try:
-        from app.services.churn_prediction_service import churn_prediction_service
+        from app.services.ml.churn_prediction_service import churn_prediction_service
 
         # Get feature data for recent employees
         # For now, use a simplified approach
@@ -384,7 +384,7 @@ async def _get_current_feature_data(
     """
     # Import here to avoid circular imports
     try:
-        from app.services.churn_prediction_service import churn_prediction_service
+        from app.services.ml.churn_prediction_service import churn_prediction_service
 
         # Get reference feature names from drift service
         ref_info = model_drift_service.get_reference_info()

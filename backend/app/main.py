@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi.errors import RateLimitExceeded
 
-from app.core.config import settings
+from app.core.config import settings, ADMIN_API_URL
 from app.api.v1 import api_router
 from app.db.session import check_db_connection
 from app.core.logging_config import setup_logging, RequestLoggingMiddleware
@@ -389,9 +389,9 @@ async def startup_event():
             raise SystemExit("Invalid or missing license")
 
     # Start license sync service if Admin Panel is configured (hybrid/external mode)
-    if settings.LICENSE_VALIDATION_MODE.lower() in ("external", "hybrid") and settings.ADMIN_API_URL:
+    if settings.LICENSE_VALIDATION_MODE.lower() in ("external", "hybrid") and ADMIN_API_URL:
         try:
-            from app.services.license_sync_service import (
+            from app.services.compliance.license_sync_service import (
                 start_license_sync_service,
                 stop_license_sync_service,
             )

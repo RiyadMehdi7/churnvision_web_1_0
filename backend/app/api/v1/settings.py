@@ -10,8 +10,8 @@ from app.api.deps import get_current_user, get_db
 from app.models.user import User
 from app.models.churn import ChurnOutput
 from app.models.hr_data import HRDataInput
-from app.services.data_driven_thresholds_service import data_driven_thresholds_service
-from app.services.app_settings_service import AppSettingsService
+from app.services.analytics.data_driven_thresholds_service import data_driven_thresholds_service
+from app.services.settings.app_settings_service import AppSettingsService
 
 router = APIRouter()
 

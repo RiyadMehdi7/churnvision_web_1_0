@@ -10,7 +10,7 @@ from app.core.security_utils import sanitize_error_message, get_or_create_sessio
 from app.core.config import settings
 from app.models.auth import UserAccount
 from jose import jwt, JWTError
-from app.services.intelligent_chatbot import IntelligentChatbotService, PatternType
+from app.services.ai.intelligent_chatbot import IntelligentChatbotService, PatternType
 from app.models.chatbot import ChatMessage
 from sqlalchemy import select, desc
 
@@ -51,6 +51,35 @@ class ConnectionManager:
     async def send_context(self, websocket: WebSocket, context: Dict[str, Any]):
         """Send context data to the client."""
         await websocket.send_json({"type": "context", "context": context})
+
+    async def send_tool_call(self, websocket: WebSocket, tool_name: str, arguments: Dict[str, Any]):
+        """Send tool call notification to the client."""
+        await websocket.send_json({
+            "type": "tool_call",
+            "tool": tool_name,
+            "arguments": arguments
+        })
+
+    async def send_tool_result(
+        self,
+        websocket: WebSocket,
+        tool_name: str,
+        success: bool,
+        preview: Optional[str] = None,
+        execution_time_ms: int = 0
+    ):
+        """Send tool result notification to the client."""
+        await websocket.send_json({
+            "type": "tool_result",
+            "tool": tool_name,
+            "success": success,
+            "preview": preview,
+            "execution_time_ms": execution_time_ms
+        })
+
+    async def send_state(self, websocket: WebSocket, state: str):
+        """Send agent state change to the client."""
+        await websocket.send_json({"type": "state", "state": state})
 
 
 ws_manager = ConnectionManager()
@@ -152,6 +181,106 @@ async def websocket_chat(
         ws_manager.disconnect(user_id)
 
 
+@router.websocket("/ws-tools")
+async def websocket_chat_with_tools(
+    websocket: WebSocket,
+    token: str = Query(..., description="JWT access token for authentication"),
+):
+    """
+    WebSocket endpoint for streaming chat with tool-calling support.
+
+    This endpoint uses the tool-calling agent for data analysis questions.
+    The LLM can call data analysis tools and stream results back to the client.
+
+    Connect with token as query parameter: /ws-tools?token=<jwt_token>
+
+    Send messages as JSON:
+    {
+        "message": "How many employees in Engineering?",
+        "session_id": "unique-session-id",
+        "employee_id": "optional-hr-code",
+        "dataset_id": "optional-dataset-id"
+    }
+
+    Receive streaming responses as JSON:
+    - {"type": "state", "state": "thinking"} - Agent state change
+    - {"type": "tool_call", "tool": "count_employees", "arguments": {...}} - Tool being called
+    - {"type": "tool_result", "tool": "count_employees", "success": true, "preview": "..."} - Tool result
+    - {"type": "token", "content": "word"} - Streamed response token
+    - {"type": "done", "full_response": "..."} - Response complete
+    - {"type": "error", "error": "message"} - Error occurred
+    """
+    # Authenticate user from token
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
+        user_id = payload.get("sub")
+        if not user_id:
+            await websocket.close(code=4001, reason="Invalid token payload")
+            return
+    except JWTError:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+    except Exception:
+        await websocket.close(code=4001, reason="Authentication failed")
+        return
+
+    await ws_manager.connect(websocket, f"tools_{user_id}")
+
+    try:
+        async with get_db_session() as db:
+            service = IntelligentChatbotService(db)
+
+            while True:
+                # Receive message from client
+                try:
+                    data = await websocket.receive_json()
+                except Exception:
+                    # Connection closed or invalid JSON
+                    break
+
+                message = data.get("message", "")
+                session_id = data.get("session_id", "default")
+                employee_id = data.get("employee_id")
+                dataset_id = data.get("dataset_id")
+
+                if not message:
+                    await ws_manager.send_error(websocket, "Message is required")
+                    continue
+
+                # Validate session ID
+                validated_session_id = get_or_create_session_id(session_id)
+
+                try:
+                    # Stream tool-calling response
+                    async for event in service.stream_chat_with_tools(
+                        message=message,
+                        session_id=validated_session_id,
+                        employee_id=employee_id,
+                        dataset_id=dataset_id,
+                    ):
+                        # Forward all events to the client
+                        await websocket.send_json(event)
+
+                        # Small delay for tool events to prevent overwhelming
+                        if event.get("type") in ("tool_call", "tool_result"):
+                            await asyncio.sleep(0.1)
+                        elif event.get("type") == "token":
+                            await asyncio.sleep(0.01)
+
+                except Exception as e:
+                    error_msg = sanitize_error_message(e, "tool-calling chat")
+                    await ws_manager.send_error(websocket, error_msg)
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"WebSocket (tools) error: {e}")
+    finally:
+        ws_manager.disconnect(f"tools_{user_id}")
+
+
 class IntelligentChatRequest(BaseModel):
     message: str = Field(..., description="User message")
     session_id: str = Field(..., description="Session ID for conversation tracking")
@@ -240,6 +369,98 @@ async def intelligent_chat(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=sanitize_error_message(e, "chat request processing"),
+        )
+
+
+class ToolChatRequest(BaseModel):
+    """Request model for tool-calling chat"""
+    message: str = Field(..., description="User question about data")
+    session_id: str = Field(..., description="Session ID for conversation tracking")
+    employee_id: Optional[str] = Field(None, description="Optional employee context (HR code)")
+    dataset_id: Optional[str] = Field(None, description="Active dataset context")
+
+
+class ToolCallInfo(BaseModel):
+    """Information about a tool call"""
+    name: str
+    arguments: Dict[str, Any]
+
+
+class ToolResultInfo(BaseModel):
+    """Information about a tool result"""
+    success: bool
+    data: Optional[Any] = None
+    error: Optional[str] = None
+    execution_time_ms: int = 0
+
+
+class ToolChatResponse(BaseModel):
+    """Response model for tool-calling chat"""
+    response: str
+    session_id: str
+    tool_history: List[Dict[str, Any]] = Field(default_factory=list)
+    iterations: int = 0
+    tokens_used: int = 0
+    success: bool = True
+    error: Optional[str] = None
+
+
+@router.post("/chat-tools", response_model=ToolChatResponse)
+async def chat_with_tools(
+    request: ToolChatRequest,
+    current_user: UserAccount = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Data analysis chat endpoint with tool-calling support.
+
+    This endpoint uses the tool-calling agent to answer data analysis questions.
+    The LLM dynamically calls data analysis tools and synthesizes the results.
+
+    Best for questions like:
+    - "How many employees in Engineering?"
+    - "What's the average salary of high-risk employees?"
+    - "List top 5 employees by tenure in Sales"
+    - "Compare risk scores across departments"
+
+    Returns:
+    - response: Final answer based on real data
+    - tool_history: List of tools called and their results
+    - iterations: Number of agent iterations
+    - tokens_used: Total LLM tokens consumed
+    """
+    service = IntelligentChatbotService(db)
+
+    # Validate session ID
+    validated_session_id = get_or_create_session_id(request.session_id)
+
+    try:
+        result = await service.chat_with_tools(
+            message=request.message,
+            session_id=validated_session_id,
+            employee_id=request.employee_id,
+            dataset_id=request.dataset_id
+        )
+
+        return ToolChatResponse(
+            response=result.get("response", ""),
+            session_id=validated_session_id,
+            tool_history=result.get("tool_history", []),
+            iterations=result.get("iterations", 0),
+            tokens_used=result.get("tokens_used", 0),
+            success=result.get("success", True),
+            error=result.get("error")
+        )
+
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=sanitize_error_message(e, "tool-calling chat"),
         )
 
 
@@ -442,8 +663,8 @@ async def refine_content(
     - "translate to German"
     - "make it friendlier"
     """
-    from app.services.chatbot_service import ChatbotService
-    from app.services.llm_config import resolve_llm_provider_and_model
+    from app.services.ai.chatbot_service import ChatbotService
+    from app.services.ai.llm_config import resolve_llm_provider_and_model
     from app.core.config import settings
     import json
     import re

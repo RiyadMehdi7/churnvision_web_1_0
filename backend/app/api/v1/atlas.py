@@ -21,7 +21,7 @@ from app.schemas.atlas import (
     CounterfactualResponse,
     CounterfactualBatchResponse,
 )
-from app.services.churn_prediction_service import churn_prediction_service
+from app.services.ml.churn_prediction_service import churn_prediction_service
 
 router = APIRouter()
 

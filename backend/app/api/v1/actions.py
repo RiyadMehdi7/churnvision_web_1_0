@@ -13,7 +13,7 @@ from datetime import datetime
 
 from app.api.deps import get_current_user, get_db
 from app.models.auth import UserAccount
-from app.services.action_generation_service import ActionGenerationService
+from app.services.ai.action_generation_service import ActionGenerationService
 from app.core.config import settings
 
 router = APIRouter()

@@ -23,7 +23,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from pydantic import BaseModel
 
-from app.core.config import settings
+from app.core.config import settings, ADMIN_API_URL
 from app.core.hardware_fingerprint import HardwareFingerprint
 from app.core.installation import get_installation_id
 
@@ -542,7 +542,7 @@ class LicenseValidator:
         Returns:
             Tuple of (success, license_info, error_message)
         """
-        from app.services.admin_panel_client import get_admin_panel_client
+        from app.services.compliance.admin_panel_client import get_admin_panel_client
 
         client = get_admin_panel_client()
         result = await client.validate_license(license_key)
@@ -770,7 +770,7 @@ class LicenseValidator:
         """Get current hybrid validation status for debugging/monitoring."""
         return {
             "validation_mode": cls.get_validation_mode(),
-            "admin_panel_configured": bool(settings.ADMIN_API_URL),
+            "admin_panel_configured": bool(ADMIN_API_URL),
             "admin_panel_available": cls._admin_panel_available,
             "last_online_validation": cls._last_online_validation.isoformat() if cls._last_online_validation else None,
             "offline_since": cls._offline_since.isoformat() if cls._offline_since else None,

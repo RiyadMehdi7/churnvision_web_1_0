@@ -35,8 +35,8 @@ from app.schemas.churn import (
     ModelRoutingResponse,
     RoutingInfoResponse,
 )
-from app.services.churn_prediction_service import ChurnPredictionService
-from app.services.dataset_service import get_active_dataset, get_active_dataset_id, get_active_dataset_entry
+from app.services.ml.churn_prediction_service import ChurnPredictionService
+from app.services.data.dataset_service import get_active_dataset, get_active_dataset_id, get_active_dataset_entry
 
 router = APIRouter()
 
@@ -1357,8 +1357,8 @@ def _determine_stage(tenure: float) -> str:
 # MODEL INTELLIGENCE ENDPOINTS
 # ============================================================================
 
-from app.services.model_intelligence_service import model_intelligence_service
-from app.services.risk_alert_service import risk_alert_service
+from app.services.ml.model_intelligence_service import model_intelligence_service
+from app.services.analytics.risk_alert_service import risk_alert_service
 
 
 @router.get("/model/backtesting")
@@ -1671,7 +1671,7 @@ async def mark_all_alerts_read(
 # SURVIVAL ANALYSIS ENDPOINTS
 # ============================================================================
 
-from app.services.survival_analysis_service import survival_service
+from app.services.ml.survival_analysis_service import survival_service
 
 
 @router.post("/survival/fit")
@@ -1784,7 +1784,7 @@ async def get_batch_survival_predictions(
 # OUTCOME TRACKING ENDPOINTS (Model Validation)
 # ============================================================================
 
-from app.services.outcome_tracking_service import outcome_tracking_service
+from app.services.analytics.outcome_tracking_service import outcome_tracking_service
 
 
 @router.get("/model/realized-metrics")
@@ -2100,8 +2100,8 @@ async def get_supported_models(
     - Constraints (if any)
     - Current availability status
     """
-    from app.services.model_router_service import model_router
-    from app.services.tabpfn_service import is_tabpfn_available
+    from app.services.ml.model_router_service import model_router
+    from app.services.ml.tabpfn_service import is_tabpfn_available
 
     tabpfn_available = is_tabpfn_available()
 

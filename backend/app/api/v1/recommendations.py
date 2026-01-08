@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
-from app.services.recommendation_service import recommendation_service
+from app.services.analytics.recommendation_service import recommendation_service
 
 router = APIRouter()
 

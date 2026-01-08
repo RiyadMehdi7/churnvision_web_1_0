@@ -31,6 +31,23 @@ _INSECURE_ALLOWED_ORIGINS_DEFAULTS = {
     "http://127.0.0.1:4001",
 }
 
+# =============================================================================
+# HARDCODED ADMIN PANEL SETTINGS - CANNOT BE OVERRIDDEN BY ENV VARS
+# =============================================================================
+# These are defined outside the Settings class to prevent customers from
+# modifying them via .env files or environment variables.
+ADMIN_API_URL: str = "https://churnvision-admin-api.onrender.com/api/v1"
+ADMIN_API_KEY: str = "xCXX6R5Z/ZzCdRPrLkVLo+ok5i+a74qKCHPpMbHIFPg="
+
+# =============================================================================
+# PRODUCTION BUILD FLAG - SET BY DOCKERFILE, CANNOT BE OVERRIDDEN
+# =============================================================================
+# When CHURNVISION_PRODUCTION_BUILD=1 is set (in the Docker image), the app
+# will ALWAYS run in production mode regardless of what the customer sets in
+# their .env file or environment variables. This prevents customers from
+# accidentally (or intentionally) running in development mode.
+_IS_PRODUCTION_BUILD = os.environ.get("CHURNVISION_PRODUCTION_BUILD") == "1"
+
 
 def _extract_password_from_database_url(database_url: str | None) -> str | None:
     if not database_url:
@@ -112,11 +129,6 @@ class Settings(BaseSettings):
     LICENSE_MAX_CLOCK_SKEW_SECONDS: int = 300
     LICENSE_CACHE_TTL_SECONDS: int = 60
     INSTALLATION_ID_PATH: str = "/app/churnvision_data/installation.id"
-
-    # Admin Panel Integration (External License Management)
-    # HARDCODED - customers cannot change these settings
-    ADMIN_API_URL: str = "https://churnvision-admin-api.onrender.com/api/v1"
-    ADMIN_API_KEY: str = "xCXX6R5Z/ZzCdRPrLkVLo+ok5i+a74qKCHPpMbHIFPg="
 
     # Tenant slug is set per customer installation via LICENSE_KEY JWT claims
     TENANT_SLUG: Optional[str] = Field(
@@ -257,6 +269,24 @@ class Settings(BaseSettings):
         Validate configuration on startup. In production, fail hard if insecure defaults are detected.
         This prevents accidental deployment with development credentials.
         """
+        # =================================================================
+        # SECURITY: Force production mode in distributed builds
+        # =================================================================
+        # If running in a production build (Docker image), override any
+        # customer attempts to set ENVIRONMENT=development
+        if _IS_PRODUCTION_BUILD:
+            if self.ENVIRONMENT.lower() != "production":
+                import logging
+                logging.warning(
+                    "SECURITY: Attempted to run in '%s' mode but this is a production build. "
+                    "Forcing ENVIRONMENT=production. Development mode is not available in "
+                    "distributed ChurnVision images.",
+                    self.ENVIRONMENT
+                )
+            # Force production settings - these cannot be overridden
+            object.__setattr__(self, 'ENVIRONMENT', 'production')
+            object.__setattr__(self, 'DEBUG', False)
+
         # Fill DATABASE_URL if it wasn't provided explicitly
         if not self.DATABASE_URL:
             self.DATABASE_URL = (

@@ -40,10 +40,10 @@ from app.schemas.roi_dashboard import (
     MonthlyProjection,
     TreatmentROISummary
 )
-from app.services.eltv_service import eltv_service
-from app.services.treatment_service import treatment_validation_service
-from app.services.roi_dashboard_service import roi_dashboard_service
-from app.services.treatment_mapping_service import treatment_mapping_service
+from app.services.analytics.eltv_service import eltv_service
+from app.services.treatments.treatment_service import treatment_validation_service
+from app.services.analytics.roi_dashboard_service import roi_dashboard_service
+from app.services.treatments.treatment_mapping_service import treatment_mapping_service
 
 router = APIRouter()
 
@@ -376,7 +376,7 @@ async def manual_simulate(
     This ensures predictions are consistent with the Atlas counterfactual system.
     """
     # Import here to avoid circular dependency
-    from app.services.churn_prediction_service import churn_prediction_service
+    from app.services.ml.churn_prediction_service import churn_prediction_service
 
     # Get employee data for building base features
     query = select(HRDataInput).where(

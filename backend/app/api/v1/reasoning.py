@@ -16,13 +16,13 @@ from datetime import datetime
 from app.api.deps import get_current_user, get_db
 from app.api.helpers import get_latest_employee_by_hr_code, build_employee_data_dict
 from app.models.user import User
-from app.services.churn_reasoning_orchestrator import (
+from app.services.reasoning.churn_reasoning_orchestrator import (
     churn_reasoning_orchestrator,
     ChurnReasoningResult
 )
-from app.services.behavioral_stage_service import behavioral_stage_service
-from app.services.business_rule_service import business_rule_service
-from app.services.interview_insight_service import interview_insight_service
+from app.services.analytics.behavioral_stage_service import behavioral_stage_service
+from app.services.treatments.business_rule_service import business_rule_service
+from app.services.reasoning.interview_insight_service import interview_insight_service
 
 router = APIRouter()
 

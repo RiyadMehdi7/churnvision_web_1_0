@@ -42,6 +42,16 @@ ARG BUILD_DATE=unknown
 ENV BUILD_SHA=${BUILD_SHA}
 ENV BUILD_DATE=${BUILD_DATE}
 
+# =============================================================================
+# SECURITY: Force production mode in distributed images
+# =============================================================================
+# These cannot be overridden by customer .env files or -e flags at runtime.
+# The CHURNVISION_PRODUCTION_BUILD flag tells config.py to ignore any
+# ENVIRONMENT variable override attempts.
+ENV CHURNVISION_PRODUCTION_BUILD=1
+ENV ENVIRONMENT=production
+ENV DEBUG=false
+
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y \

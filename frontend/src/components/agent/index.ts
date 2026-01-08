@@ -9,6 +9,8 @@ export { ActionProposalCard } from './ActionProposalCard';
 export { AgentContextPanel } from './AgentContextPanel';
 export { EmailComposer } from './EmailComposer';
 export { TeamsComposer } from './TeamsComposer';
+export { ToolExecutionIndicator, ToolExecutionInline } from './ToolExecutionIndicator';
+export type { ToolCallInfo, ToolCallStatus } from './ToolExecutionIndicator';
 
 // Re-export types
 export type {

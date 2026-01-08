@@ -1159,21 +1159,11 @@ export function Playground() {
       const result = response.data;
 
       setApplyTreatmentResult(result);
-      if (result) {
-        setSelectedEmployeeData(prev => prev ? {
-          ...prev,
-          current_churn_probability: result.post_churn_probability ?? prev.current_churn_probability,
-          current_eltv: result.eltv_post_treatment ?? prev.current_eltv,
-          current_survival_probabilities: result.new_survival_probabilities ?? prev.current_survival_probabilities,
-        } : prev);
+      // Note: We intentionally do NOT mutate selectedEmployeeData.current_survival_probabilities
+      // so that charts can compare baseline vs. treatment outcome correctly.
+      // The post-treatment values are stored in applyTreatmentResult.new_survival_probabilities
 
-        setSelectedEmployee(prev => prev ? {
-          ...prev,
-          churnProbability: result.post_churn_probability ?? prev.churnProbability,
-          currentELTV: result.eltv_post_treatment ?? prev.currentELTV,
-        } : prev);
-
-        if (baselineSnapshot) {
+      if (result && baselineSnapshot) {
           let scenarioAdded = false;
           let scenarioLimitReached = false;
 
@@ -1225,7 +1215,6 @@ export function Playground() {
               variant: 'destructive',
             });
           }
-        }
       }
 
       toast({

@@ -21,8 +21,8 @@ from app.core.config import settings
 from app.core.security_utils import sanitize_filename, sanitize_error_message
 
 logger = logging.getLogger(__name__)
-from app.services.rag_service import RAGService
-from app.services.vector_store_service import get_vector_store
+from app.services.ai.rag_service import RAGService
+from app.services.ai.vector_store_service import get_vector_store
 from app.schemas.rag import (
     DocumentUploadResponse,
     DocumentSummary,

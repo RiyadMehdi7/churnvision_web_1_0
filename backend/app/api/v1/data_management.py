@@ -8,12 +8,12 @@ from typing import List, Optional, Dict, Any
 import pandas as pd
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
-from sqlalchemy import select, delete, update
+from sqlalchemy import select, delete, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.core.security_utils import sanitize_filename, sanitize_error_message
-from app.services.data_quality_service import assess_data_quality, DataQualityReport
+from app.services.data.data_quality_service import assess_data_quality, DataQualityReport
 
 logger = logging.getLogger(__name__)
 from app.models.user import User
@@ -31,7 +31,7 @@ from app.schemas.data_management import (
     OperationResult,
     DataQualityResponse,
 )
-from app.services.project_service import (
+from app.services.data.project_service import (
     ensure_default_project,
     get_active_project,
     set_active_project as set_active_project_service,
@@ -159,11 +159,16 @@ async def list_datasets(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List datasets scoped to the active project only."""
+    """List datasets scoped to the active project, including legacy datasets with NULL project_id."""
     active_project = await get_active_project(db)
     result = await db.execute(
         select(DatasetModel)
-        .where(DatasetModel.project_id == active_project.id)
+        .where(
+            or_(
+                DatasetModel.project_id == active_project.id,
+                DatasetModel.project_id.is_(None),  # Include legacy datasets
+            )
+        )
         .order_by(DatasetModel.upload_date.desc())
     )
     datasets = result.scalars().all()
@@ -233,14 +238,26 @@ async def delete_dataset(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a dataset scoped to the active project."""
+    """Delete a dataset scoped to the active project or with NULL project_id."""
     active_project = await get_active_project(db)
+
+    # First try to find dataset in active project
     dataset = await db.scalar(
         select(DatasetModel).where(
             DatasetModel.dataset_id == dataset_id,
             DatasetModel.project_id == active_project.id,
         )
     )
+
+    # If not found, also check for datasets with NULL project_id (legacy datasets)
+    if not dataset:
+        dataset = await db.scalar(
+            select(DatasetModel).where(
+                DatasetModel.dataset_id == dataset_id,
+                DatasetModel.project_id.is_(None),
+            )
+        )
+
     if not dataset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -254,10 +271,10 @@ async def delete_dataset(
         except Exception as e:
             logger.warning(f"Failed to delete file {dataset.file_path}: {e}")
 
+    # Delete by dataset_id only (CASCADE will handle related records)
     await db.execute(
         delete(DatasetModel).where(
             DatasetModel.dataset_id == dataset_id,
-            DatasetModel.project_id == active_project.id,
         )
     )
     await db.commit()

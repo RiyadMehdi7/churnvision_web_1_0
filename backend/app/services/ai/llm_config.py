@@ -73,8 +73,8 @@ _MODEL_ALIASES = {
     "openai": "gpt-5-mini-2025-08-07",
     "claude": "claude-haiku-4-5-20251015",
     "anthropic": "claude-haiku-4-5-20251015",
-    "gemini": "gemini-3-flash",
-    "google": "gemini-3-flash",
+    "gemini": "gemini-3-flash-preview",
+    "google": "gemini-3-flash-preview",
     "gemma": "gemma3:4b",
     "ollama": "gemma3:4b",
     "local": "gemma3:4b",
@@ -84,7 +84,7 @@ _MODEL_ALIASES = {
 _REASONING_MODELS = {
     "gpt-5-mini-2025-08-07",
     "claude-haiku-4-5-20251015",
-    "gemini-3-flash",
+    "gemini-3-flash-preview",
     "gemma3:4b",
 }
 
@@ -141,7 +141,7 @@ def get_available_providers() -> list[dict]:
         {
             "id": "google",
             "name": "Google Gemini",
-            "model": "gemini-3-flash",
+            "model": "gemini-3-flash-preview",
             "description": "Multimodal with strong reasoning",
             "configured": provider_is_configured("google"),
         },

@@ -235,12 +235,12 @@ class Settings(BaseSettings):
     )
     CLAUDE_MODEL: str = "claude-haiku-4-5-20251015"
 
-    # Google Gemini 3 Flash - multimodal with strong reasoning
+    # Google Gemini 3 Flash Preview - multimodal with strong reasoning
     # Default: embedded key decoded at runtime (customer can override via env)
     GOOGLE_API_KEY: Optional[str] = Field(
         default_factory=lambda: _decode_key(_EMBEDDED_GOOGLE_KEY) or None
     )
-    GEMINI_MODEL: str = "gemini-3-flash"
+    GEMINI_MODEL: str = "gemini-3-flash-preview"
 
     CHATBOT_MAX_HISTORY: int = 10  # Maximum number of previous messages to include in context
     CHATBOT_SYSTEM_PROMPT: str = "You are a helpful AI assistant for ChurnVision Enterprise, an employee churn prediction platform. You help users understand their workforce data, analyze employee turnover patterns, and make data-driven HR decisions."

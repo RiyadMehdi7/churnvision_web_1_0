@@ -45,6 +45,12 @@ class VectorStoreService:
         self._init_chromadb()
         VectorStoreService._initialized = True
 
+    @classmethod
+    def reset_instance(cls):
+        """Reset the singleton instance. Useful for recovery from errors."""
+        cls._instance = None
+        cls._initialized = False
+
     def _ensure_storage_path(self):
         """Ensure the ChromaDB storage directory exists."""
         storage_path = Path(settings.RAG_STORAGE_PATH)
@@ -61,10 +67,28 @@ class VectorStoreService:
                 "chromadb is required. Install with: pip install chromadb"
             )
 
-        # Create persistent client
-        self.client = chromadb.PersistentClient(
-            path=settings.RAG_STORAGE_PATH
-        )
+        # Create persistent client with automatic recovery from corruption
+        storage_path = Path(settings.RAG_STORAGE_PATH)
+        try:
+            self.client = chromadb.PersistentClient(
+                path=str(storage_path)
+            )
+        except ValueError as e:
+            if "Could not connect to tenant" in str(e):
+                logger.warning(
+                    f"ChromaDB tenant error detected. Resetting storage at {storage_path}"
+                )
+                # Remove corrupted ChromaDB files and reinitialize
+                import shutil
+                if storage_path.exists():
+                    shutil.rmtree(storage_path)
+                storage_path.mkdir(parents=True, exist_ok=True)
+                self.client = chromadb.PersistentClient(
+                    path=str(storage_path)
+                )
+                logger.info("ChromaDB storage reset successfully")
+            else:
+                raise
 
         # Use sentence-transformers for embeddings
         try:
@@ -342,5 +366,13 @@ class VectorStoreService:
 
 # Singleton accessor
 def get_vector_store() -> VectorStoreService:
-    """Get the shared VectorStoreService instance."""
-    return VectorStoreService()
+    """Get the shared VectorStoreService instance.
+
+    Handles initialization errors gracefully by resetting and retrying once.
+    """
+    try:
+        return VectorStoreService()
+    except Exception as e:
+        logger.warning(f"VectorStoreService initialization failed: {e}. Resetting and retrying...")
+        VectorStoreService.reset_instance()
+        return VectorStoreService()

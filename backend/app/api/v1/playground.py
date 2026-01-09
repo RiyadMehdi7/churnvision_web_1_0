@@ -106,12 +106,10 @@ async def get_playground_data(
         "termination_date": str(employee.termination_date) if employee.termination_date else None
     }
 
-    # 6. Get SHAP values if available
+    # 6. Get SHAP values if available (only on ChurnOutput, not ChurnReasoning)
     shap_values = {}
     if churn_data and churn_data.shap_values:
         shap_values = churn_data.shap_values
-    elif reasoning and reasoning.shap_values:
-        shap_values = reasoning.shap_values
 
     # 7. Construct ELTV metrics
     eltv_metrics = ELTVMetrics(

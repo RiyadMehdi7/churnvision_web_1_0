@@ -99,14 +99,15 @@ class TreatmentGenerationService(BaseAIGenerationService):
             prompt = self._construct_prompt(employee, churn_data, reasoning)
             system_message = self._get_default_system_message()
 
-        # 4. Call AI
+        # 4. Call AI with configured model from settings
         try:
+            effective_model = model or await self._get_configured_model()
             response_text = await self.chatbot_service.generate_response(
                 messages=[
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": prompt}
                 ],
-                model=model,
+                model=effective_model,
                 temperature=0.7 if rag_context else 0.8,
                 max_tokens=2048
             )

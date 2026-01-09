@@ -106,12 +106,14 @@ Return ONLY a JSON object:
 """
 
         try:
+            # Use configured model from settings if not specified
+            effective_model = model or await self._get_configured_model()
             response_text = await self.chatbot_service.generate_response(
                 messages=[
                     {"role": "system", "content": "You are an expert HR communications specialist who writes highly personalized, authentic emails. Never use generic templates. Always respond with valid JSON only."},
                     {"role": "user", "content": prompt}
                 ],
-                model=model,
+                model=effective_model,
                 temperature=0.7,
                 max_tokens=700
             )
@@ -217,12 +219,14 @@ Return ONLY a JSON object:
 """
 
         try:
+            # Use configured model from settings if not specified
+            effective_model = model or await self._get_configured_model()
             response_text = await self.chatbot_service.generate_response(
                 messages=[
                     {"role": "system", "content": "You are an expert HR meeting facilitator who creates personalized, productive meeting agendas. Always respond with valid JSON only."},
                     {"role": "user", "content": prompt}
                 ],
-                model=model,
+                model=effective_model,
                 temperature=0.7,
                 max_tokens=500
             )

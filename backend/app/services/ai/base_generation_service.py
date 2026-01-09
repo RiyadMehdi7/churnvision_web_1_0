@@ -19,6 +19,7 @@ from typing import Dict, Any, Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.ai.chatbot_service import ChatbotService
+from app.services.ai.llm_config import resolve_llm_provider_and_model
 from app.services.utils.risk_helpers import (
     get_risk_thresholds,
     get_risk_level,
@@ -61,6 +62,11 @@ class BaseAIGenerationService(ABC):
         """
         self.db = db
         self.chatbot_service = ChatbotService(db)
+
+    async def _get_configured_model(self) -> str:
+        """Get the model configured in app settings."""
+        _, _, model = await resolve_llm_provider_and_model(self.db)
+        return model
 
     # =========================================================================
     # Risk Calculation Methods (delegated to shared utilities)

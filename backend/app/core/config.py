@@ -233,7 +233,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = Field(
         default_factory=lambda: _decode_key(_EMBEDDED_ANTHROPIC_KEY) or None
     )
-    CLAUDE_MODEL: str = "claude-haiku-4-5-20251015"
+    CLAUDE_MODEL: str = "claude-haiku-4-5"
 
     # Google Gemini 3 Flash Preview - multimodal with strong reasoning
     # Default: embedded key decoded at runtime (customer can override via env)

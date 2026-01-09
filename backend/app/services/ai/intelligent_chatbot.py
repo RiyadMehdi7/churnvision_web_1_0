@@ -2048,26 +2048,21 @@ Average Employee Cost: ${company_overview.get('avgCost', 0):,.0f}/year
                     treatments_context += f"  Targets: {', '.join(str(v) for v in t['targeted_variables'][:3])}\n"
 
         # ===== BUILD ENHANCED SYSTEM PROMPT =====
-        system_prompt = """You are ChurnVision AI - an expert HR analytics advisor with access to comprehensive employee data, company policies, and business intelligence.
+        system_prompt = """You are ChurnVision AI - an HR analytics advisor with workforce data access.
 
-Your capabilities:
-- Analyze employee churn risk with data-driven insights
-- Explain the "why" behind risk factors using ML model outputs and behavioral analysis
-- Provide actionable, personalized recommendations based on company policies
-- Calculate business impact (ELTV, replacement costs, ROI)
-- Reference historical treatments and their effectiveness
-- Cite relevant company policies and rules
+Response Guidelines:
+- Answer ONLY what the user asks - no unsolicited information
+- Be concise and direct
+- Reference specific data points when relevant to the question
+- If user asks about an employee, focus on that employee
+- If user asks about company overview, provide summary stats
+- Quantify with numbers when available
 
-Guidelines:
-- Be thorough (2-3 paragraphs minimum)
-- Always reference specific data points from the context provided
-- If company policies/rules are provided, ensure recommendations comply with them
-- Quantify business impact where possible (dollars, percentages)
-- Consider the employee's treatment history when making recommendations
-- Compare employee metrics to team/department averages for context
-- Never ask for clarification - use all provided data
-
-Remember: You have access to comprehensive context including ML risk factors, behavioral analysis, ELTV calculations, interview insights, company policies, and treatment history."""
+Do NOT:
+- Provide lengthy introductions or greetings
+- Offer unrequested analysis or recommendations
+- Repeat information the user already knows
+- Add disclaimers or caveats unless critical"""
 
         # ===== ASSEMBLE USER MESSAGE =====
         if employee:
@@ -2082,11 +2077,7 @@ Remember: You have access to comprehensive context including ML risk factors, be
 
 User Question: {message}
 
-Provide a comprehensive response (2-3 paragraphs) that:
-1. Directly addresses the question using the data provided
-2. References specific metrics, risk factors, and insights
-3. Considers company policies and rules if relevant
-4. Includes actionable recommendations with business justification"""
+Answer directly and concisely."""
         else:
             user_message_with_context = f"""{company_profile_context}
 {company_context}
@@ -2094,7 +2085,7 @@ Provide a comprehensive response (2-3 paragraphs) that:
 
 User question: {message}
 
-Provide a helpful response using the company and workforce data available."""
+Answer directly and concisely."""
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -2106,11 +2097,15 @@ Provide a helpful response using the company and workforce data available."""
         print(f"[GENERAL_RESPONSE] Context size: {len(user_message_with_context)} chars", flush=True)
         print(f"[GENERAL_RESPONSE] Has RAG: {bool(rag_formatted)}, Has ELTV: {bool(eltv_data)}, Has Treatments: {bool(treatments_context)}", flush=True)
 
+        # Set max_tokens based on provider (limited for local Ollama, high for cloud)
+        max_tokens = 1024 if runtime_provider == "ollama" else 8192
+
         try:
             response, _ = await self.chatbot_service._get_llm_response(
                 messages=messages,
                 model=model,
-                temperature=0.7  # Slightly lower for more consistent, data-grounded responses
+                temperature=0.7,
+                max_tokens=max_tokens
             )
             print(f"[GENERAL_RESPONSE] LLM response length: {len(response) if response else 0}", flush=True)
             if response and response.strip():

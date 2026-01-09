@@ -71,8 +71,8 @@ async def resolve_llm_provider_and_model(db: AsyncSession) -> Tuple[str, str, st
 _MODEL_ALIASES = {
     "gpt": "gpt-5-mini-2025-08-07",
     "openai": "gpt-5-mini-2025-08-07",
-    "claude": "claude-haiku-4-5-20251015",
-    "anthropic": "claude-haiku-4-5-20251015",
+    "claude": "claude-haiku-4-5",
+    "anthropic": "claude-haiku-4-5",
     "gemini": "gemini-3-flash-preview",
     "google": "gemini-3-flash-preview",
     "gemma": "gemma3:4b",
@@ -83,7 +83,7 @@ _MODEL_ALIASES = {
 # Models that support reasoning/chain-of-thought
 _REASONING_MODELS = {
     "gpt-5-mini-2025-08-07",
-    "claude-haiku-4-5-20251015",
+    "claude-haiku-4-5",
     "gemini-3-flash-preview",
     "gemma3:4b",
 }
@@ -134,7 +134,7 @@ def get_available_providers() -> list[dict]:
         {
             "id": "anthropic",
             "name": "Anthropic Claude",
-            "model": "claude-haiku-4-5-20251015",
+            "model": "claude-haiku-4-5",
             "description": "Fast and cost-effective for enterprise",
             "configured": provider_is_configured("anthropic"),
         },

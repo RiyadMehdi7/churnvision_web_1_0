@@ -587,6 +587,20 @@ This guide reflects the **current state** of the ChurnVision Enterprise platform
 - SSO/OIDC support via Authlib
 - Password hashing with bcrypt
 
+### Secrets & Provisioning
+- LLM provider keys and Admin Panel API keys are provided per-tenant via env or license claims
+- Do not embed shared secrets across customers; rotate per-tenant keys as needed
+- Default dev seed users were removed; create the first admin explicitly
+```bash
+python backend/scripts/generate_license.py \
+  --company "ACME Corp" \
+  --type enterprise \
+  --employees 5000 \
+  --days 365 \
+  --admin-api-key "$ADMIN_API_KEY" \
+  --openai-key "$OPENAI_API_KEY"
+```
+
 ## Performance Optimization
 
 ### Backend
@@ -1002,5 +1016,5 @@ const processData = (data: EmployeeData) => { ... }
 
 ---
 
-**Last Updated**: 2026-01-05
+**Last Updated**: 2026-01-10
 **Next Review**: When significant architectural changes occur or after 10+ new error resolutions

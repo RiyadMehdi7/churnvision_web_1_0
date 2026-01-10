@@ -57,9 +57,21 @@ class TreatmentSuggestion(BaseModel):
     riskLevels: Optional[List[str]] = None
     explanation: Optional[List[Dict[str, Any]]] = None
 
+class InlineTreatmentData(BaseModel):
+    """Inline treatment data for AI-generated treatments that aren't in the database."""
+    name: str
+    description: Optional[str] = None
+    type: Optional[str] = None  # 'material' or 'non-material'
+    estimated_cost: Optional[float] = 0
+    expected_impact: Optional[str] = "Medium"  # 'High', 'Medium', 'Low'
+    implementation_timeline: Optional[str] = "2 weeks"
+
+
 class ApplyTreatmentRequest(BaseModel):
     employee_id: str
     treatment_id: int
+    # Optional inline treatment data for AI-generated treatments (ID >= 1000)
+    treatment_data: Optional[InlineTreatmentData] = None
 
 class ApplyTreatmentResult(BaseModel):
     employee_id: str

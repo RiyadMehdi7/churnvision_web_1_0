@@ -212,15 +212,33 @@ async def apply_treatment(
     - ELTV change (using Weibull survival curves)
     - ROI of the treatment
     - Updated survival probabilities
+
+    For AI-generated treatments (ID >= 1000), pass treatment_data with inline details.
     """
 
     try:
-        # Use the treatment service to simulate application
-        result = await treatment_validation_service.apply_treatment_simulation(
-            db=db,
-            employee_hr_code=request.employee_id,
-            treatment_id=request.treatment_id
-        )
+        # Check if this is an AI-generated treatment (ID >= 1000)
+        if request.treatment_id >= 1000 and request.treatment_data:
+            # Use inline simulation for AI-generated treatments
+            result = await treatment_validation_service.apply_inline_treatment_simulation(
+                db=db,
+                employee_hr_code=request.employee_id,
+                treatment_data={
+                    "name": request.treatment_data.name,
+                    "description": request.treatment_data.description or "",
+                    "type": request.treatment_data.type or "non-material",
+                    "cost": request.treatment_data.estimated_cost or 0,
+                    "expected_impact": request.treatment_data.expected_impact or "Medium",
+                    "time_to_effect": request.treatment_data.implementation_timeline or "2 weeks",
+                }
+            )
+        else:
+            # Use database treatment lookup for regular treatments
+            result = await treatment_validation_service.apply_treatment_simulation(
+                db=db,
+                employee_hr_code=request.employee_id,
+                treatment_id=request.treatment_id
+            )
 
         # Convert ROI to float (handle infinity)
         roi_value = result['roi']

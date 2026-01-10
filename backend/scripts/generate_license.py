@@ -39,6 +39,10 @@ def generate_license(
     hardware_id: str = None,
     installation_id: str = None,
     features: list = None,
+    admin_api_key: str = None,
+    openai_api_key: str = None,
+    anthropic_api_key: str = None,
+    google_api_key: str = None,
     secret_key: str = None,
     private_key: str = None,
     enforce_hardware: bool = True,
@@ -84,6 +88,18 @@ def generate_license(
         "version": "1.0",
         "issuer": "ChurnVision Enterprise",
     }
+
+    llm_api_keys = {}
+    if openai_api_key:
+        llm_api_keys["openai"] = openai_api_key
+    if anthropic_api_key:
+        llm_api_keys["anthropic"] = anthropic_api_key
+    if google_api_key:
+        llm_api_keys["google"] = google_api_key
+    if llm_api_keys:
+        payload["llm_api_keys"] = llm_api_keys
+    if admin_api_key:
+        payload["admin_api_key"] = admin_api_key
 
     license_key = jwt.encode(payload, signing_key, algorithm=signing_alg)
     return license_key
@@ -141,6 +157,22 @@ def main():
         help="Enabled features (default: all)"
     )
     parser.add_argument(
+        "--admin-api-key",
+        help="Admin Panel API key for this tenant (embedded in license)"
+    )
+    parser.add_argument(
+        "--openai-key",
+        help="OpenAI API key to embed in the license (optional)"
+    )
+    parser.add_argument(
+        "--anthropic-key",
+        help="Anthropic API key to embed in the license (optional)"
+    )
+    parser.add_argument(
+        "--google-key",
+        help="Google API key to embed in the license (optional)"
+    )
+    parser.add_argument(
         "--signing-alg", "-a",
         default="RS256",
         choices=["HS256", "RS256"],
@@ -180,6 +212,10 @@ def main():
         hardware_id=args.hardware_id,
         installation_id=args.installation_id,
         features=args.features,
+        admin_api_key=args.admin_api_key,
+        openai_api_key=args.openai_key,
+        anthropic_api_key=args.anthropic_key,
+        google_api_key=args.google_key,
         secret_key=args.secret_key,
         private_key=args.private_key,
         enforce_hardware=not args.no_hardware_lock,

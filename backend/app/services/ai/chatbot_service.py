@@ -26,6 +26,7 @@ from app.services.compliance.pii_masking_service import (
     SalaryPercentiles,
     calculate_salary_percentiles_from_db
 )
+from app.services.ai.llm_config import get_provider_api_key
 
 # Provider type for routing
 ProviderType = Literal["ollama", "openai", "anthropic", "google"]
@@ -101,10 +102,11 @@ class ChatbotService:
         tools: Optional[List[Dict[str, Any]]] = None
     ) -> tuple[str, Dict[str, Any], Optional[List[Dict[str, Any]]]]:
         """Call OpenAI API with optional function calling support"""
-        if not settings.OPENAI_API_KEY:
+        api_key = get_provider_api_key("openai")
+        if not api_key:
             raise ValueError("OPENAI_API_KEY not configured")
 
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=settings.LLM_REQUEST_TIMEOUT)
+        client = AsyncOpenAI(api_key=api_key, timeout=settings.LLM_REQUEST_TIMEOUT)
 
         # Build request kwargs
         request_kwargs = {
@@ -160,11 +162,12 @@ class ChatbotService:
         - System message is a separate parameter, not in messages array
         - Tool definitions use a slightly different schema
         """
-        if not settings.ANTHROPIC_API_KEY:
+        api_key = get_provider_api_key("anthropic")
+        if not api_key:
             raise ValueError("ANTHROPIC_API_KEY not configured")
 
         client = AsyncAnthropic(
-            api_key=settings.ANTHROPIC_API_KEY,
+            api_key=api_key,
             timeout=settings.LLM_REQUEST_TIMEOUT
         )
 
@@ -281,11 +284,12 @@ class ChatbotService:
 
         Uses the new google-genai SDK with async support via client.aio namespace.
         """
-        if not settings.GOOGLE_API_KEY:
+        api_key = get_provider_api_key("google")
+        if not api_key:
             raise ValueError("GOOGLE_API_KEY not configured")
 
         # Create client with API key
-        client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+        client = genai.Client(api_key=api_key)
 
         # Convert messages to Gemini format
         gemini_contents, system_instruction = self._convert_messages_to_gemini_format(

@@ -1,30 +1,10 @@
 import os
 import secrets
-import base64
 from typing import Optional, List
 from urllib.parse import urlsplit
 
 from pydantic import PostgresDsn, computed_field, Field, AliasChoices, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-def _decode_key(encoded: str, xor_key: int = 0x42) -> str:
-    """Decode XOR-obfuscated base64-encoded API key."""
-    try:
-        decoded_bytes = base64.b64decode(encoded)
-        return bytes([b ^ xor_key for b in decoded_bytes]).decode('utf-8')
-    except Exception:
-        return ""
-
-
-# =============================================================================
-# EMBEDDED LLM PROVIDER API KEYS (XOR + base64 obfuscated)
-# =============================================================================
-# These keys are embedded in the application binary and decoded at runtime.
-# Obfuscation prevents pattern detection by secret scanners.
-_EMBEDDED_OPENAI_KEY = "MSlvMTQhIyEhNm9yDjsrFDoIMToyK3s7ASgkFhUXFjcpNnQoeno0by4AEXVyJDIUMQktASYjKxoKJnAkGy93AzVwAQ0TMHsVA28oJRozDTUgKicXNRZxAC4gKQQIGxMGbxs7EzgNNTgbISwJdyMuOBoSATovABUEdikaN3YwACU3HQ1zKAUrbykJJTByCicjAHY1MRAyNBB2NTYsM3YhchsuCSsHAw=="
-_EMBEDDED_ANTHROPIC_KEY = "MSlvIyw2byMyK3JxbxJvBXIwd3AdLiQXByNwNhFwJy4DJSAwMzsqLyopBRILKAkBNQt6ETF0EyA4LAl1Iw8EADAschouCBpzNREsKSUDNHUnCy0DGxITOwEUKxQuAwR1FHsTbxgxEisYAwMD"
-_EMBEDDED_GOOGLE_KEY = "Aws4IxE7ADsUGhRyCSp0OHQnA28SGCk2KDISdRp2MStwJy0uEzgD"
 
 
 # Known insecure default values that must be changed in production
@@ -52,12 +32,11 @@ _INSECURE_ALLOWED_ORIGINS_DEFAULTS = {
 }
 
 # =============================================================================
-# HARDCODED ADMIN PANEL SETTINGS - CANNOT BE OVERRIDDEN BY ENV VARS
+# ADMIN PANEL SETTINGS
 # =============================================================================
-# These are defined outside the Settings class to prevent customers from
-# modifying them via .env files or environment variables.
+# ADMIN_API_URL is fixed to the central panel. API keys are provided per-tenant
+# via environment variables or license claims.
 ADMIN_API_URL: str = "https://churnvision-admin-api.onrender.com/api/v1"
-ADMIN_API_KEY: str = "xCXX6R5Z/ZzCdRPrLkVLo+ok5i+a74qKCHPpMbHIFPg="
 
 # =============================================================================
 # PRODUCTION BUILD FLAG - SET BY DOCKERFILE, CANNOT BE OVERRIDDEN
@@ -162,6 +141,12 @@ class Settings(BaseSettings):
         description="License validation mode: 'local' (JWT only), 'external' (Admin Panel only), 'hybrid' (Admin Panel with local fallback)"
     )
 
+    # Admin Panel authentication (per-tenant)
+    ADMIN_API_KEY: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("ADMIN_API_KEY", "CHURNVISION_ADMIN_API_KEY"),
+    )
+
     # Offline Grace Period
     LICENSE_OFFLINE_GRACE_DAYS: int = Field(
         default=30,
@@ -222,24 +207,15 @@ class Settings(BaseSettings):
     DEFAULT_LLM_PROVIDER: str = "ollama"
 
     # OpenAI GPT-5 Mini - most capable general-purpose model
-    # Default: embedded key decoded at runtime (customer can override via env)
-    OPENAI_API_KEY: Optional[str] = Field(
-        default_factory=lambda: _decode_key(_EMBEDDED_OPENAI_KEY) or None
-    )
+    OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-5-mini-2025-08-07"
 
     # Anthropic Claude Haiku 4.5 - fast and cost-effective for enterprise
-    # Default: embedded key decoded at runtime (customer can override via env)
-    ANTHROPIC_API_KEY: Optional[str] = Field(
-        default_factory=lambda: _decode_key(_EMBEDDED_ANTHROPIC_KEY) or None
-    )
+    ANTHROPIC_API_KEY: Optional[str] = None
     CLAUDE_MODEL: str = "claude-haiku-4-5"
 
     # Google Gemini 3 Flash Preview - multimodal with strong reasoning
-    # Default: embedded key decoded at runtime (customer can override via env)
-    GOOGLE_API_KEY: Optional[str] = Field(
-        default_factory=lambda: _decode_key(_EMBEDDED_GOOGLE_KEY) or None
-    )
+    GOOGLE_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-3-flash-preview"
 
     CHATBOT_MAX_HISTORY: int = 10  # Maximum number of previous messages to include in context
@@ -366,8 +342,9 @@ class Settings(BaseSettings):
             errors.append("LICENSE_SIGNING_ALG must be RS256 in production.")
 
         # Validate Admin Panel config for external/hybrid license modes
-        # Note: ADMIN_API_URL and ADMIN_API_KEY are now hardcoded to ChurnVision's central panel
-        # TENANT_SLUG is extracted from the license key JWT claims at runtime
+        # ADMIN_API_URL targets the central panel; API keys are provided per-tenant
+        # via environment variables or license claims. TENANT_SLUG is extracted
+        # from the license key JWT claims at runtime.
 
         # Validate LICENSE_VALIDATION_MODE value
         valid_modes = ("local", "external", "hybrid")

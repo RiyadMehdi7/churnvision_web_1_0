@@ -222,35 +222,6 @@ COMMENT ON MATERIALIZED VIEW hr_data.employee_risk_summary IS 'Real-time summary
 -- Grant appropriate permissions (these will be managed by Alembic migrations)
 -- This is just for initial setup
 
--- Seed development user (only for development environments)
--- Password: dev123
--- Password hash generated using bcrypt with salt rounds = 12
-INSERT INTO legacy_users (email, username, hashed_password, full_name, is_active, is_superuser, tenant_id, created_at)
-VALUES (
-    'dev@churnvision.com',
-    'dev',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LHAkCOYz6Ttxabcdef',  -- Password: dev123
-    'Development User',
-    true,
-    true,
-    'dev-tenant',
-    NOW()
-)
-ON CONFLICT (username) DO NOTHING;
-
-INSERT INTO legacy_users (email, username, hashed_password, full_name, is_active, is_superuser, tenant_id, created_at)
-VALUES (
-    'admin@churnvision.com',
-    'admin',
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LHAkCOYz6Ttxabcdef',  -- Password: dev123
-    'Admin User',
-    true,
-    true,
-    'admin-tenant',
-    NOW()
-)
-ON CONFLICT (username) DO NOTHING;
-
 -- Success message
 DO $$
 BEGIN
@@ -259,9 +230,5 @@ BEGIN
     RAISE NOTICE 'Database: churnvision';
     RAISE NOTICE 'Extensions: uuid-ossp, pg_trgm, btree_gin, pgcrypto';
     RAISE NOTICE 'Schemas: auth, hr_data, ml_models, treatments, audit';
-    RAISE NOTICE '=================================================================';
-    RAISE NOTICE 'Development Users Created:';
-    RAISE NOTICE '  Username: dev      | Email: dev@churnvision.com   | Password: dev123';
-    RAISE NOTICE '  Username: admin    | Email: admin@churnvision.com | Password: dev123';
     RAISE NOTICE '=================================================================';
 END $$;

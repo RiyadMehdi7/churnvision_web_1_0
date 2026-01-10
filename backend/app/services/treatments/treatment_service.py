@@ -513,6 +513,108 @@ class TreatmentValidationService:
             }
         }
 
+    async def apply_inline_treatment_simulation(
+        self,
+        db: AsyncSession,
+        employee_hr_code: str,
+        treatment_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Simulate applying an AI-generated treatment (not from database).
+
+        This handles treatments that aren't persisted to the database,
+        using the inline treatment data to estimate effects.
+
+        Args:
+            db: Database session
+            employee_hr_code: Employee HR code
+            treatment_data: Dict with name, description, type, cost, expected_impact, time_to_effect
+        """
+        # Get employee data
+        query = select(HRDataInput).where(
+            HRDataInput.hr_code == employee_hr_code
+        ).order_by(desc(HRDataInput.report_date)).limit(1)
+        result = await db.execute(query)
+        employee = result.scalar_one_or_none()
+
+        if not employee:
+            raise ValueError(f"Employee {employee_hr_code} not found")
+
+        # Get churn probability
+        query = select(ChurnOutput).where(
+            ChurnOutput.hr_code == employee_hr_code
+        ).order_by(desc(ChurnOutput.generated_at)).limit(1)
+        result = await db.execute(query)
+        churn_data = result.scalar_one_or_none()
+
+        current_churn = float(churn_data.resign_proba) if churn_data else 0.5
+
+        # Build employee data dict
+        employee_data = {
+            'hr_code': employee.hr_code,
+            'full_name': employee.full_name,
+            'structure_name': employee.structure_name,
+            'position': employee.position,
+            'status': employee.status,
+            'tenure': float(employee.tenure) if employee.tenure else 0,
+            'employee_cost': float(employee.employee_cost) if employee.employee_cost else 50000,
+        }
+
+        # Map expected_impact to base effect size
+        impact_to_effect = {
+            'High': 0.15,
+            'Medium': 0.10,
+            'Low': 0.05,
+        }
+        expected_impact = treatment_data.get('expected_impact', 'Medium')
+        base_effect = impact_to_effect.get(expected_impact, 0.10)
+
+        # Scale effect based on treatment type (material treatments are more effective)
+        treatment_type = treatment_data.get('type', 'non-material')
+        if treatment_type == 'material':
+            base_effect *= 1.2
+
+        # Create a mock effect result
+        adjusted_effect = base_effect * current_churn  # Effect relative to current risk
+        effect = TreatmentEffect(
+            base_effect_size=base_effect,
+            adjusted_effect_size=adjusted_effect,
+            confidence=0.7,  # Lower confidence for AI-generated treatments
+            factors={}
+        )
+
+        # Calculate outcomes
+        treatment_cost = float(treatment_data.get('cost', 0))
+        outcomes = self.calculate_projected_outcomes(
+            employee_data=employee_data,
+            current_churn_prob=current_churn,
+            treatment_effect=effect,
+            treatment_cost=treatment_cost
+        )
+
+        return {
+            'employee_id': employee_hr_code,
+            'treatment_id': None,  # No database ID for AI-generated treatments
+            'treatment_name': treatment_data.get('name', 'AI-Generated Treatment'),
+            'treatment_cost': treatment_cost,
+            'effect_size': effect.adjusted_effect_size,
+            'pre_churn_probability': outcomes['pre_churn_probability'],
+            'post_churn_probability': outcomes['post_churn_probability'],
+            'eltv_pre_treatment': outcomes['pre_eltv'],
+            'eltv_post_treatment': outcomes['post_eltv'],
+            'treatment_effect_eltv': outcomes['eltv_gain'],
+            'roi': outcomes['roi'],
+            'new_survival_probabilities': outcomes['survival_probabilities'],
+            'applied_treatment': {
+                'id': None,
+                'name': treatment_data.get('name', 'AI-Generated Treatment'),
+                'description': treatment_data.get('description', ''),
+                'cost': treatment_cost,
+                'effectSize': effect.adjusted_effect_size,
+                'ai_generated': True
+            }
+        }
+
     async def apply_treatment_simulation_ml(
         self,
         db: AsyncSession,

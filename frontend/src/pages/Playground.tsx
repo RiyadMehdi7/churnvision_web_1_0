@@ -891,10 +891,25 @@ export function Playground() {
 
     try {
       // Use API for simulation
-      const response = await api.post('/playground/simulate', {
+      // For AI-generated treatments (ID >= 1000), include inline treatment data
+      const requestPayload: Record<string, unknown> = {
         employee_id: candidate.employee.hr_code,
         treatment_id: treatment.id
-      });
+      };
+
+      if (treatment.id >= 1000) {
+        // AI-generated treatment - include inline data for backend processing
+        requestPayload.treatment_data = {
+          name: treatment.name,
+          description: treatment.description || '',
+          type: (treatment as Record<string, unknown>).type as string || 'non-material',
+          estimated_cost: treatment.cost || 0,
+          expected_impact: (treatment as Record<string, unknown>).expected_impact as string || 'Medium',
+          implementation_timeline: treatment.timeToEffect || '2 weeks'
+        };
+      }
+
+      const response = await api.post('/playground/simulate', requestPayload);
       const result = response.data;
 
       if (!result) {
@@ -1152,10 +1167,24 @@ export function Playground() {
 
     try {
       // Use API for simulation
-      const response = await api.post('/playground/simulate', {
+      // For AI-generated treatments (ID >= 1000), include inline treatment data
+      const requestPayload: Record<string, unknown> = {
         employee_id: selectedEmployee.hr_code,
         treatment_id: treatment.id
-      });
+      };
+
+      if (treatment.id >= 1000) {
+        requestPayload.treatment_data = {
+          name: treatment.name,
+          description: treatment.description || '',
+          type: (treatment as Record<string, unknown>).type as string || 'non-material',
+          estimated_cost: treatment.cost || 0,
+          expected_impact: (treatment as Record<string, unknown>).expected_impact as string || 'Medium',
+          implementation_timeline: treatment.timeToEffect || '2 weeks'
+        };
+      }
+
+      const response = await api.post('/playground/simulate', requestPayload);
       const result = response.data;
 
       setApplyTreatmentResult(result);
@@ -2119,10 +2148,28 @@ const ScenarioComparisonTab = memo(({
     ));
 
     try {
-      const response = await api.post('/playground/simulate', {
+      // For AI-generated treatments (ID >= 1000), include inline treatment data
+      const requestPayload: Record<string, unknown> = {
         employee_id: scenario.employeeId,
         treatment_id: treatmentId
-      });
+      };
+
+      if (treatmentId >= 1000) {
+        // Find treatment details from treatmentSuggestions
+        const treatment = treatmentSuggestions.find(t => t.id === treatmentId);
+        if (treatment) {
+          requestPayload.treatment_data = {
+            name: treatment.name,
+            description: treatment.description || '',
+            type: (treatment as Record<string, unknown>).type as string || 'non-material',
+            estimated_cost: treatment.cost || 0,
+            expected_impact: (treatment as Record<string, unknown>).expected_impact as string || 'Medium',
+            implementation_timeline: treatment.timeToEffect || '2 weeks'
+          };
+        }
+      }
+
+      const response = await api.post('/playground/simulate', requestPayload);
 
       const result = response.data;
 

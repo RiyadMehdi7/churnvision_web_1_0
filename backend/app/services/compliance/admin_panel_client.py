@@ -19,7 +19,8 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from app.core.config import settings, ADMIN_API_URL, ADMIN_API_KEY
+from app.core.config import settings, ADMIN_API_URL
+from app.core.license import LicenseValidator
 from app.core.hardware_fingerprint import HardwareFingerprint
 from app.core.installation import get_installation_id
 from app.core.version import APP_VERSION
@@ -72,11 +73,17 @@ class AdminPanelClient:
         max_retries: int = 3,
     ):
         self.base_url = (base_url or ADMIN_API_URL or "").rstrip("/")
-        self.api_key = api_key or ADMIN_API_KEY
+        self.api_key = api_key or settings.ADMIN_API_KEY or self._extract_admin_key_from_license()
         self.tenant_slug = tenant_slug or settings.TENANT_SLUG or self._extract_tenant_from_license()
         self.timeout = timeout
         self.max_retries = max_retries
         self._client: Optional[httpx.AsyncClient] = None
+
+    def _extract_admin_key_from_license(self) -> Optional[str]:
+        payload = LicenseValidator.get_license_payload()
+        if not payload:
+            return None
+        return payload.get("admin_api_key") or payload.get("admin_api_token")
 
     def _extract_tenant_from_license(self) -> Optional[str]:
         """Extract tenant slug from the license key JWT subject claim."""
@@ -184,7 +191,7 @@ class AdminPanelClient:
         if not self.base_url or not self.api_key:
             return ValidationResult(
                 valid=False,
-                error="Admin Panel not configured (missing ADMIN_API_URL or ADMIN_API_KEY)",
+                error="Admin Panel not configured (missing ADMIN_API_URL or ADMIN_API_KEY/admin_api_key claim)",
             )
 
         start_time = time.time()

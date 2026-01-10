@@ -364,6 +364,31 @@ class LicenseValidator:
             )
 
     @classmethod
+    def get_license_payload(cls) -> Optional[Dict[str, Any]]:
+        """
+        Return verified license JWT payload for internal use.
+
+        Ensures the license is valid and bound before exposing claims.
+        """
+        license_key = cls.load_license()
+        if not license_key:
+            return None
+        try:
+            cls.decode_license(license_key)
+        except HTTPException:
+            return None
+        try:
+            signing_alg = cls._signing_alg()
+            verification_key = cls._get_verification_key(signing_alg)
+            return jwt.decode(
+                license_key,
+                verification_key,
+                algorithms=[signing_alg]
+            )
+        except Exception:
+            return None
+
+    @classmethod
     def validate_license(cls) -> LicenseInfo:
         """
         Validate the current license

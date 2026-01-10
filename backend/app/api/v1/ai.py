@@ -55,9 +55,9 @@ async def _build_provider_status() -> Dict[str, dict]:
     local_ready = await _ollama_ready()
     status = {
         "local": {"installed": True, "ready": local_ready},
-        "openai": {"installed": bool(settings.OPENAI_API_KEY), "ready": provider_is_configured("openai")},
-        "anthropic": {"installed": bool(settings.ANTHROPIC_API_KEY), "ready": provider_is_configured("anthropic")},
-        "google": {"installed": bool(settings.GOOGLE_API_KEY), "ready": provider_is_configured("google")},
+        "openai": {"installed": provider_is_configured("openai"), "ready": provider_is_configured("openai")},
+        "anthropic": {"installed": provider_is_configured("anthropic"), "ready": provider_is_configured("anthropic")},
+        "google": {"installed": provider_is_configured("google"), "ready": provider_is_configured("google")},
     }
     status["auto"] = {
         "installed": True,

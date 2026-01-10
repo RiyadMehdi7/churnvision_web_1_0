@@ -7,6 +7,7 @@ from typing import Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.license import LicenseValidator
 from app.services.settings.app_settings_service import AppSettingsService, normalize_ai_provider
 
 _PROVIDER_PREFERENCE = ["openai", "anthropic", "google", "local"]
@@ -20,14 +21,35 @@ def _provider_id_to_runtime(provider_id: str) -> str:
 
 def provider_is_configured(runtime_provider: str) -> bool:
     if runtime_provider == "openai":
-        return bool(settings.OPENAI_API_KEY)
+        return bool(get_provider_api_key("openai"))
     if runtime_provider == "anthropic":
-        return bool(settings.ANTHROPIC_API_KEY)
+        return bool(get_provider_api_key("anthropic"))
     if runtime_provider == "google":
-        return bool(settings.GOOGLE_API_KEY)
+        return bool(get_provider_api_key("google"))
     if runtime_provider == "ollama":
         return True
     return False
+
+
+def get_provider_api_key(provider: str) -> str | None:
+    if provider == "openai" and settings.OPENAI_API_KEY:
+        return settings.OPENAI_API_KEY
+    if provider == "anthropic" and settings.ANTHROPIC_API_KEY:
+        return settings.ANTHROPIC_API_KEY
+    if provider == "google" and settings.GOOGLE_API_KEY:
+        return settings.GOOGLE_API_KEY
+
+    payload = LicenseValidator.get_license_payload()
+    if not payload:
+        return None
+
+    llm_keys = payload.get("llm_api_keys")
+    if isinstance(llm_keys, dict):
+        candidate = llm_keys.get(provider)
+        if candidate:
+            return candidate
+
+    return payload.get(f"{provider}_api_key")
 
 
 def model_for_provider(runtime_provider: str) -> str:
